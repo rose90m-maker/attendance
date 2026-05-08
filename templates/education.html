@@ -73,64 +73,74 @@
     <!-- 교육별 현황 -->
     {% for s in summary %}
     <div class="edu-card">
-        <div class="d-flex align-items-start justify-content-between">
-            <div style="flex:1;">
-                <div class="edu-title">
-                    {% if s.is_legal %}<span class="badge-legal me-1">법정</span>{% endif %}
-                    <span class="badge-cycle me-2">{{ cycle_label[s.cycle_type] }}</span>
-                    {{ s.name }}
-                    {% if s.next_session %}
-                    <span class="next-badge ms-2">📅 다음: {{ s.next_session }} {{ s.next_title or '' }}</span>
-                    {% endif %}
-                </div>
-                <div class="d-flex align-items-center gap-3 mb-2">
-                    <span class="rate-num" style="color:{% if s.rate==100 %}#059669{% elif s.rate>=70 %}#d97706{% else %}#dc2626{% endif %};">
-                        {{ s.rate }}%
-                    </span>
-                    <div style="flex:1;">
-                        <div class="progress">
-                            <div class="progress-bar {% if s.rate==100 %}bg-success{% elif s.rate>=70 %}bg-warning{% else %}bg-danger{% endif %}"
-                                 style="width:{{ s.rate }}%"></div>
-                        </div>
-                        <div style="font-size:0.75rem;color:#6b7280;margin-top:3px;">
-                            {{ s.completed }} / {{ s.total }}명 이수 &nbsp;·&nbsp;
-                            기간: {{ s.start }} ~ {{ s.end }}
-                        </div>
-                    </div>
-                </div>
-                {% if s.penalty_desc or s.penalty_basis or s.penalty_fine %}
-                <div style="margin-top:6px;padding:8px 12px;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0;display:flex;flex-direction:column;gap:3px;">
-                    {% if s.penalty_desc %}
-                    <div style="font-size:0.75rem;color:#374151;line-height:1.5;">{{ s.penalty_desc }}</div>
-                    {% endif %}
-                    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:2px;">
-                        {% if s.penalty_basis %}
-                        <span style="font-size:0.72rem;color:#1e40af;background:#dbeafe;border-radius:4px;padding:1px 8px;">{{ s.penalty_basis }}</span>
-                        {% endif %}
-                        {% if s.penalty_fine %}
-                        <span style="font-size:0.72rem;color:#92400e;background:#fef3c7;border-radius:4px;padding:1px 8px;">{{ s.penalty_fine }}</span>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endif %}
-                {% if s.not_completed_count > 0 %}
-                <div>
-                    <span style="font-size:0.75rem;color:#6b7280;">미이수:</span>
-                    <div class="not-list">
-                        {% for e in s.not_completed %}
-                        <span class="not-chip">{{ e.name }}{% if e.dept %} ({{ e.dept }}){% endif %}</span>
-                        {% endfor %}
-                        {% if s.not_completed_count > 5 %}
-                        <span class="more-chip">+{{ s.not_completed_count - 5 }}명</span>
-                        {% endif %}
-                    </div>
-                </div>
+
+        <!-- ① 타이틀 줄 -->
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                {% if s.is_legal %}<span class="badge-legal">법정</span>{% endif %}
+                <span class="badge-cycle">{{ cycle_label[s.cycle_type] }}</span>
+                <span class="edu-title mb-0">{{ s.name }}</span>
+                {% if s.next_session %}
+                <span class="next-badge">📅 다음: {{ s.next_session }}{% if s.next_title %} · {{ s.next_title }}{% endif %}</span>
                 {% endif %}
             </div>
-            <div class="ms-3 d-flex flex-column gap-1">
-                <a href="/education/sessions?course={{ s.id }}" class="btn btn-sm btn-outline-primary" style="font-size:0.75rem;">실시기록</a>
+            <a href="/education/sessions?course={{ s.id }}" class="btn btn-sm btn-outline-primary ms-3" style="font-size:0.75rem;white-space:nowrap;">실시기록</a>
+        </div>
+
+        <!-- ② 이수율 + 진행바 -->
+        <div class="d-flex align-items-center gap-3 mb-2">
+            <span class="rate-num" style="min-width:52px;text-align:right;color:{% if s.rate==100 %}#059669{% elif s.rate>=70 %}#d97706{% else %}#dc2626{% endif %};">{{ s.rate }}%</span>
+            <div style="flex:1;">
+                <div class="progress">
+                    <div class="progress-bar {% if s.rate==100 %}bg-success{% elif s.rate>=70 %}bg-warning{% else %}bg-danger{% endif %}" style="width:{{ s.rate }}%"></div>
+                </div>
+                <div style="font-size:0.75rem;color:#6b7280;margin-top:3px;">
+                    {{ s.completed }} / {{ s.total }}명 이수 &nbsp;·&nbsp; 기간: {{ s.start }} ~ {{ s.end }}
+                </div>
             </div>
         </div>
+
+        <!-- ③ 교육 설명 -->
+        {% if s.penalty_desc or s.penalty_basis or s.penalty_fine %}
+        <div style="margin-top:6px;padding:8px 12px;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.75rem;">
+                {% if s.penalty_desc %}
+                <tr>
+                    <td style="color:#6b7280;white-space:nowrap;padding:2px 10px 2px 0;vertical-align:top;width:40px;">취지</td>
+                    <td style="color:#374151;line-height:1.6;">{{ s.penalty_desc }}</td>
+                </tr>
+                {% endif %}
+                {% if s.penalty_basis %}
+                <tr>
+                    <td style="color:#6b7280;white-space:nowrap;padding:2px 10px 2px 0;vertical-align:top;">근거</td>
+                    <td style="color:#1e40af;padding:2px 0;">{{ s.penalty_basis }}</td>
+                </tr>
+                {% endif %}
+                {% if s.penalty_fine %}
+                <tr>
+                    <td style="color:#6b7280;white-space:nowrap;padding:2px 10px 2px 0;vertical-align:top;">벌칙</td>
+                    <td style="color:#92400e;padding:2px 0;">{{ s.penalty_fine }}</td>
+                </tr>
+                {% endif %}
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- ④ 미이수자 -->
+        {% if s.not_completed_count > 0 %}
+        <div style="margin-top:8px;display:flex;align-items:flex-start;gap:8px;">
+            <span style="font-size:0.75rem;color:#6b7280;white-space:nowrap;padding-top:2px;">미이수</span>
+            <div class="not-list" style="margin-top:0;">
+                {% for e in s.not_completed %}
+                <span class="not-chip">{{ e.name }}{% if e.dept %} ({{ e.dept }}){% endif %}</span>
+                {% endfor %}
+                {% if s.not_completed_count > 5 %}
+                <span class="more-chip">+{{ s.not_completed_count - 5 }}명</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
     </div>
     {% endfor %}
 </div>
