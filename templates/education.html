@@ -98,9 +98,19 @@
                         </div>
                     </div>
                 </div>
-                {% if s.penalty %}
-                <div style="margin-top:4px;padding:5px 10px;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0;">
-                    <span style="font-size:0.73rem;color:#92400e;">⚠️ {{ s.penalty }}</span>
+                {% if s.penalty_desc or s.penalty_basis or s.penalty_fine %}
+                <div style="margin-top:6px;padding:8px 12px;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0;display:flex;flex-direction:column;gap:3px;">
+                    {% if s.penalty_desc %}
+                    <div style="font-size:0.75rem;color:#374151;line-height:1.5;">{{ s.penalty_desc }}</div>
+                    {% endif %}
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:2px;">
+                        {% if s.penalty_basis %}
+                        <span style="font-size:0.72rem;color:#1e40af;background:#dbeafe;border-radius:4px;padding:1px 8px;">{{ s.penalty_basis }}</span>
+                        {% endif %}
+                        {% if s.penalty_fine %}
+                        <span style="font-size:0.72rem;color:#92400e;background:#fef3c7;border-radius:4px;padding:1px 8px;">{{ s.penalty_fine }}</span>
+                        {% endif %}
+                    </div>
                 </div>
                 {% endif %}
                 {% if s.not_completed_count > 0 %}

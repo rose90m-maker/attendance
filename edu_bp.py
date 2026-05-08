@@ -214,9 +214,17 @@ def edu_main():
                     (cid, today))
         next_sess = cur.fetchone()
 
+        # penalty 텍스트를 | 기준으로 분리
+        parts = [p.strip() for p in penalty.split("|")] if penalty else []
+        penalty_desc   = parts[0] if len(parts) > 0 else ""
+        penalty_basis  = parts[1] if len(parts) > 1 else ""
+        penalty_fine   = parts[2] if len(parts) > 2 else ""
+
         summary.append({
             "id": cid, "name": cname, "cycle_type": cycle_type,
-            "is_legal": is_legal, "penalty": penalty, "start": start, "end": end,
+            "is_legal": is_legal,
+            "penalty_desc": penalty_desc, "penalty_basis": penalty_basis, "penalty_fine": penalty_fine,
+            "start": start, "end": end,
             "completed": completed, "total": total_emp, "rate": rate,
             "not_completed": not_completed[:5],
             "not_completed_count": len(not_completed),
