@@ -190,6 +190,18 @@
         {% endif %}
     </div>
 
+    <!-- 교육관리 -->
+    <button class="nav-group-toggle" data-group="grp-edu">
+        <span class="ng-icon">🎓</span><span class="ng-label">교육관리</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-edu">
+        <a href="/education" class="side-link{% if active_page == 'education' %} active{% endif %}"><span class="sl-icon">📊</span>교육 현황</a>
+        {% if is_admin %}
+        <a href="/education/sessions" class="side-link{% if active_page == 'edu_sessions' %} active{% endif %}"><span class="sl-icon">📋</span>실시 기록</a>
+        <a href="/education/courses" class="side-link{% if active_page == 'edu_courses' %} active{% endif %}"><span class="sl-icon">📚</span>과정 관리</a>
+        {% endif %}
+    </div>
+
     <!-- 설문관리 -->
     <button class="nav-group-toggle" data-group="grp-survey">
         <span class="ng-icon">📝</span><span class="ng-label">설문관리</span><span class="ng-arrow">▸</span>
@@ -220,7 +232,6 @@
         <a href="/roster" class="side-link{% if active_page == 'roster' %} active{% endif %}"><span class="sl-icon">📂</span>명부관리</a>
         <a href="/log_management" class="side-link{% if active_page == 'log_management' %} active{% endif %}"><span class="sl-icon">📋</span>로그관리</a>
         <a href="/fire_management" class="side-link{% if active_page == 'fire_management' %} active{% endif %}"><span class="sl-icon">🚨</span>소방관리</a>
-        <a href="/education" class="side-link{% if active_page == 'education' %} active{% endif %}"><span class="sl-icon">🎓</span>교육관리</a>
         <a href="/user_management" class="side-link{% if active_page == 'user_management' %} active{% endif %}"><span class="sl-icon">⚙️</span>계정관리</a>
         <a href="/perm_groups" class="side-link{% if active_page == 'perm_groups' %} active{% endif %}"><span class="sl-icon">🔐</span>권한그룹관리</a>
         <a href="/dev_history" class="side-link{% if active_page == 'dev_history' %} active{% endif %}"><span class="sl-icon">📜</span>개발이력</a>

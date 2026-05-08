@@ -176,7 +176,7 @@ def edu_courses():
                 "target":r[4],"is_legal":bool(r[5]),"is_active":bool(r[6]),"note":r[7] or ""}
                for r in cur.fetchall()]
     conn.close()
-    return render_template("education_courses.html", courses=courses, active_page="education")
+    return render_template("education_courses.html", courses=courses, active_page="edu_courses")
 
 
 @edu_bp.route("/sessions")
@@ -199,7 +199,7 @@ def edu_sessions():
     courses = [{"id":r[0],"name":r[1]} for r in cur.fetchall()]
     conn.close()
     return render_template("education_sessions.html", sessions=sessions,
-                           courses=courses, year=year, active_page="education")
+                           courses=courses, year=year, active_page="edu_sessions")
 
 
 @edu_bp.route("/sessions/<int:sid>")
