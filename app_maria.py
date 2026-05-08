@@ -6607,6 +6607,15 @@ def api_fire_event():
             """, (device_key, event_type, severity, message, payload_text))
 
         conn.commit(); conn.close()
+
+        # 위험물 안전 알림 훅
+        if severity == "critical":
+            try:
+                from hazmat_bp import on_fire_event
+                on_fire_event(device_key, device_name, location, event_type, status)
+            except Exception:
+                pass
+
         return jsonify({"ok": True})
     except Exception as ex:
         return jsonify({"ok": False, "error": str(ex)}), 500
@@ -9165,6 +9174,12 @@ app.register_blueprint(mes_bp)
 from edu_bp import edu_bp, init_edu_db
 init_edu_db(app)
 app.register_blueprint(edu_bp)
+
+# ── 위험물·안전관리 Blueprint 등록 ────────────────────────
+from hazmat_bp import hazmat_bp, init_hazmat_db, start_hazmat_monitor
+init_hazmat_db(app)
+app.register_blueprint(hazmat_bp)
+start_hazmat_monitor()
 
 
 # ── 페이스메이커 대시보드 ─────────────────────────────────

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>안전관리 — 알림 수신자</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+</head>
+<body>
+{% include '_sidebar.html' %}
+<div class="container-fluid mt-4" style="max-width:720px;">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h4 class="fw-bold mb-0">🔔 알림 수신자 관리</h4>
+            <div style="font-size:0.8rem;color:#6b7280;margin-top:2px;">위험물·안전 이벤트 발생 시 SMS·이메일·텔레그램으로 알림을 받을 담당자입니다.</div>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/hazmat" class="btn btn-sm btn-outline-secondary">← 위험물 목록</a>
+            <button class="btn btn-sm btn-primary" onclick="openAdd()">+ 수신자 추가</button>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0" style="font-size:0.85rem;">
+                <thead style="background:#f9fafb;">
+                    <tr>
+                        <th style="padding:10px 16px;font-weight:700;font-size:0.78rem;color:#374151;">이름</th>
+                        <th style="font-weight:700;font-size:0.78rem;color:#374151;">휴대폰 (SMS)</th>
+                        <th style="font-weight:700;font-size:0.78rem;color:#374151;">이메일</th>
+                        <th style="font-weight:700;font-size:0.78rem;color:#374151;">텔레그램 Chat ID</th>
+                        <th style="font-weight:700;font-size:0.78rem;color:#374151;text-align:center;">상태</th>
+                        <th style="font-weight:700;font-size:0.78rem;color:#374151;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in recipients %}
+                    <tr id="row-{{ r.id }}" {% if not r.is_active %}style="opacity:0.5;"{% endif %}>
+                        <td style="padding:10px 16px;font-weight:600;">{{ r.name }}</td>
+                        <td>{{ r.phone or '—' }}</td>
+                        <td>{{ r.email or '—' }}</td>
+                        <td>{{ r.tg_chat_id or '—' }}</td>
+                        <td style="text-align:center;">
+                            {% if r.is_active %}
+                            <span class="badge bg-success" style="font-size:0.65rem;">활성</span>
+                            {% else %}
+                            <span class="badge bg-secondary" style="font-size:0.65rem;">비활성</span>
+                            {% endif %}
+                        </td>
+                        <td style="white-space:nowrap;">
+                            <button class="btn btn-xs btn-outline-primary" style="font-size:0.68rem;padding:2px 8px;"
+                                    onclick="openEdit({{ r|tojson|tojson }})">편집</button>
+                            <button class="btn btn-xs btn-outline-secondary" style="font-size:0.68rem;padding:2px 8px;"
+                                    onclick="toggleRecipient({{ r.id }})">
+                                {{ '비활성화' if r.is_active else '활성화' }}
+                            </button>
+                            <button class="btn btn-xs btn-outline-danger" style="font-size:0.68rem;padding:2px 8px;"
+                                    onclick="deleteRecipient({{ r.id }})">삭제</button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4" style="font-size:0.85rem;">등록된 수신자가 없습니다.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="mt-3 p-3" style="background:#fffbeb;border-left:3px solid #f59e0b;border-radius:0 6px 6px 0;font-size:0.78rem;color:#92400e;">
+        💡 <strong>텔레그램 Chat ID 확인:</strong> 텔레그램에서 <code>@userinfobot</code>에게 아무 메시지나 보내면 자신의 Chat ID를 확인할 수 있습니다.
+    </div>
+</div>
+
+<!-- 등록/편집 모달 -->
+<div class="modal fade" id="recipientModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="recipientModalTitle">수신자 추가</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="rId">
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:0.82rem;">이름 *</label>
+                    <input type="text" id="rName" class="form-control form-control-sm" placeholder="홍길동">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:0.82rem;">휴대폰 (SMS)</label>
+                    <input type="text" id="rPhone" class="form-control form-control-sm" placeholder="01012345678">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:0.82rem;">이메일</label>
+                    <input type="email" id="rEmail" class="form-control form-control-sm" placeholder="user@company.com">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:0.82rem;">텔레그램 Chat ID</label>
+                    <input type="text" id="rTgId" class="form-control form-control-sm" placeholder="123456789">
+                    <div style="font-size:0.72rem;color:#6b7280;margin-top:4px;">@userinfobot 에게 메시지 보내면 확인 가능</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button class="btn btn-primary btn-sm" onclick="saveRecipient()">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+var modal = new bootstrap.Modal(document.getElementById('recipientModal'));
+
+function openAdd() {
+    document.getElementById('recipientModalTitle').textContent = '수신자 추가';
+    document.getElementById('rId').value = '';
+    ['rName','rPhone','rEmail','rTgId'].forEach(function(id){ document.getElementById(id).value = ''; });
+    modal.show();
+}
+
+function openEdit(jsonStr) {
+    var r = JSON.parse(jsonStr);
+    document.getElementById('recipientModalTitle').textContent = '수신자 편집';
+    document.getElementById('rId').value = r.id;
+    document.getElementById('rName').value = r.name || '';
+    document.getElementById('rPhone').value = r.phone || '';
+    document.getElementById('rEmail').value = r.email || '';
+    document.getElementById('rTgId').value = r.tg_chat_id || '';
+    modal.show();
+}
+
+function saveRecipient() {
+    var data = {
+        id: document.getElementById('rId').value || null,
+        name: document.getElementById('rName').value.trim(),
+        phone: document.getElementById('rPhone').value.trim(),
+        email: document.getElementById('rEmail').value.trim(),
+        tg_chat_id: document.getElementById('rTgId').value.trim()
+    };
+    if (!data.name) { alert('이름을 입력하세요.'); return; }
+    fetch('/hazmat/api/recipient/save', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) { modal.hide(); location.reload(); }
+        else alert('오류: ' + d.error);
+    });
+}
+
+function toggleRecipient(id) {
+    fetch('/hazmat/api/recipient/toggle', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({id: id})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) location.reload();
+        else alert('오류: ' + d.error);
+    });
+}
+
+function deleteRecipient(id) {
+    if (!confirm('수신자를 삭제할까요?')) return;
+    fetch('/hazmat/api/recipient/delete', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({id: id})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) location.reload();
+        else alert('삭제 실패: ' + d.error);
+    });
+}
+</script>
+</body>
+</html>

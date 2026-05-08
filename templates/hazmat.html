@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>안전관리 — 위험물 관리</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        .item-card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:14px 18px;margin-bottom:10px;transition:box-shadow .15s;}
+        .item-card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);}
+        .cat-badge{font-size:0.7rem;padding:2px 8px;border-radius:10px;font-weight:700;}
+        .cat-인화성{background:#fef3c7;color:#92400e;}
+        .cat-폭발성{background:#fce7f3;color:#9d174d;}
+        .cat-독성{background:#ede9fe;color:#5b21b6;}
+        .cat-부식성{background:#d1fae5;color:#065f46;}
+        .cat-산화성{background:#dbeafe;color:#1e40af;}
+        .cat-기타{background:#f3f4f6;color:#374151;}
+        .inspect-badge{font-size:0.72rem;padding:2px 10px;border-radius:10px;font-weight:700;}
+        .inspect-danger{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+        .inspect-warning{background:#fffbeb;color:#92400e;border:1px solid #fde68a;}
+        .inspect-success{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;}
+        .inspect-secondary{background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;}
+        .alert-row{padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:0.8rem;}
+        .alert-row:last-child{border-bottom:none;}
+        .via-chip{display:inline-block;background:#f3f4f6;color:#374151;border-radius:4px;padding:0px 6px;font-size:0.68rem;margin-left:4px;}
+    </style>
+</head>
+<body>
+{% include '_sidebar.html' %}
+<div class="container-fluid mt-4" style="max-width:960px;">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">🛡️ 안전관리 — 위험물</h4>
+        <div class="d-flex gap-2">
+            <a href="/hazmat/alerts" class="btn btn-sm btn-outline-secondary">알림 이력</a>
+            {% if session.get('role') == 'admin' %}
+            <a href="/hazmat/recipients" class="btn btn-sm btn-outline-secondary">수신자 관리</a>
+            <button class="btn btn-sm btn-primary" onclick="openAdd()">+ 위험물 등록</button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 요약 카드 -->
+    <div class="row g-3 mb-4">
+        <div class="col-3">
+            <div class="card text-center border-0 shadow-sm">
+                <div class="card-body py-3">
+                    <div style="font-size:1.8rem;font-weight:800;color:#1d4ed8;">{{ items|length }}</div>
+                    <div style="font-size:0.78rem;color:#6b7280;">관리 항목</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-3">
+            <div class="card text-center border-0 shadow-sm">
+                <div class="card-body py-3">
+                    {% set overdue = items|selectattr('status_class','equalto','danger')|list|length %}
+                    <div style="font-size:1.8rem;font-weight:800;color:#dc2626;">{{ overdue }}</div>
+                    <div style="font-size:0.78rem;color:#6b7280;">점검 기한 초과</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-3">
+            <div class="card text-center border-0 shadow-sm">
+                <div class="card-body py-3">
+                    {% set due_soon = items|selectattr('status_class','equalto','warning')|list|length %}
+                    <div style="font-size:1.8rem;font-weight:800;color:#d97706;">{{ due_soon }}</div>
+                    <div style="font-size:0.78rem;color:#6b7280;">D-7 이내</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-3">
+            <div class="card text-center border-0 shadow-sm">
+                <div class="card-body py-3">
+                    <div style="font-size:1.8rem;font-weight:800;color:#059669;">{{ alerts|length }}</div>
+                    <div style="font-size:0.78rem;color:#6b7280;">최근 알림</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- 위험물 목록 -->
+        <div class="col-md-7">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <h6 class="fw-bold mb-0">📦 위험물 목록</h6>
+            </div>
+            {% if not items %}
+            <div class="text-muted" style="font-size:0.85rem;padding:20px 0;">등록된 위험물이 없습니다.</div>
+            {% endif %}
+            {% for it in items %}
+            <div class="item-card">
+                <div class="d-flex align-items-start justify-content-between">
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                            <span class="cat-badge cat-{{ it.category or '기타' }}">{{ it.category or '기타' }}</span>
+                            <span class="fw-bold" style="font-size:0.95rem;">{{ it.name }}</span>
+                            {% if not it.is_active %}<span class="badge bg-secondary" style="font-size:0.65rem;">비활성</span>{% endif %}
+                        </div>
+                        <div style="font-size:0.78rem;color:#6b7280;" class="d-flex flex-wrap gap-3">
+                            {% if it.quantity %}<span>📦 {{ it.quantity }} {{ it.unit }}</span>{% endif %}
+                            {% if it.location %}<span>📍 {{ it.location }}</span>{% endif %}
+                            {% if it.temp_max %}<span>🌡️ max {{ it.temp_max }}°C</span>{% endif %}
+                            {% if it.device_id %}<span>🔌 {{ it.device_id }}</span>{% endif %}
+                        </div>
+                        <div class="mt-1 d-flex align-items-center gap-2 flex-wrap">
+                            <span class="inspect-badge inspect-{{ it.status_class }}">
+                                📋 {{ it.status_text }}
+                                {% if it.next_inspect %} · {{ it.next_inspect }}{% endif %}
+                            </span>
+                            {% if it.last_inspected %}
+                            <span style="font-size:0.72rem;color:#9ca3af;">최근점검: {{ it.last_inspected }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="d-flex flex-column gap-1 ms-2" style="flex-shrink:0;">
+                        {% if session.get('role') == 'admin' %}
+                        <button class="btn btn-xs btn-outline-success" style="font-size:0.68rem;padding:2px 8px;"
+                                onclick="doInspect({{ it.id }})">✅점검완료</button>
+                        <button class="btn btn-xs btn-outline-primary" style="font-size:0.68rem;padding:2px 8px;"
+                                onclick="openEdit({{ it|tojson|tojson }})">편집</button>
+                        <button class="btn btn-xs btn-outline-warning" style="font-size:0.68rem;padding:2px 8px;"
+                                onclick="testAlert({{ it.id }})">🔔테스트</button>
+                        <button class="btn btn-xs btn-outline-danger" style="font-size:0.68rem;padding:2px 8px;"
+                                onclick="deleteItem({{ it.id }})">삭제</button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- 최근 알림 이력 -->
+        <div class="col-md-5">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <h6 class="fw-bold mb-0">🔔 최근 알림</h6>
+                <a href="/hazmat/alerts" style="font-size:0.75rem;color:#3b82f6;">전체보기</a>
+            </div>
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-0">
+                    {% if not alerts %}
+                    <div class="text-muted p-3" style="font-size:0.85rem;">발송된 알림이 없습니다.</div>
+                    {% endif %}
+                    {% for a in alerts %}
+                    <div class="alert-row">
+                        <div class="d-flex align-items-start justify-content-between">
+                            <div style="flex:1;">
+                                <div style="font-weight:600;color:#374151;">{{ a.title }}</div>
+                                <div style="color:#6b7280;font-size:0.72rem;">{{ a.created_at }}
+                                    {% for v in a.via.split(',') if v %}
+                                    <span class="via-chip">{{ v }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 등록/편집 모달 -->
+<div class="modal fade" id="itemModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="itemModalTitle">위험물 등록</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="fId">
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">물질명 *</label>
+                        <input type="text" id="fName" class="form-control form-control-sm" placeholder="예: 에탄올">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">분류</label>
+                        <select id="fCategory" class="form-select form-select-sm">
+                            <option value="">선택</option>
+                            <option>인화성</option><option>폭발성</option><option>독성</option>
+                            <option>부식성</option><option>산화성</option><option>기타</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">보관량</label>
+                        <input type="number" id="fQty" class="form-control form-control-sm" placeholder="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">단위</label>
+                        <input type="text" id="fUnit" class="form-control form-control-sm" placeholder="L">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">보관 위치</label>
+                        <input type="text" id="fLocation" class="form-control form-control-sm" placeholder="예: 1공장 창고 A동">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">허용 최고 온도 (°C)</label>
+                        <input type="number" id="fTempMax" class="form-control form-control-sm" placeholder="예: 30">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">허용 최저 온도 (°C)</label>
+                        <input type="number" id="fTempMin" class="form-control form-control-sm" placeholder="예: 5">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">허용 최고 습도 (%)</label>
+                        <input type="number" id="fHumiMax" class="form-control form-control-sm" placeholder="예: 60">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">연결 센서 (MQTT device_id)</label>
+                        <select id="fDeviceId" class="form-select form-select-sm">
+                            <option value="">없음</option>
+                            {% for d in devices %}
+                            <option value="{{ d }}">{{ d }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">카메라 URL (RTSP 또는 HTTP)</label>
+                        <input type="text" id="fCameraUrl" class="form-control form-control-sm" placeholder="rtsp://192.168.x.x/stream 또는 http://.../snapshot.jpg">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">점검 주기 (일)</label>
+                        <input type="number" id="fCycle" class="form-control form-control-sm" value="30">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">최근 점검일</label>
+                        <input type="date" id="fLastIns" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold" style="font-size:0.82rem;">비고</label>
+                        <textarea id="fNote" class="form-control form-control-sm" rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button class="btn btn-primary btn-sm" onclick="saveItem()">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+var itemModal = new bootstrap.Modal(document.getElementById('itemModal'));
+
+function openAdd() {
+    document.getElementById('itemModalTitle').textContent = '위험물 등록';
+    document.getElementById('fId').value = '';
+    ['fName','fCategory','fQty','fUnit','fLocation','fTempMax','fTempMin','fHumiMax',
+     'fDeviceId','fCameraUrl','fNote'].forEach(function(id){ document.getElementById(id).value = ''; });
+    document.getElementById('fCycle').value = '30';
+    document.getElementById('fLastIns').value = '';
+    itemModal.show();
+}
+
+function openEdit(jsonStr) {
+    var it = JSON.parse(jsonStr);
+    document.getElementById('itemModalTitle').textContent = '위험물 편집';
+    document.getElementById('fId').value = it.id || '';
+    document.getElementById('fName').value = it.name || '';
+    document.getElementById('fCategory').value = it.category || '';
+    document.getElementById('fQty').value = it.quantity || '';
+    document.getElementById('fUnit').value = it.unit || '';
+    document.getElementById('fLocation').value = it.location || '';
+    document.getElementById('fTempMax').value = it.temp_max != null ? it.temp_max : '';
+    document.getElementById('fTempMin').value = it.temp_min != null ? it.temp_min : '';
+    document.getElementById('fHumiMax').value = it.humi_max != null ? it.humi_max : '';
+    document.getElementById('fDeviceId').value = it.device_id || '';
+    document.getElementById('fCameraUrl').value = it.camera_url || '';
+    document.getElementById('fCycle').value = it.cycle || 30;
+    document.getElementById('fLastIns').value = it.last_inspected || '';
+    document.getElementById('fNote').value = it.note || '';
+    itemModal.show();
+}
+
+function saveItem() {
+    var data = {
+        id: document.getElementById('fId').value || null,
+        name: document.getElementById('fName').value.trim(),
+        category: document.getElementById('fCategory').value,
+        quantity: document.getElementById('fQty').value,
+        unit: document.getElementById('fUnit').value,
+        location: document.getElementById('fLocation').value,
+        storage_temp_max: document.getElementById('fTempMax').value,
+        storage_temp_min: document.getElementById('fTempMin').value,
+        storage_humi_max: document.getElementById('fHumiMax').value,
+        sensor_device_id: document.getElementById('fDeviceId').value,
+        camera_url: document.getElementById('fCameraUrl').value,
+        inspect_cycle_days: document.getElementById('fCycle').value,
+        last_inspected: document.getElementById('fLastIns').value,
+        note: document.getElementById('fNote').value
+    };
+    if (!data.name) { alert('물질명을 입력하세요.'); return; }
+    fetch('/hazmat/api/item/save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) { itemModal.hide(); location.reload(); }
+        else alert('오류: ' + d.error);
+    });
+}
+
+function deleteItem(id) {
+    if (!confirm('위험물 항목을 삭제할까요?')) return;
+    fetch('/hazmat/api/item/delete', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({id: id})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) location.reload();
+        else alert('삭제 실패: ' + d.error);
+    });
+}
+
+function doInspect(id) {
+    if (!confirm('오늘 점검을 완료 처리하고 다음 점검일을 자동 계산할까요?')) return;
+    fetch('/hazmat/api/item/inspect', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({id: id})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) { alert('점검 완료! 다음 점검일: ' + d.next_inspect); location.reload(); }
+        else alert('오류: ' + d.error);
+    });
+}
+
+function testAlert(id) {
+    if (!confirm('테스트 알림을 발송할까요? (SMS·이메일·텔레그램)')) return;
+    fetch('/hazmat/api/test_alert', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({item_id: id})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) alert('테스트 알림 발송 요청이 완료되었습니다.\n수신자에게 메시지가 전달됩니다.');
+        else alert('오류: ' + d.error);
+    });
+}
+</script>
+</body>
+</html>
