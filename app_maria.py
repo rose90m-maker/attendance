@@ -6260,22 +6260,14 @@ def delete_meal_notice():
 def dev_history():
     if session.get("role") != "admin":
         flash("접근 권한이 없습니다.", "danger"); return redirect("/")
-    import subprocess as _sp
+    import json as _json
     commits = []
     try:
-        result = _sp.run(
-            ["git", "log", "--pretty=format:%H|%ad|%s", "--date=format:%Y-%m-%d %H:%M", "--max-count=200"],
-            capture_output=True, text=True,
-            cwd=os.path.dirname(os.path.abspath(__file__))
-        )
-        for line in result.stdout.strip().splitlines():
-            if not line: continue
-            parts = line.split("|", 2)
-            if len(parts) == 3:
-                sha, date, msg = parts
-                commits.append({"sha": sha[:7], "date": date, "msg": msg})
+        json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "dev_history.json")
+        with open(json_path, encoding="utf-8") as f:
+            commits = _json.load(f)
     except Exception as e:
-        commits = [{"sha": "-", "date": "-", "msg": f"git 오류: {e}"}]
+        commits = [{"sha": "-", "date": "-", "msg": f"이력 파일 없음: {e}"}]
     return render_template("dev_history.html", commits=commits, active_page="dev_history")
 
 
