@@ -121,7 +121,7 @@ def edu_main():
 
     # 전체 직원 목록
     cur.execute("""SELECT name, COALESCE(dept,'') FROM employee_roster
-                   WHERE status='재직' OR status IS NULL ORDER BY name""")
+                   WHERE name IS NOT NULL AND name <> '' ORDER BY name""")
     employees = [{"name": r[0], "dept": r[1]} for r in cur.fetchall()]
     total_emp = len(employees)
 
@@ -222,7 +222,7 @@ def edu_session_detail(sid):
                     "created_at":r[4].strftime("%Y-%m-%d") if r[4] else ""}
                    for r in cur.fetchall()]
     cur.execute("""SELECT name, COALESCE(dept,'') FROM employee_roster
-                   WHERE status='재직' OR status IS NULL ORDER BY dept, name""")
+                   WHERE name IS NOT NULL AND name <> '' ORDER BY dept, name""")
     employees = [{"name":r[0],"dept":r[1]} for r in cur.fetchall()]
     completed_names = {c["name"] for c in completions}
     not_completed = [e for e in employees if e["name"] not in completed_names]
