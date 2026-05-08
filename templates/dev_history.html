@@ -11,43 +11,68 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
     <style>
-        .timeline { position:relative; padding-left:30px; }
+        .page-wrap { max-width:860px; }
+
+        /* 통계 카드 */
+        .stat-card { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:16px 20px; text-align:center; }
+        .stat-num  { font-size:2rem; font-weight:800; color:#1d4ed8; line-height:1.1; }
+        .stat-lbl  { font-size:0.8rem; color:#6b7280; margin-top:4px; }
+
+        /* 카테고리 뱃지 */
+        .cat { display:inline-block; border-radius:4px; padding:2px 9px; font-size:0.72rem; font-weight:700; margin-right:6px; white-space:nowrap; }
+        .cat-대시보드  { background:#e0f2fe; color:#0369a1; }
+        .cat-보안      { background:#fce7f3; color:#9d174d; }
+        .cat-설문      { background:#ede9fe; color:#5b21b6; }
+        .cat-TBM       { background:#fef3c7; color:#92400e; }
+        .cat-MES       { background:#d1fae5; color:#065f46; }
+        .cat-페이스메이커 { background:#e0e7ff; color:#3730a3; }
+        .cat-전력관리  { background:#fff7ed; color:#c2410c; }
+        .cat-버스배차  { background:#f0fdf4; color:#166534; }
+        .cat-식수관리  { background:#fdf4ff; color:#86198f; }
+        .cat-근무보고서 { background:#eff6ff; color:#1e40af; }
+        .cat-근무표    { background:#f0fdf4; color:#15803d; }
+        .cat-메뉴      { background:#f9fafb; color:#374151; }
+        .cat-ESG       { background:#ecfdf5; color:#047857; }
+        .cat-전산관리  { background:#f5f3ff; color:#6d28d9; }
+        .cat-온습도    { background:#e0f2fe; color:#0c4a6e; }
+        .cat-권한      { background:#fef9c3; color:#713f12; }
+        .cat-백업      { background:#f0fdf4; color:#166534; }
+        .cat-기타      { background:#f3f4f6; color:#374151; }
+
+        /* 타임라인 */
+        .timeline { position:relative; padding-left:28px; }
         .timeline::before {
-            content:''; position:absolute; left:10px; top:0; bottom:0;
-            width:2px; background:linear-gradient(to bottom, #4a90d9, #e5e7eb);
+            content:''; position:absolute; left:8px; top:0; bottom:0;
+            width:2px; background:linear-gradient(to bottom,#3b82f6 0%,#e5e7eb 100%);
         }
-        .tl-item { position:relative; margin-bottom:14px; }
-        .tl-dot {
-            position:absolute; left:-24px; top:10px;
-            width:12px; height:12px; border-radius:50%;
-            background:#4a90d9; border:2px solid #fff;
-            box-shadow:0 0 0 2px #4a90d9;
+        .tl-item { position:relative; margin-bottom:10px; }
+        .tl-dot  {
+            position:absolute; left:-22px; top:12px;
+            width:10px; height:10px; border-radius:50%;
+            background:#3b82f6; border:2px solid #fff;
+            box-shadow:0 0 0 2px #3b82f6;
         }
-        .tl-item:first-child .tl-dot { background:#10b981; box-shadow:0 0 0 2px #10b981; }
+        .tl-item:first-child .tl-dot { background:#10b981; box-shadow:0 0 0 2px #10b981; width:12px; height:12px; left:-23px; top:11px; }
         .tl-card {
             background:#fff; border:1px solid #e5e7eb; border-radius:6px;
-            padding:10px 14px; transition:border-color .15s;
+            padding:11px 16px; transition:box-shadow .15s, border-color .15s;
         }
-        .tl-card:hover { border-color:#4a90d9; }
-        .tl-date { font-size:0.75rem; color:#6b7280; margin-bottom:3px; }
-        .tl-msg { font-size:0.92rem; color:#111827; font-weight:500; }
-        .tl-sha { font-size:0.7rem; color:#9ca3af; font-family:monospace; margin-top:3px; }
-        .tl-badge-new {
-            display:inline-block; background:#d1fae5; color:#065f46;
-            font-size:0.65rem; font-weight:700; padding:1px 6px;
-            border-radius:10px; margin-left:6px; vertical-align:middle;
-        }
-        .search-box { max-width:400px; }
-        .stats-card { background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:14px 18px; text-align:center; }
-        .stats-num { font-size:1.6rem; font-weight:800; color:#1d4ed8; }
-        .stats-label { font-size:0.78rem; color:#6b7280; margin-top:2px; }
+        .tl-card:hover { border-color:#3b82f6; box-shadow:0 2px 8px rgba(59,130,246,.12); }
+        .tl-top  { display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin-bottom:5px; }
+        .tl-date { font-size:0.75rem; color:#9ca3af; margin-left:auto; white-space:nowrap; }
+        .tl-msg  { font-size:0.95rem; color:#1f2937; font-weight:500; line-height:1.5; }
+        .badge-new { background:#10b981; color:#fff; font-size:0.65rem; font-weight:700; padding:2px 7px; border-radius:10px; }
+
+        /* 필터 버튼 */
+        .filter-btn { border:1px solid #e5e7eb; background:#fff; color:#374151; border-radius:20px; padding:4px 12px; font-size:0.78rem; cursor:pointer; transition:all .15s; }
+        .filter-btn:hover, .filter-btn.active { background:#3b82f6; color:#fff; border-color:#3b82f6; }
     </style>
 </head>
 <body>
 {% include '_sidebar.html' %}
 
-<div class="container-fluid mt-4" style="max-width:900px;">
-    <div class="d-flex align-items-center justify-content-between mb-3">
+<div class="container-fluid mt-4 page-wrap">
+    <div class="d-flex align-items-center justify-content-between mb-4">
         <h4 class="fw-bold mb-0">📜 개발이력</h4>
         <a href="/" class="btn btn-sm btn-outline-secondary">← 메인</a>
     </div>
@@ -55,59 +80,104 @@
     <!-- 통계 -->
     <div class="row g-3 mb-4">
         <div class="col-4">
-            <div class="stats-card">
-                <div class="stats-num">{{ commits|length }}</div>
-                <div class="stats-label">총 배포 횟수</div>
+            <div class="stat-card">
+                <div class="stat-num" id="statTotal">{{ commits|length }}</div>
+                <div class="stat-lbl">총 배포 횟수</div>
             </div>
         </div>
         <div class="col-4">
-            <div class="stats-card">
-                <div class="stats-num">{{ commits[0].date[:10] if commits else '-' }}</div>
-                <div class="stats-label">최근 배포일</div>
+            <div class="stat-card">
+                <div class="stat-num" style="font-size:1.1rem;">{{ commits[0].date[:10] if commits else '-' }}</div>
+                <div class="stat-lbl">최근 배포</div>
             </div>
         </div>
         <div class="col-4">
-            <div class="stats-card">
-                <div class="stats-num">{{ commits[-1].date[:10] if commits else '-' }}</div>
-                <div class="stats-label">개발 시작일</div>
+            <div class="stat-card">
+                <div class="stat-num" style="font-size:1.1rem;">{{ commits[-1].date[:10] if commits else '-' }}</div>
+                <div class="stat-lbl">개발 시작</div>
             </div>
         </div>
     </div>
 
-    <!-- 검색 -->
-    <div class="mb-3 search-box">
-        <input type="text" class="form-control form-control-sm" id="searchInput"
-               placeholder="🔍 이력 검색..." oninput="filterHistory()">
+    <!-- 검색 + 카테고리 필터 -->
+    <div class="mb-3">
+        <input type="text" class="form-control form-control-sm mb-2" id="searchInput"
+               placeholder="🔍 이력 검색..." oninput="filterHistory()" style="max-width:400px;">
+        <div class="d-flex flex-wrap gap-2" id="filterBtns">
+            <button class="filter-btn active" onclick="setFilter('', this)">전체</button>
+            <button class="filter-btn" onclick="setFilter('대시보드', this)">대시보드</button>
+            <button class="filter-btn" onclick="setFilter('설문', this)">설문</button>
+            <button class="filter-btn" onclick="setFilter('MES', this)">MES</button>
+            <button class="filter-btn" onclick="setFilter('페이스메이커', this)">페이스메이커</button>
+            <button class="filter-btn" onclick="setFilter('전력관리', this)">전력관리</button>
+            <button class="filter-btn" onclick="setFilter('버스배차', this)">버스배차</button>
+            <button class="filter-btn" onclick="setFilter('TBM', this)">TBM</button>
+            <button class="filter-btn" onclick="setFilter('근무보고서', this)">근무보고서</button>
+            <button class="filter-btn" onclick="setFilter('보안', this)">보안</button>
+            <button class="filter-btn" onclick="setFilter('백업', this)">백업</button>
+        </div>
     </div>
 
     <!-- 타임라인 -->
     <div class="timeline" id="timeline">
         {% for c in commits %}
-        <div class="tl-item" data-msg="{{ c.msg }}">
+        {% set cat = c.msg | regex_search('\[([^\]]+)\]') %}
+        <div class="tl-item" data-msg="{{ c.msg }}" data-cat="{{ c.msg | regex_search('\[([^\]]+)\]') or '' }}">
             <div class="tl-dot"></div>
             <div class="tl-card">
-                <div class="tl-date">{{ c.date }}
-                    {% if loop.first %}<span class="tl-badge-new">최신</span>{% endif %}
+                <div class="tl-top">
+                    {% set bracket = c.msg.find('[') %}
+                    {% set bracket_end = c.msg.find(']') %}
+                    {% if bracket == 0 and bracket_end > 0 %}
+                    {% set cat_name = c.msg[1:bracket_end] %}
+                    <span class="cat cat-{{ cat_name }}">{{ cat_name }}</span>
+                    {% endif %}
+                    {% if loop.first %}<span class="badge-new">최신</span>{% endif %}
+                    <span class="tl-date">{{ c.date }}</span>
                 </div>
-                <div class="tl-msg">{{ c.msg }}</div>
-                <div class="tl-sha">{{ c.sha }}</div>
+                <div class="tl-msg">
+                    {% if bracket == 0 and bracket_end > 0 %}
+                    {{ c.msg[bracket_end+2:] }}
+                    {% else %}
+                    {{ c.msg }}
+                    {% endif %}
+                </div>
             </div>
         </div>
         {% endfor %}
         {% if not commits %}
-        <div class="text-muted" style="font-size:0.9rem;">배포 이력이 없습니다.</div>
+        <div class="text-muted p-3">배포 이력이 없습니다.</div>
         {% endif %}
+    </div>
+
+    <div class="mt-4 mb-5 text-muted" style="font-size:0.78rem;">
+        * 배포 시 자동으로 이력이 추가됩니다.
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+var currentFilter = '';
+
+function setFilter(cat, btn) {
+    currentFilter = cat;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filterHistory();
+}
+
 function filterHistory() {
     var q = document.getElementById('searchInput').value.toLowerCase();
+    var shown = 0;
     document.querySelectorAll('.tl-item').forEach(function(el) {
         var msg = el.dataset.msg.toLowerCase();
-        el.style.display = (!q || msg.includes(q)) ? '' : 'none';
+        var catMatch = !currentFilter || msg.includes(currentFilter.toLowerCase());
+        var qMatch   = !q || msg.includes(q);
+        var show = catMatch && qMatch;
+        el.style.display = show ? '' : 'none';
+        if (show) shown++;
     });
+    document.getElementById('statTotal').textContent = shown;
 }
 </script>
 </body>
