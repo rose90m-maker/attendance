@@ -1,8 +1,13 @@
 """교육/훈련 관리 Blueprint"""
 import os
 from datetime import datetime, date, timedelta
-from flask import Blueprint, render_template, request, jsonify, session, redirect, flash
+from flask import Blueprint, render_template, request, jsonify, session, redirect, flash, send_from_directory, abort
+from werkzeug.utils import secure_filename
 import pymysql
+
+EDU_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads", "education")
+os.makedirs(EDU_UPLOAD_DIR, exist_ok=True)
+ALLOWED_EXT = {'.jpg', '.jpeg', '.png', '.gif', '.pdf', '.pptx', '.ppt', '.xlsx', '.xls', '.docx', '.doc', '.zip'}
 
 edu_bp = Blueprint("edu", __name__, url_prefix="/education")
 
@@ -73,6 +78,18 @@ def init_edu_db(app):
                 `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
                 INDEX `idx_ec_session` (`session_id`),
                 INDEX `idx_ec_name` (`employee_name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `edu_files` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `session_id` INT NOT NULL,
+                `orig_name` VARCHAR(300) NOT NULL,
+                `save_name` VARCHAR(300) NOT NULL,
+                `file_size` INT DEFAULT 0,
+                `uploaded_by` VARCHAR(50),
+                `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX `idx_ef_session` (`session_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
         # penalty 컬럼 추가 (없으면)
@@ -297,9 +314,15 @@ def edu_session_detail(sid):
     employees = [{"name":r[0],"dept":r[1]} for r in cur.fetchall()]
     completed_names = {c["name"] for c in completions}
     not_completed = [e for e in employees if e["name"] not in completed_names]
+    cur.execute("""SELECT id, orig_name, save_name, file_size, uploaded_by, created_at
+                   FROM edu_files WHERE session_id=%s ORDER BY created_at""", (sid,))
+    files = [{"id":r[0],"orig_name":r[1],"save_name":r[2],
+              "file_size":r[3],"uploaded_by":r[4] or "",
+              "created_at":r[5].strftime("%Y-%m-%d") if r[5] else ""}
+             for r in cur.fetchall()]
     conn.close()
     return render_template("education_detail.html", sess=sess, completions=completions,
-                           not_completed=not_completed, active_page="education")
+                           not_completed=not_completed, files=files, active_page="education")
 
 
 # ── API ──────────────────────────────────────────────────────
@@ -419,6 +442,76 @@ def api_completion_delete():
         d = request.get_json(force=True)
         conn = _conn(); cur = conn.cursor()
         cur.execute("DELETE FROM edu_completions WHERE id=%s", (d["id"],))
+        conn.commit(); conn.close()
+        return jsonify(ok=True)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+
+
+@edu_bp.route("/api/file/upload", methods=["POST"])
+@_admin_required
+def api_file_upload():
+    try:
+        session_id = request.form.get("session_id", type=int)
+        if not session_id:
+            return jsonify(ok=False, error="session_id 없음"), 400
+        files = request.files.getlist("files")
+        if not files:
+            return jsonify(ok=False, error="파일 없음"), 400
+        conn = _conn(); cur = conn.cursor()
+        saved = []
+        for f in files:
+            if not f or not f.filename:
+                continue
+            ext = os.path.splitext(f.filename)[1].lower()
+            if ext not in ALLOWED_EXT:
+                continue
+            orig = f.filename
+            safe = secure_filename(orig) or orig
+            ts = datetime.now().strftime("%Y%m%d%H%M%S%f")
+            save_name = f"edu_{session_id}_{ts}_{safe}"
+            f.save(os.path.join(EDU_UPLOAD_DIR, save_name))
+            size = os.path.getsize(os.path.join(EDU_UPLOAD_DIR, save_name))
+            cur.execute("""INSERT INTO edu_files (session_id, orig_name, save_name, file_size, uploaded_by)
+                           VALUES (%s,%s,%s,%s,%s)""",
+                        (session_id, orig, save_name, size, session.get("user_name", "")))
+            saved.append({"id": cur.lastrowid, "orig_name": orig, "save_name": save_name,
+                          "file_size": size})
+        conn.commit(); conn.close()
+        return jsonify(ok=True, files=saved)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+
+
+@edu_bp.route("/files/<int:fid>")
+@_login_required
+def edu_file_download(fid):
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT orig_name, save_name FROM edu_files WHERE id=%s", (fid,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        abort(404)
+    real = os.path.realpath(os.path.join(EDU_UPLOAD_DIR, row[1]))
+    if not real.startswith(os.path.realpath(EDU_UPLOAD_DIR)):
+        abort(403)
+    return send_from_directory(EDU_UPLOAD_DIR, row[1], as_attachment=True,
+                               download_name=row[0])
+
+
+@edu_bp.route("/api/file/delete", methods=["POST"])
+@_admin_required
+def api_file_delete():
+    try:
+        d = request.get_json(force=True)
+        conn = _conn(); cur = conn.cursor()
+        cur.execute("SELECT save_name FROM edu_files WHERE id=%s", (d["id"],))
+        row = cur.fetchone()
+        if row:
+            fpath = os.path.join(EDU_UPLOAD_DIR, row[0])
+            if os.path.exists(fpath):
+                os.remove(fpath)
+            cur.execute("DELETE FROM edu_files WHERE id=%s", (d["id"],))
         conn.commit(); conn.close()
         return jsonify(ok=True)
     except Exception as e:

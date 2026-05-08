@@ -13,6 +13,14 @@
         .emp-chip:hover{background:#eff6ff;border-color:#3b82f6;}
         .emp-chip.selected{background:#dbeafe;border-color:#3b82f6;color:#1e40af;font-weight:600;}
         .done-chip{display:inline-flex;align-items:center;gap:4px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:4px;padding:3px 10px;font-size:0.8rem;}
+        .file-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa;margin-bottom:6px;}
+        .file-icon{font-size:1.2rem;width:24px;text-align:center;flex-shrink:0;}
+        .file-name{flex:1;font-size:0.85rem;color:#1d4ed8;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .file-name:hover{text-decoration:underline;}
+        .file-size{font-size:0.72rem;color:#9ca3af;white-space:nowrap;}
+        #dropzone{border:2px dashed #d1d5db;border-radius:8px;padding:24px;text-align:center;cursor:pointer;transition:all .2s;background:#fafafa;}
+        #dropzone.drag-over{border-color:#3b82f6;background:#eff6ff;}
+        #dropzone:hover{border-color:#6b7280;}
     </style>
 </head>
 <body>
@@ -92,6 +100,44 @@
         </button>
     </div>
     {% endif %}
+
+    <!-- 첨부파일 -->
+    <div class="card border-0 shadow-sm mt-3">
+        <div class="card-body">
+            <h6 class="fw-bold mb-3">📎 첨부파일 <span style="font-size:0.8rem;font-weight:400;color:#6b7280;">(사진·자료·수료증 등)</span></h6>
+
+            <!-- 기존 파일 목록 -->
+            <div id="fileList">
+            {% for f in files %}
+            <div class="file-row" id="frow-{{ f.id }}">
+                <span class="file-icon">{{ '🖼️' if f.orig_name.lower().endswith(('.jpg','.jpeg','.png','.gif')) else '📄' }}</span>
+                <a href="/education/files/{{ f.id }}" class="file-name" download>{{ f.orig_name }}</a>
+                <span class="file-size">{{ (f.file_size / 1024)|round(1) }} KB</span>
+                <span style="font-size:0.72rem;color:#9ca3af;">{{ f.created_at }}</span>
+                <button class="btn btn-xs btn-outline-danger" style="font-size:0.7rem;padding:1px 7px;"
+                        onclick="deleteFile({{ f.id }})">삭제</button>
+            </div>
+            {% endfor %}
+            {% if not files %}
+            <div id="emptyMsg" style="font-size:0.85rem;color:#9ca3af;margin-bottom:10px;">첨부된 파일이 없습니다.</div>
+            {% endif %}
+            </div>
+
+            <!-- 드래그&드롭 업로드 -->
+            <div id="dropzone" onclick="document.getElementById('fileInput').click()">
+                <div style="font-size:1.5rem;">📁</div>
+                <div style="font-size:0.85rem;color:#6b7280;margin-top:4px;">클릭하거나 파일을 끌어다 놓으세요</div>
+                <div style="font-size:0.72rem;color:#9ca3af;margin-top:2px;">JPG · PNG · PDF · PPT · Excel · Word · ZIP</div>
+            </div>
+            <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.gif,.pdf,.pptx,.ppt,.xlsx,.xls,.docx,.doc,.zip" style="display:none;" onchange="uploadFiles(this.files)">
+            <div id="uploadProgress" style="display:none;margin-top:8px;">
+                <div class="progress" style="height:6px;">
+                    <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated" style="width:100%"></div>
+                </div>
+                <div style="font-size:0.75rem;color:#6b7280;margin-top:4px;">업로드 중...</div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -131,6 +177,55 @@ function removeCompletion(cid) {
     }).then(r=>r.json()).then(d=>{
         if (d.ok) location.reload();
         else alert('오류: ' + d.error);
+    });
+}
+
+// ── 파일 업로드 ──────────────────────────────────
+var dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', function(){ dz.classList.remove('drag-over'); });
+dz.addEventListener('drop', function(e){
+    e.preventDefault(); dz.classList.remove('drag-over');
+    uploadFiles(e.dataTransfer.files);
+});
+
+function uploadFiles(fileList) {
+    if (!fileList || !fileList.length) return;
+    var fd = new FormData();
+    fd.append('session_id', SESSION_ID);
+    for (var i = 0; i < fileList.length; i++) fd.append('files', fileList[i]);
+    document.getElementById('uploadProgress').style.display = 'block';
+    fetch('/education/api/file/upload', { method: 'POST', body: fd })
+        .then(r => r.json()).then(d => {
+            document.getElementById('uploadProgress').style.display = 'none';
+            if (!d.ok) { alert('업로드 실패: ' + d.error); return; }
+            var empty = document.getElementById('emptyMsg');
+            if (empty) empty.remove();
+            d.files.forEach(function(f) {
+                var ext = f.orig_name.toLowerCase();
+                var icon = (ext.endsWith('.jpg')||ext.endsWith('.jpeg')||ext.endsWith('.png')||ext.endsWith('.gif')) ? '🖼️' : '📄';
+                var kb = (f.file_size / 1024).toFixed(1);
+                var row = document.createElement('div');
+                row.className = 'file-row'; row.id = 'frow-' + f.id;
+                row.innerHTML = '<span class="file-icon">'+icon+'</span>'
+                    + '<a href="/education/files/'+f.id+'" class="file-name" download>'+f.orig_name+'</a>'
+                    + '<span class="file-size">'+kb+' KB</span>'
+                    + '<button class="btn btn-xs btn-outline-danger" style="font-size:0.7rem;padding:1px 7px;" onclick="deleteFile('+f.id+')">삭제</button>';
+                document.getElementById('fileList').appendChild(row);
+            });
+            document.getElementById('fileInput').value = '';
+        }).catch(function(){ document.getElementById('uploadProgress').style.display='none'; alert('업로드 오류'); });
+}
+
+function deleteFile(fid) {
+    if (!confirm('파일을 삭제할까요?')) return;
+    fetch('/education/api/file/delete', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({id: fid})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) { var el = document.getElementById('frow-'+fid); if(el) el.remove(); }
+        else alert('삭제 실패: ' + d.error);
     });
 }
 </script>
