@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>개발이력 — 태인관리시스템</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        .timeline { position:relative; padding-left:30px; }
+        .timeline::before {
+            content:''; position:absolute; left:10px; top:0; bottom:0;
+            width:2px; background:linear-gradient(to bottom, #4a90d9, #e5e7eb);
+        }
+        .tl-item { position:relative; margin-bottom:14px; }
+        .tl-dot {
+            position:absolute; left:-24px; top:10px;
+            width:12px; height:12px; border-radius:50%;
+            background:#4a90d9; border:2px solid #fff;
+            box-shadow:0 0 0 2px #4a90d9;
+        }
+        .tl-item:first-child .tl-dot { background:#10b981; box-shadow:0 0 0 2px #10b981; }
+        .tl-card {
+            background:#fff; border:1px solid #e5e7eb; border-radius:6px;
+            padding:10px 14px; transition:border-color .15s;
+        }
+        .tl-card:hover { border-color:#4a90d9; }
+        .tl-date { font-size:0.75rem; color:#6b7280; margin-bottom:3px; }
+        .tl-msg { font-size:0.92rem; color:#111827; font-weight:500; }
+        .tl-sha { font-size:0.7rem; color:#9ca3af; font-family:monospace; margin-top:3px; }
+        .tl-badge-new {
+            display:inline-block; background:#d1fae5; color:#065f46;
+            font-size:0.65rem; font-weight:700; padding:1px 6px;
+            border-radius:10px; margin-left:6px; vertical-align:middle;
+        }
+        .search-box { max-width:400px; }
+        .stats-card { background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:14px 18px; text-align:center; }
+        .stats-num { font-size:1.6rem; font-weight:800; color:#1d4ed8; }
+        .stats-label { font-size:0.78rem; color:#6b7280; margin-top:2px; }
+    </style>
+</head>
+<body>
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4" style="max-width:900px;">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">📜 개발이력</h4>
+        <a href="/" class="btn btn-sm btn-outline-secondary">← 메인</a>
+    </div>
+
+    <!-- 통계 -->
+    <div class="row g-3 mb-4">
+        <div class="col-4">
+            <div class="stats-card">
+                <div class="stats-num">{{ commits|length }}</div>
+                <div class="stats-label">총 배포 횟수</div>
+            </div>
+        </div>
+        <div class="col-4">
+            <div class="stats-card">
+                <div class="stats-num">{{ commits[0].date[:10] if commits else '-' }}</div>
+                <div class="stats-label">최근 배포일</div>
+            </div>
+        </div>
+        <div class="col-4">
+            <div class="stats-card">
+                <div class="stats-num">{{ commits[-1].date[:10] if commits else '-' }}</div>
+                <div class="stats-label">개발 시작일</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 검색 -->
+    <div class="mb-3 search-box">
+        <input type="text" class="form-control form-control-sm" id="searchInput"
+               placeholder="🔍 이력 검색..." oninput="filterHistory()">
+    </div>
+
+    <!-- 타임라인 -->
+    <div class="timeline" id="timeline">
+        {% for c in commits %}
+        <div class="tl-item" data-msg="{{ c.msg }}">
+            <div class="tl-dot"></div>
+            <div class="tl-card">
+                <div class="tl-date">{{ c.date }}
+                    {% if loop.first %}<span class="tl-badge-new">최신</span>{% endif %}
+                </div>
+                <div class="tl-msg">{{ c.msg }}</div>
+                <div class="tl-sha">{{ c.sha }}</div>
+            </div>
+        </div>
+        {% endfor %}
+        {% if not commits %}
+        <div class="text-muted" style="font-size:0.9rem;">배포 이력이 없습니다.</div>
+        {% endif %}
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function filterHistory() {
+    var q = document.getElementById('searchInput').value.toLowerCase();
+    document.querySelectorAll('.tl-item').forEach(function(el) {
+        var msg = el.dataset.msg.toLowerCase();
+        el.style.display = (!q || msg.includes(q)) ? '' : 'none';
+    });
+}
+</script>
+</body>
+</html>
