@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>교육 실시 기록</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+</head>
+<body>
+{% include '_sidebar.html' %}
+<div class="container-fluid mt-4" style="max-width:960px;">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">📋 교육 실시 기록</h4>
+        <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" style="width:90px;" onchange="location.href='?year='+this.value">
+                {% for y in range(2023, 2028) %}
+                <option value="{{ y }}" {% if y==year %}selected{% endif %}>{{ y }}년</option>
+                {% endfor %}
+            </select>
+            <a href="/education" class="btn btn-sm btn-outline-secondary">← 현황</a>
+            <button class="btn btn-sm btn-primary" onclick="openModal()">+ 교육 추가</button>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>교육과정</th>
+                    <th>제목</th>
+                    <th>교육일</th>
+                    <th>시간</th>
+                    <th>장소</th>
+                    <th>강사</th>
+                    <th>이수인원</th>
+                    <th style="width:100px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for s in sessions %}
+            <tr>
+                <td style="font-size:0.85rem;">{{ s.course }}</td>
+                <td>
+                    <a href="/education/sessions/{{ s.id }}" class="text-decoration-none fw-semibold">{{ s.title }}</a>
+                </td>
+                <td style="white-space:nowrap;">{{ s.edu_date }}</td>
+                <td>{{ s.hours }}h</td>
+                <td style="font-size:0.85rem;">{{ s.location }}</td>
+                <td style="font-size:0.85rem;">{{ s.instructor }}</td>
+                <td>
+                    <span class="badge bg-primary">{{ s.cnt }}명</span>
+                </td>
+                <td>
+                    <button class="btn btn-xs btn-outline-primary me-1" style="font-size:0.72rem;padding:2px 8px;"
+                            onclick="openModal({{ s|tojson }})">수정</button>
+                    <button class="btn btn-xs btn-outline-danger" style="font-size:0.72rem;padding:2px 8px;"
+                            onclick="deleteSession({{ s.id }})">삭제</button>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center text-muted py-4">{{ year }}년 교육 실시 기록이 없습니다.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 교육 추가/수정 모달 -->
+<div class="modal fade" id="sessionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">교육 실시 등록</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="sId">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">교육 과정 <span class="text-danger">*</span></label>
+                    <select class="form-select" id="sCourse">
+                        {% for c in courses %}
+                        <option value="{{ c.id }}">{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">제목</label>
+                    <input type="text" class="form-control" id="sTitle" placeholder="예: 2분기 산업안전교육">
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold">교육일 <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="sDate">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold">교육시간</label>
+                        <input type="number" class="form-control" id="sHours" value="1" min="0.5" step="0.5">
+                    </div>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold">장소</label>
+                        <input type="text" class="form-control" id="sLocation" placeholder="예: 회의실 A">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold">강사</label>
+                        <input type="text" class="form-control" id="sInstructor" placeholder="예: 홍길동">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">비고</label>
+                    <textarea class="form-control" id="sNote" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="saveSession()">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+var modal = new bootstrap.Modal(document.getElementById('sessionModal'));
+
+function openModal(s) {
+    if (s) {
+        document.getElementById('modalTitle').textContent = '교육 실시 수정';
+        document.getElementById('sId').value = s.id;
+        document.getElementById('sCourse').value = s.course_id || '';
+        document.getElementById('sTitle').value = s.title || '';
+        document.getElementById('sDate').value = s.edu_date;
+        document.getElementById('sHours').value = s.hours;
+        document.getElementById('sLocation').value = s.location || '';
+        document.getElementById('sInstructor').value = s.instructor || '';
+        document.getElementById('sNote').value = s.note || '';
+    } else {
+        document.getElementById('modalTitle').textContent = '교육 실시 등록';
+        document.getElementById('sId').value = '';
+        document.getElementById('sTitle').value = '';
+        document.getElementById('sDate').value = new Date().toISOString().slice(0,10);
+        document.getElementById('sHours').value = '1';
+        document.getElementById('sLocation').value = '';
+        document.getElementById('sInstructor').value = '';
+        document.getElementById('sNote').value = '';
+    }
+    modal.show();
+}
+
+function saveSession() {
+    var date = document.getElementById('sDate').value;
+    if (!date) { alert('교육일을 선택하세요.'); return; }
+    fetch('/education/api/session/save', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+            id: document.getElementById('sId').value || null,
+            course_id: parseInt(document.getElementById('sCourse').value),
+            title: document.getElementById('sTitle').value,
+            edu_date: date,
+            hours: parseFloat(document.getElementById('sHours').value),
+            location: document.getElementById('sLocation').value,
+            instructor: document.getElementById('sInstructor').value,
+            note: document.getElementById('sNote').value
+        })
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) { modal.hide(); location.reload(); }
+        else alert('저장 실패: ' + d.error);
+    });
+}
+
+function deleteSession(id) {
+    if (!confirm('이 교육 실시 기록과 모든 이수자 기록이 삭제됩니다. 계속할까요?')) return;
+    fetch('/education/api/session/delete', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({id: id})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) location.reload();
+        else alert('삭제 실패: ' + d.error);
+    });
+}
+</script>
+</body>
+</html>

@@ -9161,6 +9161,11 @@ from mes_bp import mes_bp, init_mes_db
 init_mes_db(app)
 app.register_blueprint(mes_bp)
 
+# ── 교육/훈련 Blueprint 등록 ──────────────────────────────
+from edu_bp import edu_bp, init_edu_db
+init_edu_db(app)
+app.register_blueprint(edu_bp)
+
 
 # ── 페이스메이커 대시보드 ─────────────────────────────────
 @app.route("/pacemaker")

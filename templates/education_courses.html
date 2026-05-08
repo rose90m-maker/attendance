@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>교육 과정 관리</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+</head>
+<body>
+{% include '_sidebar.html' %}
+<div class="container-fluid mt-4" style="max-width:900px;">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">📚 교육 과정 관리</h4>
+        <div class="d-flex gap-2">
+            <a href="/education" class="btn btn-sm btn-outline-secondary">← 현황</a>
+            <button class="btn btn-sm btn-primary" onclick="openModal()">+ 과정 추가</button>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>과정명</th>
+                    <th>주기</th>
+                    <th>필수시간</th>
+                    <th>법정</th>
+                    <th>상태</th>
+                    <th>비고</th>
+                    <th style="width:120px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for c in courses %}
+            <tr>
+                <td class="fw-semibold">{{ c.name }}</td>
+                <td>
+                    <span class="badge bg-secondary">
+                        {{ {'year':'연간','half':'반기','quarter':'분기'}[c.cycle_type] }}
+                    </span>
+                </td>
+                <td>{{ c.required_hours }}h</td>
+                <td>{% if c.is_legal %}<span class="badge" style="background:#dbeafe;color:#1e40af;">법정</span>{% endif %}</td>
+                <td>
+                    {% if c.is_active %}
+                    <span class="badge bg-success">활성</span>
+                    {% else %}
+                    <span class="badge bg-secondary">비활성</span>
+                    {% endif %}
+                </td>
+                <td style="font-size:0.8rem;color:#6b7280;">{{ c.note }}</td>
+                <td>
+                    <button class="btn btn-xs btn-outline-primary me-1" style="font-size:0.72rem;padding:2px 8px;"
+                            onclick="openModal({{ c|tojson }})">수정</button>
+                    <button class="btn btn-xs btn-outline-{{ 'warning' if c.is_active else 'success' }}" style="font-size:0.72rem;padding:2px 8px;"
+                            onclick="toggleCourse({{ c.id }}, this)">
+                        {{ '비활성화' if c.is_active else '활성화' }}
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 과정 추가/수정 모달 -->
+<div class="modal fade" id="courseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">교육 과정</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="cId">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">과정명 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="cName" placeholder="예: 산업안전보건교육">
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold">주기</label>
+                        <select class="form-select" id="cCycle">
+                            <option value="year">연간 (1회/년)</option>
+                            <option value="half">반기 (2회/년)</option>
+                            <option value="quarter">분기 (4회/년)</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold">필수 시간</label>
+                        <input type="number" class="form-control" id="cHours" value="1" min="0.5" step="0.5">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="cLegal" checked>
+                        <label class="form-check-label" for="cLegal">법정교육</label>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">비고</label>
+                    <input type="text" class="form-control" id="cNote" placeholder="예: 분기별 6시간">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="saveCourse()">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+var modal = new bootstrap.Modal(document.getElementById('courseModal'));
+
+function openModal(c) {
+    if (c) {
+        document.getElementById('modalTitle').textContent = '교육 과정 수정';
+        document.getElementById('cId').value = c.id;
+        document.getElementById('cName').value = c.name;
+        document.getElementById('cCycle').value = c.cycle_type;
+        document.getElementById('cHours').value = c.required_hours;
+        document.getElementById('cLegal').checked = c.is_legal;
+        document.getElementById('cNote').value = c.note;
+    } else {
+        document.getElementById('modalTitle').textContent = '교육 과정 추가';
+        document.getElementById('cId').value = '';
+        document.getElementById('cName').value = '';
+        document.getElementById('cCycle').value = 'year';
+        document.getElementById('cHours').value = '1';
+        document.getElementById('cLegal').checked = true;
+        document.getElementById('cNote').value = '';
+    }
+    modal.show();
+}
+
+function saveCourse() {
+    var name = document.getElementById('cName').value.trim();
+    if (!name) { alert('과정명을 입력하세요.'); return; }
+    fetch('/education/api/course/save', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+            id: document.getElementById('cId').value || null,
+            name: name,
+            cycle_type: document.getElementById('cCycle').value,
+            required_hours: parseFloat(document.getElementById('cHours').value),
+            is_legal: document.getElementById('cLegal').checked ? 1 : 0,
+            note: document.getElementById('cNote').value
+        })
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) { modal.hide(); location.reload(); }
+        else alert('저장 실패: ' + d.error);
+    });
+}
+
+function toggleCourse(id, btn) {
+    fetch('/education/api/course/toggle', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({id: id})
+    }).then(r=>r.json()).then(d=>{ if(d.ok) location.reload(); });
+}
+</script>
+</body>
+</html>

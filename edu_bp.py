@@ -1,0 +1,354 @@
+"""교육/훈련 관리 Blueprint"""
+import os
+from datetime import datetime, date, timedelta
+from flask import Blueprint, render_template, request, jsonify, session, redirect, flash
+import pymysql
+
+edu_bp = Blueprint("edu", __name__, url_prefix="/education")
+
+def _conn():
+    from app_maria import MARIA
+    return pymysql.connect(**MARIA)
+
+def _login_required(f):
+    from functools import wraps
+    @wraps(f)
+    def deco(*a, **kw):
+        if not session.get("user_id"):
+            return redirect("/login")
+        return f(*a, **kw)
+    return deco
+
+def _admin_required(f):
+    from functools import wraps
+    @wraps(f)
+    def deco(*a, **kw):
+        if not session.get("user_id"):
+            return redirect("/login")
+        if session.get("role") != "admin":
+            flash("관리자 전용입니다.", "danger"); return redirect("/")
+        return f(*a, **kw)
+    return deco
+
+
+def init_edu_db(app):
+    with app.app_context():
+        conn = _conn(); cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `edu_courses` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `name` VARCHAR(100) NOT NULL,
+                `cycle_type` ENUM('year','half','quarter') NOT NULL DEFAULT 'year',
+                `required_hours` DECIMAL(4,1) NOT NULL DEFAULT 1.0,
+                `target` VARCHAR(50) DEFAULT 'all',
+                `is_legal` TINYINT(1) DEFAULT 1,
+                `is_active` TINYINT(1) DEFAULT 1,
+                `note` TEXT,
+                `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `edu_sessions` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `course_id` INT NOT NULL,
+                `title` VARCHAR(200),
+                `edu_date` DATE NOT NULL,
+                `hours` DECIMAL(4,1) DEFAULT 1.0,
+                `location` VARCHAR(100),
+                `instructor` VARCHAR(50),
+                `note` TEXT,
+                `created_by` VARCHAR(50),
+                `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX `idx_es_course` (`course_id`),
+                INDEX `idx_es_date` (`edu_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `edu_completions` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `session_id` INT NOT NULL,
+                `employee_name` VARCHAR(50) NOT NULL,
+                `dept` VARCHAR(50) DEFAULT '',
+                `file_path` VARCHAR(500),
+                `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX `idx_ec_session` (`session_id`),
+                INDEX `idx_ec_name` (`employee_name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        # 기본 법정교육 데이터
+        cur.execute("SELECT COUNT(*) FROM edu_courses")
+        if cur.fetchone()[0] == 0:
+            defaults = [
+                ("산업안전보건교육", "quarter", 6.0, "all", 1, "분기별 6시간 (사무직 3시간)"),
+                ("성희롱 예방교육", "year", 1.0, "all", 1, "연 1회 이상"),
+                ("개인정보보호교육", "year", 1.0, "all", 1, "연 1회 이상"),
+                ("소방훈련/교육", "half", 1.0, "all", 1, "연 2회 이상"),
+                ("직장 내 장애인 인식개선교육", "year", 1.0, "all", 1, "연 1회 이상"),
+                ("퇴직연금교육", "year", 1.0, "all", 1, "연 1회 이상"),
+                ("직장 내 괴롭힘 예방교육", "year", 1.0, "all", 1, "연 1회 이상"),
+            ]
+            for d in defaults:
+                cur.execute("""INSERT INTO edu_courses (name,cycle_type,required_hours,target,is_legal,note)
+                               VALUES (%s,%s,%s,%s,%s,%s)""", d)
+        conn.commit(); conn.close()
+
+
+def _get_year_range(cycle_type):
+    """주기 타입별 현재 기준 시작/종료 날짜 반환"""
+    today = date.today()
+    if cycle_type == 'year':
+        return date(today.year, 1, 1), date(today.year, 12, 31)
+    elif cycle_type == 'half':
+        if today.month <= 6:
+            return date(today.year, 1, 1), date(today.year, 6, 30)
+        else:
+            return date(today.year, 7, 1), date(today.year, 12, 31)
+    elif cycle_type == 'quarter':
+        q = (today.month - 1) // 3
+        starts = [date(today.year, 1, 1), date(today.year, 4, 1),
+                  date(today.year, 7, 1), date(today.year, 10, 1)]
+        ends   = [date(today.year, 3, 31), date(today.year, 6, 30),
+                  date(today.year, 9, 30), date(today.year, 12, 31)]
+        return starts[q], ends[q]
+    return date(today.year, 1, 1), date(today.year, 12, 31)
+
+
+@edu_bp.route("/")
+@_login_required
+def edu_main():
+    conn = _conn(); cur = conn.cursor()
+    today = date.today()
+
+    # 전체 직원 목록
+    cur.execute("""SELECT name, COALESCE(dept,'') FROM employee_roster
+                   WHERE status='재직' OR status IS NULL ORDER BY name""")
+    employees = [{"name": r[0], "dept": r[1]} for r in cur.fetchall()]
+    total_emp = len(employees)
+
+    # 교육 과정 목록
+    cur.execute("SELECT id,name,cycle_type,required_hours,is_legal FROM edu_courses WHERE is_active=1 ORDER BY is_legal DESC,id")
+    courses = cur.fetchall()
+
+    summary = []
+    for c in courses:
+        cid, cname, cycle_type, req_hours, is_legal = c
+        start, end = _get_year_range(cycle_type)
+
+        # 해당 기간 이수자
+        cur.execute("""SELECT DISTINCT ec.employee_name
+                       FROM edu_completions ec
+                       JOIN edu_sessions es ON es.id=ec.session_id
+                       WHERE es.course_id=%s AND es.edu_date BETWEEN %s AND %s""",
+                    (cid, start, end))
+        completed_names = {r[0] for r in cur.fetchall()}
+        completed = len(completed_names)
+        not_completed = [e for e in employees if e["name"] not in completed_names]
+        rate = round(completed / total_emp * 100) if total_emp else 0
+
+        # 다음 예정 세션
+        cur.execute("""SELECT edu_date, title FROM edu_sessions
+                       WHERE course_id=%s AND edu_date >= %s ORDER BY edu_date LIMIT 1""",
+                    (cid, today))
+        next_sess = cur.fetchone()
+
+        summary.append({
+            "id": cid, "name": cname, "cycle_type": cycle_type,
+            "is_legal": is_legal, "start": start, "end": end,
+            "completed": completed, "total": total_emp, "rate": rate,
+            "not_completed": not_completed[:5],
+            "not_completed_count": len(not_completed),
+            "next_session": next_sess[0].strftime("%Y-%m-%d") if next_sess else None,
+            "next_title": next_sess[1] if next_sess else None,
+        })
+
+    conn.close()
+    cycle_label = {"year": "연간", "half": "반기", "quarter": "분기"}
+    return render_template("education.html", summary=summary, total_emp=total_emp,
+                           cycle_label=cycle_label, active_page="education")
+
+
+@edu_bp.route("/courses")
+@_admin_required
+def edu_courses():
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT id,name,cycle_type,required_hours,target,is_legal,is_active,note FROM edu_courses ORDER BY is_legal DESC,id")
+    courses = [{"id":r[0],"name":r[1],"cycle_type":r[2],"required_hours":r[3],
+                "target":r[4],"is_legal":bool(r[5]),"is_active":bool(r[6]),"note":r[7] or ""}
+               for r in cur.fetchall()]
+    conn.close()
+    return render_template("education_courses.html", courses=courses, active_page="education")
+
+
+@edu_bp.route("/sessions")
+@_admin_required
+def edu_sessions():
+    year = request.args.get("year", date.today().year, type=int)
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT es.id, ec_name.name, es.title, es.edu_date, es.hours,
+                          es.location, es.instructor,
+                          (SELECT COUNT(*) FROM edu_completions WHERE session_id=es.id) AS cnt
+                   FROM edu_sessions es
+                   JOIN edu_courses ec_name ON ec_name.id=es.course_id
+                   WHERE YEAR(es.edu_date)=%s
+                   ORDER BY es.edu_date DESC""", (year,))
+    sessions = [{"id":r[0],"course":r[1],"title":r[2] or r[1],
+                 "edu_date":r[3].strftime("%Y-%m-%d"),"hours":r[4],
+                 "location":r[5] or "","instructor":r[6] or "","cnt":r[7]}
+                for r in cur.fetchall()]
+    cur.execute("SELECT id,name FROM edu_courses WHERE is_active=1 ORDER BY id")
+    courses = [{"id":r[0],"name":r[1]} for r in cur.fetchall()]
+    conn.close()
+    return render_template("education_sessions.html", sessions=sessions,
+                           courses=courses, year=year, active_page="education")
+
+
+@edu_bp.route("/sessions/<int:sid>")
+@_admin_required
+def edu_session_detail(sid):
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT es.id, ec.name, es.title, es.edu_date, es.hours,
+                          es.location, es.instructor, es.note
+                   FROM edu_sessions es JOIN edu_courses ec ON ec.id=es.course_id
+                   WHERE es.id=%s""", (sid,))
+    row = cur.fetchone()
+    if not row:
+        conn.close(); flash("세션을 찾을 수 없습니다.", "danger"); return redirect("/education/sessions")
+    sess = {"id":row[0],"course":row[1],"title":row[2] or row[1],
+            "edu_date":row[3].strftime("%Y-%m-%d"),"hours":row[4],
+            "location":row[5] or "","instructor":row[6] or "","note":row[7] or ""}
+    cur.execute("""SELECT id, employee_name, dept, file_path, created_at
+                   FROM edu_completions WHERE session_id=%s ORDER BY dept, employee_name""", (sid,))
+    completions = [{"id":r[0],"name":r[1],"dept":r[2] or "","file":r[3],
+                    "created_at":r[4].strftime("%Y-%m-%d") if r[4] else ""}
+                   for r in cur.fetchall()]
+    cur.execute("""SELECT name, COALESCE(dept,'') FROM employee_roster
+                   WHERE status='재직' OR status IS NULL ORDER BY dept, name""")
+    employees = [{"name":r[0],"dept":r[1]} for r in cur.fetchall()]
+    completed_names = {c["name"] for c in completions}
+    not_completed = [e for e in employees if e["name"] not in completed_names]
+    conn.close()
+    return render_template("education_detail.html", sess=sess, completions=completions,
+                           not_completed=not_completed, active_page="education")
+
+
+# ── API ──────────────────────────────────────────────────────
+
+@edu_bp.route("/api/course/save", methods=["POST"])
+@_admin_required
+def api_course_save():
+    try:
+        d = request.get_json(force=True)
+        cid = d.get("id")
+        name = d["name"].strip()
+        cycle_type = d.get("cycle_type", "year")
+        req_hours = float(d.get("required_hours", 1.0))
+        target = d.get("target", "all")
+        is_legal = int(d.get("is_legal", 1))
+        note = d.get("note", "")
+        conn = _conn(); cur = conn.cursor()
+        if cid:
+            cur.execute("""UPDATE edu_courses SET name=%s,cycle_type=%s,required_hours=%s,
+                           target=%s,is_legal=%s,note=%s WHERE id=%s""",
+                        (name, cycle_type, req_hours, target, is_legal, note, cid))
+        else:
+            cur.execute("""INSERT INTO edu_courses (name,cycle_type,required_hours,target,is_legal,note)
+                           VALUES (%s,%s,%s,%s,%s,%s)""",
+                        (name, cycle_type, req_hours, target, is_legal, note))
+            cid = cur.lastrowid
+        conn.commit(); conn.close()
+        return jsonify(ok=True, id=cid)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+
+
+@edu_bp.route("/api/course/toggle", methods=["POST"])
+@_admin_required
+def api_course_toggle():
+    try:
+        d = request.get_json(force=True)
+        conn = _conn(); cur = conn.cursor()
+        cur.execute("UPDATE edu_courses SET is_active=1-is_active WHERE id=%s", (d["id"],))
+        conn.commit(); conn.close()
+        return jsonify(ok=True)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+
+
+@edu_bp.route("/api/session/save", methods=["POST"])
+@_admin_required
+def api_session_save():
+    try:
+        d = request.get_json(force=True)
+        sid = d.get("id")
+        conn = _conn(); cur = conn.cursor()
+        if sid:
+            cur.execute("""UPDATE edu_sessions SET course_id=%s,title=%s,edu_date=%s,
+                           hours=%s,location=%s,instructor=%s,note=%s WHERE id=%s""",
+                        (d["course_id"],d.get("title",""),d["edu_date"],
+                         float(d.get("hours",1)),d.get("location",""),
+                         d.get("instructor",""),d.get("note",""),sid))
+        else:
+            cur.execute("""INSERT INTO edu_sessions (course_id,title,edu_date,hours,location,instructor,note,created_by)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        (d["course_id"],d.get("title",""),d["edu_date"],
+                         float(d.get("hours",1)),d.get("location",""),
+                         d.get("instructor",""),d.get("note",""),
+                         session.get("user_name","")))
+            sid = cur.lastrowid
+        conn.commit(); conn.close()
+        return jsonify(ok=True, id=sid)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+
+
+@edu_bp.route("/api/session/delete", methods=["POST"])
+@_admin_required
+def api_session_delete():
+    try:
+        d = request.get_json(force=True)
+        conn = _conn(); cur = conn.cursor()
+        cur.execute("DELETE FROM edu_completions WHERE session_id=%s", (d["id"],))
+        cur.execute("DELETE FROM edu_sessions WHERE id=%s", (d["id"],))
+        conn.commit(); conn.close()
+        return jsonify(ok=True)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+
+
+@edu_bp.route("/api/completion/add", methods=["POST"])
+@_admin_required
+def api_completion_add():
+    try:
+        d = request.get_json(force=True)
+        session_id = d["session_id"]
+        names = d.get("names", [])
+        conn = _conn(); cur = conn.cursor()
+        # 직원 부서 조회
+        cur.execute("SELECT name, COALESCE(dept,'') FROM employee_roster")
+        dept_map = {r[0]: r[1] for r in cur.fetchall()}
+        added = 0
+        for name in names:
+            cur.execute("SELECT id FROM edu_completions WHERE session_id=%s AND employee_name=%s",
+                        (session_id, name))
+            if not cur.fetchone():
+                cur.execute("""INSERT INTO edu_completions (session_id,employee_name,dept)
+                               VALUES (%s,%s,%s)""",
+                            (session_id, name, dept_map.get(name, "")))
+                added += 1
+        conn.commit(); conn.close()
+        return jsonify(ok=True, added=added)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+
+
+@edu_bp.route("/api/completion/delete", methods=["POST"])
+@_admin_required
+def api_completion_delete():
+    try:
+        d = request.get_json(force=True)
+        conn = _conn(); cur = conn.cursor()
+        cur.execute("DELETE FROM edu_completions WHERE id=%s", (d["id"],))
+        conn.commit(); conn.close()
+        return jsonify(ok=True)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
