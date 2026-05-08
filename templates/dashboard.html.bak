@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>태인관리시스템</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+    <style>
+        body { background: #f5f5f7; }
+
+        /* ── Apple‑style 카드 ── */
+        .dash-card {
+            border-radius: 18px; border: none;
+            background: rgba(255,255,255,.82);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.04);
+            transition: box-shadow .25s ease, transform .25s ease;
+            overflow: hidden;
+        }
+        .dash-card:hover { box-shadow: 0 2px 6px rgba(0,0,0,.08), 0 12px 32px rgba(0,0,0,.07); transform: translateY(-1px); }
+        .dash-card .card-header {
+            font-weight: 600; font-size: 0.88rem; letter-spacing: -.01em;
+            padding: 16px 20px 12px; border-bottom: none;
+            background: transparent; color: #1d1d1f;
+        }
+        .dash-card .card-body { padding: 0 20px 18px; }
+
+        /* ── 히어로 영역 ── */
+        .hero-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px; padding: 28px 28px 22px; margin-bottom: 16px;
+            color: #fff; position: relative; overflow: hidden;
+        }
+        .hero-section::before {
+            content: ''; position: absolute; top: -40%; right: -10%;
+            width: 300px; height: 300px; border-radius: 50%;
+            background: rgba(255,255,255,.08);
+        }
+        .hero-section::after {
+            content: ''; position: absolute; bottom: -30%; left: 20%;
+            width: 200px; height: 200px; border-radius: 50%;
+            background: rgba(255,255,255,.05);
+        }
+        .hero-name { font-size: 1.4rem; font-weight: 700; letter-spacing: -.02em; }
+        .hero-date { font-size: 0.85rem; opacity: .8; margin-top: 2px; }
+
+        /* 날씨 미니 위젯 (히어로 섹션용) */
+        .weather-mini {
+            background: rgba(255,255,255,.12);
+            border-radius: 12px; padding: 8px 14px;
+            border: 1px solid rgba(255,255,255,.1);
+        }
+        .weather-icon-sm { font-size: 1.6rem; }
+        .air-badge {
+            background: rgba(255,255,255,.2);
+            padding: 3px 10px; border-radius: 12px;
+            font-size: 0.68rem; font-weight: 600;
+        }
+
+        /* 미니 통계 카드 */
+        .mini-stat {
+            background: rgba(255,255,255,.18); backdrop-filter: blur(10px);
+            border-radius: 10px; padding: 8px 14px; text-align: center;
+            border: 1px solid rgba(255,255,255,.15); min-width: 70px;
+            transition: background .2s;
+        }
+        .mini-stat:hover { background: rgba(255,255,255,.25); }
+        .mini-stat .ms-value { font-size: 1.2rem; font-weight: 700; line-height: 1.2; }
+        .mini-stat .ms-label { font-size: 0.68rem; opacity: .85; margin-top: 1px; font-weight: 500; }
+
+        /* ── 바로가기 그리드 ── */
+        .quick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; }
+        .quick-link {
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+            padding: 16px 8px 14px; border-radius: 16px; text-decoration: none;
+            color: #1d1d1f; background: rgba(255,255,255,.82);
+            border: none; font-size: 0.74rem; font-weight: 600;
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 1px 3px rgba(0,0,0,.04), 0 4px 12px rgba(0,0,0,.03);
+            transition: all .2s ease; white-space: nowrap;
+        }
+        .quick-link:hover { background: rgba(0,113,227,.06); color: #0071e3; transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+        .quick-link .ql-icon { font-size: 1.5rem; }
+
+        .stat-pill {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: rgba(0,0,0,.04); border-radius: 20px;
+            padding: 5px 14px; font-size: 0.78rem; font-weight: 600;
+            color: #1d1d1f; margin-right: 4px; margin-top: 6px;
+        }
+        .stat-pill strong { color: #0071e3; }
+
+        /* ── 공지사항 ── */
+        .notice-item { padding: 11px 4px; border-bottom: 1px solid rgba(0,0,0,.04); cursor: pointer; border-radius: 8px; margin: 0 -4px; transition: background .15s; }
+        .notice-item:last-child { border-bottom: none; }
+        .notice-item:hover { background: rgba(0,0,0,.02); }
+        .notice-pin { color: #ff3b30; font-weight: 700; margin-right: 3px; }
+        .notice-title { font-weight: 600; font-size: 0.86rem; color: #1d1d1f; }
+        .notice-meta { font-size: 0.72rem; color: #86868b; margin-top: 3px; }
+        .notice-content { display: none; font-size: 0.84rem; color: #424245; margin-top: 8px; padding: 12px 14px; background: rgba(0,0,0,.03); border-radius: 10px; white-space: pre-wrap; border-left: 3px solid #0071e3; }
+
+        /* ── 출근현황 ── */
+        .dept-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; font-size: 0.86rem; border-radius: 10px; margin-bottom: 4px; background: rgba(0,0,0,.02); transition: background .15s; }
+        .dept-row:last-child { margin-bottom: 0; }
+        .dept-row:hover { background: rgba(0,0,0,.04); }
+        .dept-name { font-weight: 500; color: #1d1d1f; }
+        .dept-count { font-weight: 700; color: #34c759; font-size: 0.92rem; }
+
+        /* ── 휴가자 ── */
+        .leave-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            background: rgba(255,149,0,.08); border-radius: 10px;
+            padding: 6px 12px; font-size: 0.8rem; font-weight: 500;
+            color: #1d1d1f; margin: 3px;
+        }
+        .leave-chip .lc-type { font-size: 0.68rem; color: #86868b; }
+
+        /* ── 생일자 ── */
+        .bday-item { padding: 9px 12px; font-size: 0.86rem; border-radius: 10px; margin-bottom: 4px; background: rgba(0,0,0,.02); transition: background .15s; }
+        .bday-item:hover { background: rgba(0,0,0,.04); }
+        .bday-today { background: rgba(255,204,0,.1); }
+
+        /* ── 달력 ── */
+        .cal-table { width: 100%; border-collapse: separate; border-spacing: 3px; table-layout: fixed; }
+        .cal-table th { text-align: center; font-size: 0.72rem; font-weight: 600; padding: 8px 2px; color: #86868b; }
+        .cal-table th:first-child { color: #ff3b30; }
+        .cal-table th:last-child { color: #0071e3; }
+        .cal-table td { vertical-align: top; height: 76px; padding: 5px 6px; font-size: 0.78rem; cursor: pointer; border-radius: 10px; background: rgba(0,0,0,.02); border: 1px solid transparent; transition: background .15s; }
+        .cal-table td:hover { background: rgba(0,113,227,.06); }
+        .cal-table td.today { background: rgba(0,113,227,.08); border-color: rgba(0,113,227,.2); }
+        .cal-table td.other-month { background: transparent; color: #c7c7cc; }
+        .cal-day-num { font-weight: 700; font-size: 0.8rem; margin-bottom: 2px; }
+        .cal-day-num.sun { color: #ff3b30; }
+        .cal-day-num.sat { color: #0071e3; }
+        .cal-event { font-size: 0.62rem; padding: 2px 5px; margin-bottom: 1px; border-radius: 4px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; font-weight: 600; text-align: center; }
+        .cal-more { font-size: 0.62rem; color: #0071e3; cursor: pointer; font-weight: 600; }
+
+        /* ── 공통 버튼/뱃지 ── */
+        .dash-card .btn-sm { border-radius: 8px; font-weight: 600; font-size: 0.74rem; padding: 4px 12px; }
+        .dash-card .badge { border-radius: 8px; font-weight: 600; }
+        .section-label { font-size: 0.78rem; font-weight: 600; color: #86868b; letter-spacing: -.01em; margin-bottom: 8px; }
+
+        /* ── 모달 ── */
+        .modal-content { border-radius: 16px; border: none; box-shadow: 0 8px 40px rgba(0,0,0,.12); }
+
+        @media(max-width:767.98px){
+            .hero-section { padding: 22px 20px 18px; border-radius: 16px; }
+            .hero-name { font-size: 1.15rem; }
+            .mini-stat { padding: 10px 12px; min-width: 70px; }
+            .mini-stat .ms-value { font-size: 1.2rem; }
+            .dash-card { border-radius: 14px; }
+            .dash-card .card-header { padding: 14px 16px 10px; font-size: 0.84rem; }
+            .dash-card .card-body { padding: 0 16px 14px; }
+            .quick-grid { grid-template-columns: repeat(auto-fit, minmax(75px, 1fr)); gap: 6px; }
+            .quick-link { padding: 12px 6px 10px; font-size: 0.7rem; border-radius: 12px; }
+            .quick-link .ql-icon { font-size: 1.3rem; }
+            .cal-table td { height: 58px; font-size: 0.68rem; border-radius: 8px; }
+            .cal-event { font-size: 0.56rem; }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'dashboard' %}
+{% set is_admin = session.get('role') == 'admin' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid" style="padding: 10px 24px 24px;">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <!-- 바로가기 -->
+    <div class="quick-grid mb-3">
+        <a href="/attendance" class="quick-link"><span class="ql-icon">📝</span>근태기록</a>
+        <a href="/weekly52" class="quick-link"><span class="ql-icon">⏱</span>주52시간</a>
+        <a href="/work_schedule" class="quick-link"><span class="ql-icon">📊</span>근무표</a>
+        <a href="/annual_leave" class="quick-link"><span class="ql-icon">🌴</span>연차관리</a>
+        <a href="/work_report" class="quick-link"><span class="ql-icon">📋</span>근무보고서</a>
+        {% if is_admin %}
+        <a href="/fire_management" class="quick-link"><span class="ql-icon">🚨</span>소방관리</a>
+        {% endif %}
+        {% if is_admin or 'meal' in session.get('permissions','') %}
+        <a href="/meal_management" class="quick-link"><span class="ql-icon">🍽️</span>식수관리</a>
+        {% endif %}
+        {% if is_admin %}
+        <a href="/document_management" class="quick-link"><span class="ql-icon">📄</span>공문서관리</a>
+        <a href="/roster" class="quick-link"><span class="ql-icon">📂</span>명부관리</a>
+        {% endif %}
+    </div>
+
+    <div class="row g-3">
+        <!-- 공지사항 -->
+        <div class="col-lg-6 d-flex">
+            <div class="card dash-card w-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>📢 공지사항</span>
+                    {% if can_notice %}
+                    <button class="btn btn-sm btn-outline-primary" style="font-size:0.78rem;border-radius:6px;" onclick="openNoticeModal()">✏️ 작성</button>
+                    {% endif %}
+                </div>
+                <div class="card-body" style="max-height:360px;overflow-y:auto;" id="noticeList">
+                    {% if notices %}
+                    {% for n in notices %}
+                    <div class="notice-item" onclick="toggleContent(this)">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                {% if n.is_pinned %}<span class="notice-pin">📌</span>{% endif %}
+                                <span class="notice-title">{{ n.title }}</span>
+                            </div>
+                            {% if can_notice %}
+                            <div class="d-flex gap-1" onclick="event.stopPropagation()">
+                                <button class="btn btn-outline-primary btn-sm py-0 px-1" style="font-size:0.68rem;" onclick="editNotice({{ n.id }},'{{ n.title|e }}',`{{ n.content|e }}`,{{ n.is_pinned }})">수정</button>
+                                <button class="btn btn-outline-danger btn-sm py-0 px-1" style="font-size:0.68rem;" onclick="delNotice({{ n.id }})">삭제</button>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="notice-meta">{{ n.created_by }} · {{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}</div>
+                        {% if n.content %}<div class="notice-content">{{ n.content }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="text-muted text-center py-4">등록된 공지사항이 없습니다.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% if my_schedule %}
+        <!-- 나의 근무일정 -->
+        <div class="col-lg-6 d-flex">
+            <div class="card dash-card w-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>📋 나의 근무일정 <small class="text-muted" style="font-size:0.72rem;">({{ today.strftime('%m').lstrip('0') }}월)</small></span>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge" style="background:rgba(88,86,214,.1);color:#5856d6;font-size:0.78rem;border-radius:20px;padding:4px 14px;">{{ my_schedule|length }}건</span>
+                        <button class="btn btn-sm btn-outline-primary" style="font-size:0.72rem;border-radius:20px;padding:3px 12px;" onclick="openMyScheduleModal()">전체보기</button>
+                    </div>
+                </div>
+                <div class="card-body" style="max-height:300px;overflow-y:auto;padding:8px 14px;">
+                    {% macro cat_badge(c) %}{% if c == '주간기본' %}<span class="badge" style="background:#6366f1;font-size:0.72rem;">☀️ 주간기본</span>{% elif c == '주간연장' %}<span class="badge" style="background:#3b82f6;font-size:0.72rem;">☀️⏰ 주간연장</span>{% elif c == '야간기본' %}<span class="badge" style="background:#8b5cf6;font-size:0.72rem;">🌙 야간기본</span>{% elif c == '야간연장' %}<span class="badge" style="background:#7c3aed;font-size:0.72rem;">🌙⏰ 야간연장</span>{% elif c == '연차' %}<span class="badge" style="background:#f59e0b;font-size:0.72rem;">🏖️ 연차</span>{% elif c == '무급' %}<span class="badge" style="background:#f59e0b;font-size:0.72rem;">🚫 무급</span>{% elif c == '공제' %}<span class="badge" style="background:#ef4444;font-size:0.72rem;">➖ 공제</span>{% elif c == '스킵' %}<span class="badge" style="background:#dc2626;font-size:0.72rem;">⛔ 스킵</span>{% else %}<span class="badge bg-secondary" style="font-size:0.72rem;">{{ c }}</span>{% endif %}{% endmacro %}
+                    {% for s in my_schedule %}
+                    <div class="d-flex justify-content-between align-items-center py-1 border-bottom" style="font-size:0.85rem;">
+                        <span class="text-muted" style="font-size:0.8rem;">{{ s.date }}</span>
+                        <span class="d-flex align-items-center gap-1 flex-wrap justify-content-end">
+                            {% if s.orig_cat and s.is_revision %}
+                            {{ cat_badge(s.orig_cat) }}
+                            <span class="text-muted" style="font-size:0.78rem;">→</span>
+                            {{ cat_badge(s.cat) }}
+                            <span class="badge bg-success" style="font-size:0.65rem;">확정</span>
+                            {% else %}
+                            {{ cat_badge(s.cat) }}
+                            {% endif %}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if wr_summary %}
+        <!-- 근무보고서 현황 (관리자) -->
+        <div class="col-lg-6 d-flex">
+            <div class="card dash-card w-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>📊 근무보고서 현황 <small class="text-muted" style="font-size:0.72rem;">({{ today.strftime('%m').lstrip('0') }}월)</small></span>
+                    <a href="/work_report" class="btn btn-sm btn-outline-warning" style="font-size:0.72rem;border-radius:20px;padding:3px 12px;">상세보기</a>
+                </div>
+                <div class="card-body" style="padding:4px 20px 18px;">
+                    <!-- 보고서 상태 -->
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <span class="stat-pill">전체 <strong>{{ wr_summary.total }}건</strong></span>
+                        <span class="stat-pill" style="background:rgba(255,149,0,.1);">대기 <strong style="color:#ff9500;">{{ wr_summary.status.get('대기', 0) }}</strong></span>
+                        <span class="stat-pill" style="background:rgba(0,113,227,.08);">작성완료 <strong style="color:#0071e3;">{{ wr_summary.status.get('작성완료', 0) }}</strong></span>
+                        <span class="stat-pill" style="background:rgba(88,86,214,.08);">검토 <strong style="color:#5856d6;">{{ wr_summary.status.get('검토', 0) }}</strong></span>
+                        <span class="stat-pill" style="background:rgba(52,199,89,.1);">결재 <strong style="color:#34c759;">{{ wr_summary.status.get('결재', 0) }}</strong></span>
+                        {% if wr_summary.status.get('반려', 0) > 0 %}
+                        <span class="stat-pill" style="background:rgba(255,59,48,.08);">반려 <strong style="color:#ff3b30;">{{ wr_summary.status.get('반려', 0) }}</strong></span>
+                        {% endif %}
+                    </div>
+                    <!-- 인원 현황 -->
+                    <div style="font-size:0.78rem;font-weight:600;color:#86868b;margin-bottom:8px;letter-spacing:-.01em;">인원 현황</div>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <span class="stat-pill">근무 <strong>{{ wr_summary.work }}</strong></span>
+                        <span class="stat-pill" style="background:rgba(255,149,0,.1);">연차 <strong style="color:#ff9500;">{{ wr_summary.leave }}</strong></span>
+                        {% if wr_summary.unpaid > 0 %}
+                        <span class="stat-pill" style="background:rgba(255,149,0,.1);">무급 <strong style="color:#ff9500;">{{ wr_summary.unpaid }}</strong></span>
+                        {% endif %}
+                        {% if wr_summary.skip > 0 %}
+                        <span class="stat-pill" style="background:rgba(255,59,48,.08);">스킵 <strong style="color:#ff3b30;">{{ wr_summary.skip }}</strong></span>
+                        {% endif %}
+                        {% if wr_summary.deduction > 0 %}
+                        <span class="stat-pill" style="background:rgba(175,82,222,.08);">공제 <strong style="color:#af52de;">{{ wr_summary.deduction }}</strong></span>
+                        {% endif %}
+                    </div>
+                    <!-- 그룹별 현황 -->
+                    {% if wr_summary.groups %}
+                    <div style="font-size:0.78rem;font-weight:600;color:#86868b;margin-bottom:8px;letter-spacing:-.01em;">그룹별</div>
+                    <div style="max-height:180px;overflow-y:auto;">
+                        {% for gname, statuses in wr_summary.groups.items() %}
+                        <div class="d-flex justify-content-between align-items-center py-2" style="font-size:0.82rem;border-bottom:1px solid rgba(0,0,0,.04);">
+                            <span class="fw-semibold" style="color:#1d1d1f;">{{ gname }}</span>
+                            <span class="d-flex gap-1 flex-wrap justify-content-end">
+                                {% set gtotal = statuses.values()|sum %}
+                                <span class="badge" style="background:rgba(0,0,0,.06);color:#1d1d1f;font-size:0.68rem;">{{ gtotal }}건</span>
+                                {% if statuses.get('대기', 0) > 0 %}<span class="badge" style="background:rgba(255,149,0,.15);color:#cc7a00;font-size:0.68rem;">대기 {{ statuses['대기'] }}</span>{% endif %}
+                                {% if statuses.get('작성완료', 0) > 0 %}<span class="badge" style="background:rgba(0,113,227,.12);color:#0071e3;font-size:0.68rem;">작성 {{ statuses['작성완료'] }}</span>{% endif %}
+                                {% if statuses.get('검토', 0) > 0 %}<span class="badge" style="background:rgba(88,86,214,.12);color:#5856d6;font-size:0.68rem;">검토 {{ statuses['검토'] }}</span>{% endif %}
+                                {% if statuses.get('결재', 0) > 0 %}<span class="badge" style="background:rgba(52,199,89,.12);color:#248a3d;font-size:0.68rem;">결재 {{ statuses['결재'] }}</span>{% endif %}
+                                {% if statuses.get('반려', 0) > 0 %}<span class="badge" style="background:rgba(255,59,48,.12);color:#ff3b30;font-size:0.68rem;">반려 {{ statuses['반려'] }}</span>{% endif %}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- 일정관리 -->
+        <div class="col-lg-6 d-flex">
+            <div class="card dash-card w-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>📅 일정관리</span>
+                    <div class="d-flex align-items-center gap-1">
+                        <button class="btn btn-sm btn-outline-secondary" style="width:30px;height:30px;padding:0;font-size:0.75rem;border-radius:6px;" onclick="calPrev()">◀</button>
+                        <span id="calTitle" style="font-size:0.88rem;min-width:90px;text-align:center;font-weight:700;color:#333;"></span>
+                        <button class="btn btn-sm btn-outline-secondary" style="width:30px;height:30px;padding:0;font-size:0.75rem;border-radius:6px;" onclick="calNext()">▶</button>
+                        {% if can_schedule %}
+                        <button class="btn btn-sm btn-outline-primary ms-2" style="font-size:0.75rem;border-radius:6px;" onclick="openEventModal()">✏️ 작성</button>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="card-body p-3" style="overflow-x:auto;">
+                    <table class="cal-table" id="calTable">
+                        <thead><tr><th>일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th>토</th></tr></thead>
+                        <tbody id="calBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 출근현황 -->
+        <div class="col-lg-6 d-flex">
+            <div class="card dash-card w-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>👥 금일 출근현황</span>
+                    <span class="badge" style="background:rgba(52,199,89,.12);color:#248a3d;font-size:0.78rem;border-radius:20px;padding:4px 14px;">{{ att_summary.checked_in }}명 출근</span>
+                </div>
+                <div class="card-body" style="padding-bottom:10px;">
+                    {% for dept, info in att_summary.depts.items() %}
+                    <div class="dept-row">
+                        <span class="dept-name">{{ dept }}</span>
+                        <span class="dept-count">{{ info['in'] }}명</span>
+                    </div>
+                    {% endfor %}
+                    {% if not att_summary.depts %}
+                    <div class="text-muted text-center py-3" style="font-size:0.84rem;">출근 데이터 없음</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 금일 휴가자 -->
+        {% if leave_today|length > 0 %}
+        <div class="col-lg-6 d-flex">
+            <div class="card dash-card w-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>🏖️ 금일 휴가자</span>
+                    <span class="badge" style="background:rgba(255,149,0,.12);color:#cc7a00;font-size:0.78rem;border-radius:20px;padding:4px 14px;">{{ leave_today|length }}명</span>
+                </div>
+                <div class="card-body" style="max-height:280px;overflow-y:auto;">
+                    <div class="d-flex flex-wrap">
+                        {% for lv in leave_today %}
+                        <div class="leave-chip">
+                            <strong>{{ lv.name }}</strong>
+                            <span class="lc-type">{{ lv.dept }} · {{ lv.type }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- 이번 달 생일자 -->
+        <div class="col-lg-6 d-flex">
+            <div class="card dash-card w-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>🎂 {{ today.strftime('%m').lstrip('0') }}월 생일자</span>
+                    <span class="badge" style="background:rgba(255,59,48,.1);color:#ff3b30;font-size:0.78rem;border-radius:20px;padding:4px 14px;">{{ birthdays|length }}명</span>
+                </div>
+                <div class="card-body" style="max-height:400px;overflow-y:auto;">
+                    {% if birthdays %}
+                    {% for b in birthdays %}
+                    <div class="bday-item d-flex justify-content-between align-items-center {{ 'bday-today' if b.is_today else '' }}">
+                        <span>
+                            {% if b.is_today %}🎉 {% endif %}
+                            <strong>{{ b.name }}</strong> <small class="text-muted" style="font-size:0.76rem;">{{ b.dept }}</small>
+                        </span>
+                        <span class="text-muted" style="font-size:0.8rem;">{{ b.day }}일{% if b.is_today %} <span class="badge bg-danger" style="font-size:0.65rem;">오늘</span>{% endif %}</span>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="text-muted text-center py-4">{{ today.strftime('%m').lstrip('0') }}월 생일자가 없습니다.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 일정 등록/수정 모달 -->
+<div class="modal fade" id="eventModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title" id="eventModalTitle">일정 작성</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-2">
+                <input type="hidden" id="eventId">
+                <div class="mb-2">
+                    <label class="form-label fw-bold" style="font-size:0.85rem;">날짜</label>
+                    <input type="date" class="form-control form-control-sm" id="eventDate">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label fw-bold" style="font-size:0.85rem;">제목</label>
+                    <input type="text" class="form-control form-control-sm" id="eventTitle" maxlength="100" placeholder="일정 제목">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label fw-bold" style="font-size:0.85rem;">색상</label>
+                    <select class="form-select form-select-sm" id="eventColor">
+                        <option value="#0d6efd">🔵 파랑</option>
+                        <option value="#198754">🟢 초록</option>
+                        <option value="#dc3545">🔴 빨강</option>
+                        <option value="#6f42c1">🟣 보라</option>
+                        <option value="#fd7e14">🟠 주황</option>
+                        <option value="#20c997">🩵 청록</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer py-1">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="saveEvent()">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 일정 상세 모달 -->
+<div class="modal fade" id="dayModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title" id="dayModalTitle"></h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-2" id="dayModalBody" style="max-height:300px;overflow-y:auto;"></div>
+            <div class="modal-footer py-1">
+                <button type="button" class="btn btn-sm btn-warning" onclick="openEventModalForDate()">➕ 일정 추가</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if can_notice %}
+<div class="modal fade" id="noticeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="noticeModalTitle">공지사항 작성</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="noticeId">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">제목</label>
+                    <input type="text" class="form-control" id="noticeTitle" maxlength="200">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">내용</label>
+                    <textarea class="form-control" id="noticeContent" rows="5"></textarea>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="noticePinned">
+                    <label class="form-check-label" for="noticePinned">📌 상단 고정</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="saveNotice()">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function toggleContent(el){
+    const c=el.querySelector('.notice-content');
+    if(c) c.style.display = c.style.display==='block'?'none':'block';
+}
+{% if can_notice %}
+function openNoticeModal(){
+    document.getElementById('noticeId').value='';
+    document.getElementById('noticeTitle').value='';
+    document.getElementById('noticeContent').value='';
+    document.getElementById('noticePinned').checked=false;
+    document.getElementById('noticeModalTitle').textContent='공지사항 작성';
+    new bootstrap.Modal(document.getElementById('noticeModal')).show();
+}
+function editNotice(id,title,content,pinned){
+    document.getElementById('noticeId').value=id;
+    document.getElementById('noticeTitle').value=title;
+    document.getElementById('noticeContent').value=content;
+    document.getElementById('noticePinned').checked=!!pinned;
+    document.getElementById('noticeModalTitle').textContent='공지사항 수정';
+    new bootstrap.Modal(document.getElementById('noticeModal')).show();
+}
+function saveNotice(){
+    const fd=new FormData();
+    fd.append('id',document.getElementById('noticeId').value);
+    fd.append('title',document.getElementById('noticeTitle').value);
+    fd.append('content',document.getElementById('noticeContent').value);
+    if(document.getElementById('noticePinned').checked) fd.append('is_pinned','1');
+    fetch('/save_notice',{method:'POST',body:fd})
+    .then(r=>r.json()).then(d=>{if(d.ok)location.reload();else alert(d.msg);});
+}
+function delNotice(id){
+    if(!confirm('삭제하시겠습니까?'))return;
+    const fd=new FormData();fd.append('id',id);
+    fetch('/delete_notice',{method:'POST',body:fd})
+    .then(r=>r.json()).then(d=>{if(d.ok)location.reload();});
+}
+{% endif %}
+
+/* ── 달력 일정관리 ── */
+let calYear, calMonth, calEvents=[], selectedDate='';
+(function(){
+    const t=new Date();
+    calYear=t.getFullYear(); calMonth=t.getMonth()+1;
+    loadCalendar();
+})();
+
+function calPrev(){ calMonth--; if(calMonth<1){calMonth=12;calYear--;} loadCalendar(); }
+function calNext(){ calMonth++; if(calMonth>12){calMonth=1;calYear++;} loadCalendar(); }
+
+function loadCalendar(){
+    document.getElementById('calTitle').textContent=calYear+'년 '+calMonth+'월';
+    fetch('/api/schedule_events?year='+calYear+'&month='+calMonth)
+    .then(r=>r.json()).then(d=>{
+        if(d.ok){ calEvents=d.events; renderCal(); }
+    });
+}
+
+function renderCal(){
+    const first=new Date(calYear, calMonth-1, 1);
+    const lastDay=new Date(calYear, calMonth, 0).getDate();
+    const startDow=first.getDay();
+    const today=new Date();
+    const todayStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+
+    // 이전 달 마지막 며칠
+    const prevLastDay=new Date(calYear, calMonth-1, 0).getDate();
+    let html='';
+    let day=1, nextDay=1;
+    const totalCells=Math.ceil((startDow+lastDay)/7)*7;
+
+    for(let i=0;i<totalCells;i++){
+        if(i%7===0) html+='<tr>';
+        if(i<startDow){
+            const pd=prevLastDay-startDow+i+1;
+            html+='<td class="other-month"><div class="cal-day-num">'+pd+'</div></td>';
+        } else if(day>lastDay){
+            html+='<td class="other-month"><div class="cal-day-num">'+(nextDay++)+'</div></td>';
+        } else {
+            const dateStr=calYear+'-'+String(calMonth).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+            const dow=i%7;
+            let cls='cal-day-num';
+            if(dow===0) cls+=' sun';
+            if(dow===6) cls+=' sat';
+            const isHoliday=calEvents.some(e=>e.date===dateStr && e.type==='holiday');
+            if(isHoliday) cls+=' sun';
+            let tdCls=dateStr===todayStr?'today':'';
+            const dayEvents=calEvents.filter(e=>e.date===dateStr);
+            let evHtml='';
+            const maxShow=2;
+            dayEvents.slice(0,maxShow).forEach(ev=>{
+                evHtml+='<div class="cal-event" style="background:'+ev.color+'" title="'+ev.title.replace(/"/g,'&quot;')+'" onclick="event.stopPropagation();showDay(\''+dateStr+'\')">'+ev.title+'</div>';
+            });
+            if(dayEvents.length>maxShow){
+                evHtml+='<div class="cal-more" onclick="event.stopPropagation();showDay(\''+dateStr+'\')">+' +(dayEvents.length-maxShow)+'건 더보기</div>';
+            }
+            html+='<td class="'+tdCls+'" onclick="showDay(\''+dateStr+'\')"><div class="'+cls+'">'+day+'</div>'+evHtml+'</td>';
+            day++;
+        }
+        if(i%7===6) html+='</tr>';
+    }
+    document.getElementById('calBody').innerHTML=html;
+}
+
+function showDay(dateStr){
+    selectedDate=dateStr;
+    const dayEvents=calEvents.filter(e=>e.date===dateStr);
+    document.getElementById('dayModalTitle').textContent=dateStr+' 일정';
+    let html='';
+    if(dayEvents.length===0){
+        html='<div class="text-muted text-center py-3">등록된 일정이 없습니다.</div>';
+    } else {
+        dayEvents.forEach(ev=>{
+            html+='<div class="d-flex justify-content-between align-items-center py-1 border-bottom" style="font-size:0.88rem;">';
+            html+='<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+ev.color+';margin-right:6px;"></span>'+ev.title+'</span>';
+            if(ev.type==='custom'){
+                {% if can_schedule %}
+                html+='<button class="btn btn-outline-danger btn-sm py-0 px-1" style="font-size:0.7rem;" onclick="delEvent('+ev.id+')">삭제</button>';
+                {% else %}
+                html+='<span class="badge bg-secondary" style="font-size:0.65rem;">개인일정</span>';
+                {% endif %}
+            } else if(ev.type==='holiday'){
+                html+='<span class="badge bg-danger" style="font-size:0.65rem;">공휴일</span>';
+            } else if(ev.type==='work_report'){
+                html+='<span class="badge bg-primary" style="font-size:0.65rem;">조편성</span>';
+            } else if(ev.type==='work_report_revision'){
+                html+='<span class="badge bg-success" style="font-size:0.65rem;">확정</span>';
+            } else if(ev.type==='work_report_leave'){
+                html+='';
+            } else {
+                html+='<span class="badge bg-warning text-dark" style="font-size:0.65rem;">연차</span>';
+            }
+            html+='</div>';
+        });
+    }
+    document.getElementById('dayModalBody').innerHTML=html;
+    new bootstrap.Modal(document.getElementById('dayModal')).show();
+}
+
+function openEventModal(dateStr){
+    document.getElementById('eventId').value='';
+    document.getElementById('eventTitle').value='';
+    document.getElementById('eventColor').value='#0d6efd';
+    if(dateStr){
+        document.getElementById('eventDate').value=dateStr;
+    } else {
+        const t=new Date();
+        document.getElementById('eventDate').value=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+    }
+    document.getElementById('eventModalTitle').textContent='일정 작성';
+    new bootstrap.Modal(document.getElementById('eventModal')).show();
+}
+
+function openEventModalForDate(){
+    bootstrap.Modal.getInstance(document.getElementById('dayModal')).hide();
+    setTimeout(()=>openEventModal(selectedDate),300);
+}
+
+function saveEvent(){
+    const fd=new FormData();
+    fd.append('id',document.getElementById('eventId').value);
+    fd.append('title',document.getElementById('eventTitle').value);
+    fd.append('event_date',document.getElementById('eventDate').value);
+    fd.append('color',document.getElementById('eventColor').value);
+    fetch('/save_schedule_event',{method:'POST',body:fd})
+    .then(r=>r.json()).then(d=>{
+        if(d.ok){
+            bootstrap.Modal.getInstance(document.getElementById('eventModal')).hide();
+            loadCalendar();
+        } else { alert(d.msg); }
+    });
+}
+
+function delEvent(id){
+    if(!confirm('삭제하시겠습니까?'))return;
+    const fd=new FormData();fd.append('id',id);
+    fetch('/delete_schedule_event',{method:'POST',body:fd})
+    .then(r=>r.json()).then(d=>{
+        if(d.ok){
+            bootstrap.Modal.getInstance(document.getElementById('dayModal')).hide();
+            loadCalendar();
+        }
+    });
+}
+
+const _catBadge={
+    '주간기본':'<span class="badge" style="background:#6366f1;font-size:0.72rem;">☀️ 주간기본</span>',
+    '주간연장':'<span class="badge" style="background:#3b82f6;font-size:0.72rem;">☀️⏰ 주간연장</span>',
+    '야간기본':'<span class="badge" style="background:#8b5cf6;font-size:0.72rem;">🌙 야간기본</span>',
+    '야간연장':'<span class="badge" style="background:#7c3aed;font-size:0.72rem;">🌙⏰ 야간연장</span>',
+    '연차':'<span class="badge" style="background:#f59e0b;font-size:0.72rem;">🏖️ 연차</span>',
+    '무급':'<span class="badge" style="background:#f59e0b;font-size:0.72rem;">🚫 무급</span>',
+    '공제':'<span class="badge" style="background:#ef4444;font-size:0.72rem;">➖ 공제</span>',
+    '스킵':'<span class="badge" style="background:#dc2626;font-size:0.72rem;">⛔ 스킵</span>'
+};
+function openMyScheduleModal(){
+    const sel=document.getElementById('msMonthSel');
+    fetch('/api/my_schedule').then(r=>r.json()).then(d=>{
+        if(!d.ok)return;
+        sel.innerHTML='<option value="">전체</option>';
+        d.months.forEach(m=>{
+            const [y,mm]=m.split('-');
+            sel.innerHTML+=`<option value="${y}${mm}">${y}년 ${parseInt(mm)}월</option>`;
+        });
+        window._mySchedAll=d.items;
+        renderMyScheduleList(d.items);
+        new bootstrap.Modal(document.getElementById('myScheduleModal')).show();
+    });
+}
+function filterMySchedule(){
+    const mon=document.getElementById('msMonthSel').value;
+    if(!mon){renderMyScheduleList(window._mySchedAll);return;}
+    const prefix=mon.substring(0,4)+'-'+mon.substring(4,6);
+    renderMyScheduleList(window._mySchedAll.filter(i=>i.date.startsWith(prefix)));
+}
+function renderMyScheduleList(items){
+    const body=document.getElementById('msBody');
+    if(!items.length){body.innerHTML='<div class="text-muted text-center py-4">결재된 근무일정이 없습니다.</div>';
+        document.getElementById('msCnt').textContent='0건';return;}
+    document.getElementById('msCnt').textContent=items.length+'건';
+    let html='';
+    items.forEach(s=>{
+        const badge=_catBadge[s.cat]||`<span class="badge bg-secondary" style="font-size:0.72rem;">${s.cat}</span>`;
+        let content='';
+        if(s.orig_cat && s.is_revision){
+            const origBadge=_catBadge[s.orig_cat]||`<span class="badge bg-secondary" style="font-size:0.72rem;">${s.orig_cat}</span>`;
+            content=`${origBadge} <span class="text-muted" style="font-size:0.78rem;">→</span> ${badge} <span class="badge bg-success" style="font-size:0.65rem;">확정</span>`;
+        } else {
+            content=badge;
+        }
+        html+=`<div class="d-flex justify-content-between align-items-center py-1 border-bottom" style="font-size:0.85rem;">
+            <span class="text-muted" style="font-size:0.8rem;">${s.date}</span>
+            <span class="d-flex align-items-center gap-1 flex-wrap justify-content-end">${content}</span></div>`;
+    });
+    body.innerHTML=html;
+}
+
+// PWA 홈화면 추가
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+});
+
+function addToHomeScreen() {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    
+    if (isStandalone) {
+        alert('이미 홈 화면에 추가되어 있습니다!');
+        return;
+    }
+    
+    if (deferredPrompt) {
+        // Chrome/Edge PWA 설치 프롬프트
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((result) => {
+            if (result.outcome === 'accepted') {
+                alert('홈 화면에 추가되었습니다!');
+            }
+            deferredPrompt = null;
+        });
+    } else if (isIOS) {
+        alert('📱 iOS 홈화면 추가 방법:\n\n1. Safari 하단의 공유 버튼(□↑) 터치\n2. "홈 화면에 추가" 선택\n3. "추가" 버튼 터치');
+    } else if (isAndroid) {
+        alert('📱 Android 홈화면 추가 방법:\n\n1. 브라우저 메뉴(⋮) 터치\n2. "홈 화면에 추가" 선택');
+    } else {
+        alert('💻 PC 바로가기 만들기:\n\n1. 브라우저 주소창 왼쪽 아이콘을 바탕화면으로 드래그\n\n또는\n\n1. 브라우저 메뉴 → "바로가기 만들기" 또는 "앱으로 설치"');
+    }
+}
+</script>
+
+<!-- 나의 근무일정 전체보기 모달 -->
+<div class="modal fade" id="myScheduleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">📋 나의 근무일정</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-2">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <select id="msMonthSel" class="form-select form-select-sm" style="width:auto;font-size:0.82rem;" onchange="filterMySchedule()"></select>
+                    <span id="msCnt" class="badge bg-primary" style="font-size:0.78rem;">0건</span>
+                </div>
+                <div id="msBody" style="max-height:400px;overflow-y:auto;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

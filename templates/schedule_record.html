@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>태인관리시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        .ws-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; white-space: nowrap; }
+        .ws-table th, .ws-table td { border: 1px solid #dee2e6; padding: 2px 4px; text-align: center; vertical-align: middle; }
+        .ws-table thead th { position: sticky; z-index: 2; background: #f1f5f9; font-weight: 600; }
+        .ws-table thead tr:first-child th { top: 0; }
+        .ws-table thead tr:nth-child(2) th { top: 26px; }
+        .meta { position: sticky; left: 0; z-index: 1; background: #fff; min-width: 40px; }
+        thead .meta { z-index: 3; background: #f1f5f9; }
+        .day-cell { min-width: 24px; }
+        .sum-col { min-width: 50px; background: #f8fafc; font-weight: 600; }
+        .bg-sat { background: #eff6ff !important; }
+        .bg-sun { background: #fef2f2 !important; }
+        .emp-first td { border-top: 2px solid #94a3b8 !important; }
+        .r-ot td:not(.meta) { color: #dc3545; }
+        .r-ni td:not(.meta) { color: #0d6efd; }
+        .r-etc td:not(.meta) { color: #6c757d; }
+        .scroll-wrap { overflow: auto; max-height: 75vh; }
+        @media (max-width: 767.98px) {
+            .ws-table { font-size: 0.63rem; }
+            .ws-table th, .ws-table td { padding: 1px 1px; }
+            .day-cell { min-width: 16px; }
+            .meta { min-width: 32px; font-size: 0.6rem; }
+            .sum-col { min-width: 40px; }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'schedule_record' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <div class="page-title mb-3">
+        <span class="title-icon">📑</span>
+        <span>근무표기록관리</span>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="filter-bar">
+        <div class="row g-3 align-items-end">
+            {% if can_edit %}
+            <div class="col-md-3">
+                <form method="GET" id="searchForm">
+                    <label class="form-label">🔍 이름 검색</label>
+                    <div class="input-group">
+                        <input type="text" name="search" value="{{ search }}" class="form-control" placeholder="이름">
+                        {% if sel_month %}<input type="hidden" name="month" value="{{ sel_month }}">{% endif %}
+                        {% if dept_search %}<input type="hidden" name="dept" value="{{ dept_search }}">{% endif %}
+                        <button type="submit" class="btn btn-primary">검색</button>
+                    </div>
+                </form>
+            </div>
+            <div class="col-md-2">
+                <form method="GET" id="deptForm">
+                    <label class="form-label">🏢 부서</label>
+                    <select name="dept" class="form-select" onchange="this.form.submit()">
+                        <option value="">전체</option>
+                        {% for d in dept_list %}
+                        <option value="{{ d }}" {% if dept_search == d %}selected{% endif %}>{{ d }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if sel_month %}<input type="hidden" name="month" value="{{ sel_month }}">{% endif %}
+                    {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
+                </form>
+            </div>
+            {% endif %}
+            <div class="col-md-3">
+                <form method="GET">
+                    <label class="form-label">📅 월별 선택</label>
+                    <input type="month" name="month" value="{{ sel_month }}" class="form-control" onchange="this.form.submit()">
+                    {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
+                    {% if dept_search %}<input type="hidden" name="dept" value="{{ dept_search }}">{% endif %}
+                </form>
+            </div>
+            {% if can_edit %}
+            <div class="col-md-1">
+                {% if search or sel_month or dept_search %}
+                <a href="/schedule_record" class="btn btn-outline-secondary">초기화</a>
+                {% endif %}
+            </div>
+            <div class="col-md-4">
+                <form action="/upload_schedule_record" method="POST" enctype="multipart/form-data" class="d-flex align-items-end gap-2">
+                    <div>
+                        <label class="form-label mb-1" style="font-size:0.8rem;">연도</label>
+                        <input type="number" name="year" value="{{ sel_month[:4] if sel_month else '' }}" class="form-control form-control-sm" style="width:80px;" placeholder="2025">
+                    </div>
+                    <div class="flex-grow-1">
+                        <label class="form-label mb-1" style="font-size:0.8rem;">📂 작업 업로드</label>
+                        <input type="file" name="file" accept=".xls,.xlsx" class="form-control form-control-sm">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">업로드</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if can_edit and employees %}
+    <!-- 일괄 근무상태 업데이트 패널 -->
+    <div class="card mb-3 border-warning" id="bulkPanel">
+      <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="toggleBulkPanel()">
+        <span class="fw-bold text-warning-emphasis">⚡ 일괄 근무상태 설정</span>
+        <span id="bulkPanelIcon">▼</span>
+      </div>
+      <div class="card-body" id="bulkBody" style="display:none">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label mb-1" style="font-size:.82rem">날짜 선택</label>
+            <input type="date" id="bulkDate" class="form-control form-control-sm"
+                   value="{{ sel_month + '-01' if sel_month else '' }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label mb-1" style="font-size:.82rem">부서(sheet_name)</label>
+            <select id="bulkSheet" class="form-select form-select-sm">
+              <option value="">— 선택 —</option>
+              {% for d in dept_list %}
+              <option value="{{ d }}" {% if dept_search == d %}selected{% endif %}>{{ d }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label mb-1" style="font-size:.82rem">근무상태</label>
+            <select id="bulkEtc" class="form-select form-select-sm">
+              <option value="">— 초기화(공란) —</option>
+              <option value="연차">연차</option>
+              <option value="무급">무급</option>
+              <option value="경조">경조</option>
+              <option value="휴가">휴가</option>
+              <option value="반차">반차</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-outline-primary btn-sm w-100" onclick="loadBulkEmps()">직원 불러오기</button>
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-warning btn-sm w-100" id="bulkApplyBtn" disabled onclick="applyBulkEtc()">일괄 적용</button>
+          </div>
+        </div>
+
+        <div id="bulkEmpArea" class="mt-3" style="display:none">
+          <div class="d-flex gap-2 mb-2">
+            <button class="btn btn-outline-secondary btn-sm" onclick="toggleAllBulk(true)">전체 선택</button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="toggleAllBulk(false)">전체 해제</button>
+            <span class="ms-auto small text-muted" id="bulkSelCount">0명 선택</span>
+          </div>
+          <div id="bulkEmpList" class="d-flex flex-wrap gap-2" style="max-height:180px;overflow-y:auto;border:1px solid #dee2e6;border-radius:8px;padding:10px;background:#f9fafb">
+          </div>
+        </div>
+        <div id="bulkResult" class="mt-2"></div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if employees %}
+    <!-- 페이지네이션 컨트롤 -->
+    <div class="d-flex justify-content-between align-items-center mt-2 mb-3 flex-wrap gap-2" id="paginationWrap">
+        <div class="d-flex align-items-center gap-2">
+            <label class="form-label mb-0 small fw-bold" style="white-space:nowrap;">페이지당</label>
+            <select id="pageSize" class="form-select form-select-sm" style="width:75px;" onchange="goPage(1)">
+                <option value="20" selected>20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="0">전체</option>
+            </select>
+        </div>
+        <div id="pageInfo" class="small text-muted fw-bold"></div>
+        <div id="pageButtons"></div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="border-radius: 10px 10px 0 0;">
+            <span class="fw-bold">📑 {{ month_label }} 근무표기록</span>
+            <span class="fw-normal" style="font-size:0.85rem">총 {{ employees|length }}명</span>
+        </div>
+        <div class="card-body p-0 scroll-wrap">
+        <div style="display:inline-block; min-width:100%;">
+            <table class="ws-table" id="sr-table">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="meta">No</th>
+                        <th rowspan="2" class="meta">사번</th>
+                        <th rowspan="2" class="meta">부서</th>
+                        <th rowspan="2" class="meta">이름</th>
+                        <th rowspan="2" class="meta">근태</th>
+                        {% for d in day_info %}
+                        <th class="day-cell {% if d.is_sun or d.is_holiday %}bg-sun{% elif d.is_sat %}bg-sat{% endif %}">{{ d.day }}</th>
+                        {% endfor %}
+                        <th rowspan="2" class="sum-col" style="line-height:1.3;font-size:0.7rem">평일연장<br>야간근로<br>휴일근로<br>휴일연장</th>
+                        <th rowspan="2" class="sum-col" style="line-height:1.3;font-size:0.7rem">휴일시출<br>무급<br>&nbsp;<br>휴일시간</th>
+                    </tr>
+                    <tr>
+                        {% for d in day_info %}
+                        <th class="day-cell {% if d.is_sun or d.is_holiday %}bg-sun{% elif d.is_sat %}bg-sat{% endif %}" style="font-size:0.7rem;color:{% if d.is_sun or d.is_holiday %}#dc3545{% elif d.is_sat %}#0d6efd{% else %}#333{% endif %}">{{ d.wd_name }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in employees %}
+                    <tr class="emp-first">
+                        <td rowspan="4" class="meta text-center">{{ loop.index }}</td>
+                        <td rowspan="4" class="meta fw-bold">{{ emp.emp_no }}</td>
+                        <td rowspan="4" class="meta">{{ emp.dept }}</td>
+                        <td rowspan="4" class="meta fw-bold text-primary">{{ emp.name }}</td>
+                        <td class="meta fw-bold">기본</td>
+                        {% for i in range(days_in_month) %}
+                        <td class="day-cell {% if day_info[i].is_sun or day_info[i].is_holiday %}bg-sun{% elif day_info[i].is_sat %}bg-sat{% endif %}">
+                            {% if emp.basic[i] and emp.basic[i] > 0 %}{{ emp.basic[i] }}{% else %}-{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="sum-col">{{ emp.wd_ot }}</td>
+                        <td class="sum-col">-</td>
+                    </tr>
+                    <tr class="r-ot">
+                        <td class="meta fw-bold" style="color:#dc3545">연장</td>
+                        {% for i in range(days_in_month) %}
+                        <td class="day-cell {% if day_info[i].is_sun or day_info[i].is_holiday %}bg-sun{% elif day_info[i].is_sat %}bg-sat{% endif %}">
+                            {% if emp.overtime[i] and emp.overtime[i] > 0 %}{{ emp.overtime[i] }}{% else %}-{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="sum-col text-primary">{{ emp.night_work }}</td>
+                        <td class="sum-col">{{ emp.unpaid if emp.unpaid else '-' }}</td>
+                    </tr>
+                    <tr class="r-ni">
+                        <td class="meta fw-bold" style="color:#0d6efd">야간</td>
+                        {% for i in range(days_in_month) %}
+                        <td class="day-cell {% if day_info[i].is_sun or day_info[i].is_holiday %}bg-sun{% elif day_info[i].is_sat %}bg-sat{% endif %}">
+                            {% if emp.night[i] and emp.night[i] > 0 %}{{ emp.night[i] }}{% else %}-{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="sum-col text-danger">{{ emp.calc_hw }}</td>
+                        <td class="sum-col">-</td>
+                    </tr>
+                    <tr class="r-etc">
+                        <td class="meta fw-bold" style="color:#6c757d">기타</td>
+                        {% for i in range(days_in_month) %}
+                        <td class="day-cell {% if day_info[i].is_sun or day_info[i].is_holiday %}bg-sun{% elif day_info[i].is_sat %}bg-sat{% endif %}">
+                            {% if emp.other[i] is string %}{{ emp.other[i] }}{% elif emp.other[i] and emp.other[i] != 0 %}{{ emp.other[i] }}{% else %}-{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="sum-col text-danger">{{ emp.calc_ho }}</td>
+                        <td class="sum-col fw-bold">{{ emp.hol_time }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        </div>
+    </div>
+    {% elif search %}
+    <div class="alert alert-info">'{{ search }}'에 해당하는 기록이 없습니다.</div>
+    {% else %}
+    <div class="alert alert-secondary text-center">해당 월에 업로드된 근무 기록이 없습니다.</div>
+    {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// 페이지네이션 (직원 1명 = 4행)
+var allEmpFirst = Array.from(document.querySelectorAll('#sr-table tbody tr.emp-first'));
+var curPage = 1;
+
+function goPage(p) {
+    var sel = document.getElementById('pageSize');
+    if (!sel) return;
+    var size = parseInt(sel.value);
+    var total = allEmpFirst.length;
+    if (!total) return;
+
+    if (size === 0) {
+        allEmpFirst.forEach(function(r){
+            r.style.display = '';
+            var s = r.nextElementSibling; if(s){s.style.display='';}
+            s = s ? s.nextElementSibling : null; if(s){s.style.display='';}
+            s = s ? s.nextElementSibling : null; if(s){s.style.display='';}
+        });
+        document.getElementById('pageInfo').textContent = '전체 ' + total + '명';
+        document.getElementById('pageButtons').innerHTML = '';
+        curPage = 1;
+        return;
+    }
+
+    var pages = Math.ceil(total / size);
+    if (p < 1) p = 1;
+    if (p > pages) p = pages;
+    curPage = p;
+
+    allEmpFirst.forEach(function(r, i){
+        var show = (i >= (p-1)*size && i < p*size);
+        var disp = show ? '' : 'none';
+        r.style.display = disp;
+        var s = r.nextElementSibling; if(s){s.style.display=disp;}
+        s = s ? s.nextElementSibling : null; if(s){s.style.display=disp;}
+        s = s ? s.nextElementSibling : null; if(s){s.style.display=disp;}
+    });
+
+    var from = (p-1)*size + 1;
+    var to = Math.min(p*size, total);
+    document.getElementById('pageInfo').textContent = from + '-' + to + ' / ' + total + '명';
+
+    var html = '';
+    var startP = Math.max(1, p - 3);
+    var endP = Math.min(pages, p + 3);
+    html += '<button class="btn btn-sm ' + (p<=1?'btn-outline-secondary disabled':'btn-outline-primary') + '" onclick="goPage(' + (p-1) + ')">◀</button> ';
+    for (var i = startP; i <= endP; i++) {
+        html += '<button class="btn btn-sm ' + (i===p?'btn-primary':'btn-outline-primary') + '" onclick="goPage(' + i + ')" style="min-width:32px;">' + i + '</button> ';
+    }
+    html += '<button class="btn btn-sm ' + (p>=pages?'btn-outline-secondary disabled':'btn-outline-primary') + '" onclick="goPage(' + (p+1) + ')">▶</button>';
+    document.getElementById('pageButtons').innerHTML = html;
+}
+if (allEmpFirst.length) goPage(1);
+
+// ── 일괄 근무상태 설정 ──
+function toggleBulkPanel() {
+    var body = document.getElementById('bulkBody');
+    var icon = document.getElementById('bulkPanelIcon');
+    if (!body) return;
+    if (body.style.display === 'none') { body.style.display = ''; icon.textContent = '▲'; }
+    else { body.style.display = 'none'; icon.textContent = '▼'; }
+}
+
+function loadBulkEmps() {
+    var dateVal  = document.getElementById('bulkDate').value;
+    var sheetVal = document.getElementById('bulkSheet').value;
+    if (!dateVal || !sheetVal) { alert('날짜와 부서를 선택하세요.'); return; }
+    var workDate = dateVal.replace(/-/g, '');
+    fetch('/api/schedule_emp_list?work_date=' + workDate + '&sheet_name=' + encodeURIComponent(sheetVal))
+        .then(function(r){ return r.json(); })
+        .then(function(data) {
+            if (!data.ok) { alert('오류: ' + (data.error || '알 수 없음')); return; }
+            var list = document.getElementById('bulkEmpList');
+            list.innerHTML = '';
+            data.employees.forEach(function(e) {
+                var lbl = document.createElement('label');
+                lbl.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#fff;border:1px solid #dee2e6;border-radius:6px;cursor:pointer;font-size:.82rem';
+                var chk = document.createElement('input');
+                chk.type = 'checkbox'; chk.className = 'bulk-emp-chk'; chk.value = e.name;
+                chk.addEventListener('change', updateBulkCount);
+                lbl.appendChild(chk);
+                lbl.appendChild(document.createTextNode(e.name + (e.etc ? ' [' + e.etc + ']' : '')));
+                list.appendChild(lbl);
+            });
+            document.getElementById('bulkEmpArea').style.display = '';
+            document.getElementById('bulkApplyBtn').disabled = false;
+            updateBulkCount();
+        })
+        .catch(function(e){ alert('요청 실패: ' + e); });
+}
+
+function updateBulkCount() {
+    var cnt = document.querySelectorAll('.bulk-emp-chk:checked').length;
+    document.getElementById('bulkSelCount').textContent = cnt + '명 선택';
+}
+
+function toggleAllBulk(checked) {
+    document.querySelectorAll('.bulk-emp-chk').forEach(function(c){ c.checked = checked; });
+    updateBulkCount();
+}
+
+function applyBulkEtc() {
+    var dateVal  = document.getElementById('bulkDate').value;
+    var etcVal   = document.getElementById('bulkEtc').value;
+    var checked  = Array.from(document.querySelectorAll('.bulk-emp-chk:checked')).map(function(c){ return c.value; });
+    if (!dateVal) { alert('날짜를 선택하세요.'); return; }
+    if (!checked.length) { alert('직원을 1명 이상 선택하세요.'); return; }
+    var label = etcVal || '(초기화)';
+    if (!confirm(checked.length + '명의 ' + dateVal + ' 근무상태를 [' + label + ']로 변경합니다.\n계속하시겠습니까?')) return;
+    fetch('/api/schedule_bulk_etc', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ work_date: dateVal.replace(/-/g,''), emp_names: checked, etc: etcVal }),
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+        var res = document.getElementById('bulkResult');
+        if (data.ok) {
+            res.innerHTML = '<div class="alert alert-success py-1 mb-0">' + data.updated + '건 업데이트 완료 — 새로고침 시 반영됩니다.</div>';
+        } else {
+            res.innerHTML = '<div class="alert alert-danger py-1 mb-0">' + (data.error || '오류') + '</div>';
+        }
+    })
+    .catch(function(e){ alert('요청 실패: ' + e); });
+}
+</script>
+</body>
+</html>

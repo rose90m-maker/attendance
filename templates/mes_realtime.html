@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>쉴드라벨 카운터 대시보드 — 태인관리시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+body { background: #0d1117; color: #e6edf3; }
+
+/* 장치 탭 */
+.device-tabs {
+    display:flex; gap:6px; margin-bottom:14px;
+    overflow-x:auto; scrollbar-width:thin; scrollbar-color:#30363d #0d1117;
+    padding:4px 2px 8px;
+}
+.device-tabs::-webkit-scrollbar { height:6px; }
+.device-tabs::-webkit-scrollbar-thumb { background:#30363d; border-radius:3px; }
+.device-tab {
+    flex:0 0 auto; padding:8px 16px;
+    background:#161b22; border:1px solid #30363d; border-radius:10px;
+    font-size:0.88rem; font-weight:600; color:#8b949e;
+    cursor:pointer; transition:all .2s; white-space:nowrap;
+    text-decoration:none;
+}
+.device-tab:hover { background:#21262d; color:#c9d1d9; }
+.device-tab.active {
+    background:linear-gradient(135deg, #1f6feb, #388bfd);
+    color:#fff; border-color:#388bfd;
+    box-shadow:0 2px 10px rgba(31,111,235,.3);
+}
+.device-tab .tab-line { font-size:0.7rem; opacity:.8; margin-right:6px; }
+.device-tab.add {
+    background:#0d2818; color:#3fb950; border-color:#1f6f3e;
+    border-style:dashed;
+}
+.device-tab.add:hover { background:#0f3a1f; color:#3fb950; }
+
+/* 장치 추가 모달 */
+.modal-dark .modal-content {
+    background:#161b22; border:1px solid #30363d; color:#e6edf3;
+}
+.modal-dark .modal-header { border-bottom:1px solid #30363d; }
+.modal-dark .modal-footer { border-top:1px solid #30363d; }
+.modal-dark .form-label   { color:#c9d1d9; font-size:0.84rem; font-weight:600; }
+.modal-dark .form-control {
+    background:#0d1117; border:1px solid #30363d; color:#e6edf3;
+}
+.modal-dark .form-control:focus {
+    background:#0d1117; color:#fff; border-color:#388bfd;
+    box-shadow:0 0 0 0.2rem rgba(56,139,253,.25);
+}
+.modal-dark .form-text { color:#6e7681; }
+.modal-dark .readonly-field {
+    background:#0d1117; border:1px solid #21262d; color:#8b949e;
+    padding:6px 10px; border-radius:6px; font-family:monospace; font-size:0.88rem;
+}
+
+.btn-edit-gear {
+    background:transparent; border:none; color:#6e7681;
+    cursor:pointer; padding:2px 8px; margin-left:4px;
+    border-radius:6px; font-size:1rem; transition:all .2s;
+}
+.btn-edit-gear:hover { color:#58a6ff; background:rgba(88,166,255,.1); }
+
+.mes-header {
+    background:#161b22; border:1px solid #30363d; border-radius:12px;
+    padding:10px 16px; margin-bottom:10px;
+    display:flex; justify-content:space-between; align-items:center;
+}
+.mes-header .title { font-size:1.15rem; font-weight:800; letter-spacing:-.3px; }
+.mes-header .sub   { font-size:0.78rem; color:#8b949e; margin-top:2px; }
+.mes-header .clock { font-size:1.4rem; font-weight:700; color:#58a6ff; font-variant-numeric:tabular-nums; letter-spacing:-.5px; }
+.status-pill {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:4px 10px; border-radius:20px; font-size:0.78rem; font-weight:600;
+    background:#0d2818; color:#3fb950; border:1px solid #1f6f3e;
+}
+.status-pill.warn { background:#2d2311; color:#d29922; border-color:#6e4f1c; }
+.status-pill.off  { background:#2d1115; color:#f85149; border-color:#6e1a22; }
+.status-dot { width:8px; height:8px; border-radius:50%; background:#3fb950; display:inline-block; }
+.status-dot.live { animation:pulse 1.5s infinite; box-shadow:0 0 0 0 rgba(63,185,80,.6); }
+@keyframes pulse {
+  0%   { box-shadow:0 0 0 0 rgba(63,185,80,.6); }
+  70%  { box-shadow:0 0 0 8px rgba(63,185,80,0); }
+  100% { box-shadow:0 0 0 0 rgba(63,185,80,0); }
+}
+
+.kpi-card {
+    background:#161b22; border:1px solid #30363d; border-radius:12px;
+    padding:12px 16px; height:100%;
+}
+.kpi-card .lbl  { font-size:0.76rem; color:#8b949e; letter-spacing:.3px; }
+.kpi-card .val  { font-size:1.9rem; font-weight:900; line-height:1.1; margin-top:4px; font-variant-numeric:tabular-nums; letter-spacing:-1px; }
+.kpi-card .unit { font-size:0.88rem; color:#8b949e; margin-left:3px; font-weight:500; }
+.kpi-card .sub  { font-size:0.72rem; color:#8b949e; margin-top:4px; }
+.kpi-card .v-up   { color:#3fb950; }
+.kpi-card .v-down { color:#f85149; }
+.kpi-card .val.green  { color:#3fb950; }
+.kpi-card .val.blue   { color:#58a6ff; }
+.kpi-card .val.amber  { color:#f0b429; }
+
+/* 일 목표 편집 영역 */
+.target-area { text-align:right; font-size:0.76rem; color:#8b949e; }
+.target-area .tgt-num { color:#c9d1d9; font-weight:700; font-variant-numeric:tabular-nums; }
+.target-area .tgt-edit {
+    background:transparent; border:none; color:#6e7681;
+    cursor:pointer; padding:0 4px; margin-left:2px; font-size:0.88rem;
+    border-radius:4px;
+}
+.target-area .tgt-edit:hover { color:#58a6ff; background:rgba(88,166,255,.1); }
+.target-area .tgt-input {
+    width:70px; background:#0d1117; border:1px solid #388bfd; color:#fff;
+    padding:2px 6px; border-radius:4px; font-size:0.78rem;
+    font-variant-numeric:tabular-nums; text-align:right;
+}
+.target-area .tgt-save, .target-area .tgt-cancel {
+    background:transparent; border:none; cursor:pointer;
+    padding:2px 4px; font-size:0.82rem; border-radius:3px;
+}
+.target-area .tgt-save   { color:#3fb950; }
+.target-area .tgt-cancel { color:#f85149; }
+
+.target-bar-wrap { margin-top:10px; height:6px; background:#21262d; border-radius:3px; overflow:hidden; }
+.target-bar {
+    height:100%; background:linear-gradient(90deg, #3fb950, #58a6ff);
+    border-radius:3px; transition:width .4s ease;
+}
+.target-bar.over { background:linear-gradient(90deg, #58a6ff, #d29922); }
+
+
+.panel {
+    background:#161b22; border:1px solid #30363d; border-radius:12px;
+    padding:12px 14px; height:100%;
+}
+.panel-title { font-size:0.88rem; font-weight:700; color:#c9d1d9; margin-bottom:10px; }
+
+/* 시간대별 차트 — 높이 축소 + 배경 가이드라인 */
+.hourly-chart {
+    display:flex; align-items:stretch; gap:2px; height:280px; padding:6px 4px 0;
+    background:
+      linear-gradient(to top, transparent 0%, transparent 24%, rgba(255,255,255,.03) 25%, rgba(255,255,255,.03) 25.5%, transparent 26%),
+      linear-gradient(to top, transparent 0%, transparent 49%, rgba(255,255,255,.03) 50%, rgba(255,255,255,.03) 50.5%, transparent 51%),
+      linear-gradient(to top, transparent 0%, transparent 74%, rgba(255,255,255,.03) 75%, rgba(255,255,255,.03) 75.5%, transparent 76%);
+    border-bottom:1px solid #21262d;
+}
+.hourly-bar-wrap {
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+    min-width:0; position:relative;
+}
+.hourly-bar {
+    width:80%; background:linear-gradient(180deg, #58a6ff, #1f6feb);
+    border-radius:2px 2px 0 0; min-height:3px; transition:height .4s ease;
+    box-shadow:0 0 8px rgba(88,166,255,.3);
+}
+.hourly-bar.current {
+    background:linear-gradient(180deg, #f0b429, #d29922);
+    box-shadow:0 0 10px rgba(240,180,41,.5);
+}
+.hourly-bar.zero { background:#21262d; box-shadow:none; opacity:.5; }
+.hourly-val { font-size:0.62rem; color:#c9d1d9; margin-bottom:2px; font-variant-numeric:tabular-nums; font-weight:700; }
+.hourly-lbl { font-size:0.6rem; color:#6e7681; margin-top:3px; text-align:center; white-space:nowrap; }
+
+/* 주간 합계 — 가로 막대 차트 방식 */
+.weekly-chart { display:flex; flex-direction:column; gap:5px; }
+.weekly-bar-row {
+    display:grid; grid-template-columns: 22px 42px 1fr 60px;
+    align-items:center; gap:8px;
+    padding:4px 2px; border-radius:6px; transition:background .2s;
+}
+.weekly-bar-row.today { background:rgba(88,166,255,.08); padding:4px 8px; }
+.weekly-bar-row .w-day  { font-size:0.76rem; color:#8b949e; font-weight:600; }
+.weekly-bar-row.today .w-day { color:#58a6ff; }
+.weekly-bar-row .w-date { font-size:0.68rem; color:#6e7681; }
+.weekly-bar-row .w-bar-wrap {
+    height:14px; background:#21262d; border-radius:4px; overflow:hidden;
+    position:relative;
+}
+.weekly-bar-row .w-bar {
+    height:100%; background:linear-gradient(90deg, #1f6feb, #58a6ff);
+    border-radius:4px; transition:width .5s ease; min-width:2px;
+}
+.weekly-bar-row.today .w-bar { background:linear-gradient(90deg, #d29922, #f0b429); }
+.weekly-bar-row .w-val {
+    font-size:0.84rem; font-weight:700; color:#f0f6fc;
+    font-variant-numeric:tabular-nums; text-align:right;
+}
+.weekly-bar-row .w-val.zero { color:#6e7681; font-weight:500; }
+
+/* 로그 */
+.log-list { max-height:260px; overflow-y:auto; padding-right:4px;
+    scrollbar-width:thin; scrollbar-color:#30363d #0d1117;
+}
+.log-list::-webkit-scrollbar { width:4px; }
+.log-list::-webkit-scrollbar-thumb { background:#30363d; border-radius:2px; }
+.log-row {
+    display:flex; align-items:center; padding:6px 4px;
+    border-bottom:1px solid #21262d; font-size:0.8rem;
+}
+.log-row:last-child { border-bottom:none; }
+.log-time { width:70px; color:#8b949e; font-variant-numeric:tabular-nums; font-size:0.76rem; }
+.log-plus { color:#3fb950; font-weight:600; margin-left:6px; font-size:0.78rem; }
+.log-cum  { color:#c9d1d9; flex:1; text-align:right; font-variant-numeric:tabular-nums; }
+
+/* 시스템 상태 */
+.sys-row {
+    display:flex; justify-content:space-between; padding:6px 2px;
+    border-bottom:1px solid #21262d; font-size:0.82rem;
+}
+.sys-row:last-child { border-bottom:none; }
+.sys-lbl { color:#8b949e; }
+.sys-val { color:#f0f6fc; font-weight:600; font-size:0.82rem; }
+.sys-val.ok   { color:#3fb950; }
+.sys-val.warn { color:#d29922; }
+
+.btn-dark-action {
+    background:#21262d; color:#c9d1d9; border:1px solid #30363d;
+    padding:7px 14px; font-size:0.82rem; border-radius:7px;
+    cursor:pointer; transition:background .2s;
+}
+.btn-dark-action:hover { background:#30363d; color:#fff; }
+.btn-dark-action.danger { border-color:#6e1a22; }
+.btn-dark-action.danger:hover { background:#6e1a22; color:#fff; }
+.btn-dark-action.primary { background:#1f6feb; border-color:#388bfd; color:#fff; }
+.btn-dark-action.primary:hover { background:#388bfd; }
+
+.empty-log { text-align:center; color:#6e7681; padding:40px 10px; font-size:0.85rem; }
+
+/* ── 모바일 최적화 (≤640px) ── */
+@media (max-width:640px) {
+  body { height:100vh; overflow:hidden; }
+  .main-content {
+    display:flex; flex-direction:column;
+    height:calc(100vh - var(--navbar-h, 52px));
+    overflow:hidden;
+    padding:4px 6px !important;
+    gap:4px;
+  }
+
+  /* 탭 */
+  .device-tabs { flex-shrink:0; margin-bottom:0; padding:2px 0 4px; }
+  .device-tab  { padding:5px 10px; font-size:.75rem; }
+
+  /* 헤더 */
+  .mes-header  { flex-shrink:0; margin-bottom:0; padding:5px 10px; border-radius:8px; }
+  .mes-header .title { font-size:.85rem; }
+  .mes-header .sub   { font-size:.6rem; margin-top:1px; }
+  .mes-header .clock { font-size:1.05rem; }
+  .status-pill { font-size:.62rem; padding:2px 6px; gap:4px; }
+  .btn-edit-gear { font-size:.85rem; }
+
+  /* KPI */
+  #rowKpi { flex-shrink:0; margin-bottom:0 !important; }
+  .kpi-card { padding:5px 8px; border-radius:8px; }
+  .kpi-card .lbl  { font-size:.6rem; }
+  .kpi-card .val  { font-size:1.25rem; margin-top:1px; letter-spacing:-.5px; }
+  .kpi-card .unit { font-size:.65rem; }
+  .kpi-card .sub  { font-size:.58rem; margin-top:1px; }
+  .target-bar-wrap { margin-top:4px; height:4px; }
+
+  /* 차트+주간 — 남은 공간 전체 채움 */
+  #rowChart {
+    flex:1; min-height:0; margin-bottom:0 !important;
+    flex-direction:column; flex-wrap:nowrap;
+  }
+  #rowChart > .col-lg-8,
+  #rowChart > .col-lg-4 {
+    flex:1; min-height:0;
+    width:100% !important; max-width:100% !important;
+  }
+  #rowChart .panel {
+    height:100%; display:flex; flex-direction:column;
+  }
+  #rowChart .panel-title { flex-shrink:0; font-size:.75rem; margin-bottom:4px; }
+  .hourly-chart { flex:1; min-height:0; height:auto !important; }
+  .hourly-val   { font-size:.5rem; margin-bottom:1px; }
+  .hourly-lbl   { font-size:.48rem; }
+  .weekly-chart {
+    flex:1; min-height:0; overflow:hidden;
+    display:flex; flex-direction:column; justify-content:space-around;
+  }
+  .weekly-bar-row       { padding:2px 4px; gap:4px; }
+  .weekly-bar-row .w-day  { font-size:.63rem; }
+  .weekly-bar-row .w-date { font-size:.55rem; }
+  .weekly-bar-row .w-val  { font-size:.68rem; }
+  .weekly-bar-row .w-bar-wrap { height:9px; }
+
+  .panel        { padding:6px 8px; border-radius:8px; }
+  .panel-title  { font-size:.76rem; }
+
+  /* 로그+시스템 — 모바일에서 숨김 */
+  #rowLog { display:none !important; }
+}
+</style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main-content">
+
+<!-- 장치 탭 -->
+<div class="device-tabs" id="deviceTabs"></div>
+
+{% if session.get('role') == 'admin' %}
+<!-- 장치 편집 모달 -->
+<div class="modal fade modal-dark" id="editDeviceModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">⚙ 장치 정보 편집</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="editDeviceForm" onsubmit="return submitEditDevice(event)">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">장치 ID</label>
+            <div class="readonly-field" id="editDeviceId">-</div>
+            <div class="form-text">ESP32가 전송하는 고유 ID (변경 불가)</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">장치명</label>
+            <input type="text" id="editName" class="form-control" placeholder="예: EBS Fb, A라인 카운터">
+            <div class="form-text">화면 카드/탭에 표시될 이름</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">대시보드 제목</label>
+            <input type="text" id="editTitle" class="form-control" placeholder="예: EBS Fb 생산 현황">
+            <div class="form-text">비우면 "[장치명] 카운터 대시보드" 로 자동 표시</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">라인명 (그룹)</label>
+            <input type="text" id="editLineName" class="form-control" placeholder="예: A라인, EBS">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">일 목표 (개)</label>
+            <input type="number" id="editTarget" class="form-control" placeholder="0" min="0">
+            <div class="form-text">0이면 목표 미설정 / 달성률 숨김</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-dark-action" data-bs-dismiss="modal">취소</button>
+          <button type="submit" class="btn-dark-action primary">저장</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 장치 추가 모달 -->
+<div class="modal fade modal-dark" id="addDeviceModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">➕ 장치 추가</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="addDeviceForm" onsubmit="return submitAddDevice(event)">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">장치 ID <span style="color:#f85149">*</span></label>
+            <input type="text" name="device_id" class="form-control" placeholder="예: LINE_B, ESP32_002" required>
+            <div class="form-text">ESP32 펌웨어에 설정된 device_id와 정확히 일치해야 합니다</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">장치명</label>
+            <input type="text" name="name" class="form-control" placeholder="예: B라인 카운터">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">라인명 (그룹)</label>
+            <input type="text" name="line_name" class="form-control" placeholder="예: B라인">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">일 목표 (개)</label>
+            <input type="number" name="target_day" class="form-control" placeholder="0" min="0">
+            <div class="form-text">0이면 목표 미설정</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-dark-action" data-bs-dismiss="modal">취소</button>
+          <button type="submit" class="btn-dark-action primary">저장</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- 헤더 -->
+<div class="mes-header">
+  <div class="d-flex align-items-center gap-3">
+    <span class="status-dot live"></span>
+    <div>
+      <div class="title d-flex align-items-center gap-2">
+        <span id="dashTitle">카운터 대시보드</span>
+        {% if session.get('role') == 'admin' %}
+        <button id="btnEditDevice" class="btn-edit-gear" onclick="openEditDeviceModal()" title="장치 정보 편집">⚙</button>
+        {% endif %}
+      </div>
+      <div class="sub" id="dashSub">로딩 중...</div>
+    </div>
+  </div>
+  <div class="text-end d-flex align-items-center gap-3">
+    <span class="status-pill" id="sensorPill"><span class="status-dot live"></span> <span id="sensorText">센서 연결됨</span></span>
+    <span class="clock" id="nowClock">--:--:--</span>
+  </div>
+</div>
+
+<!-- 상단 KPI 4개 -->
+<div class="row g-2 mb-2" id="rowKpi">
+  <div class="col-6 col-md-3">
+    <div class="kpi-card">
+      <div class="d-flex justify-content-between align-items-start">
+        <div class="lbl">오늘 총 생산</div>
+        <div id="targetArea" class="target-area"></div>
+      </div>
+      <div><span class="val green" id="kpiToday">-</span><span class="unit">개</span></div>
+      <div class="sub" id="kpiPct">-</div>
+      <div class="target-bar-wrap" id="targetBarWrap" style="display:none;">
+        <div class="target-bar" id="targetBar"></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-card">
+      <div class="lbl">최근 1시간</div>
+      <div><span class="val amber" id="kpiLastHour">-</span><span class="unit">개</span></div>
+      <div class="sub" id="kpiRate">분당 -</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-card">
+      <div class="lbl">이번 주 누적</div>
+      <div><span class="val blue" id="kpiWeek">-</span><span class="unit">개</span></div>
+      <div class="sub">월요일부터</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-card">
+      <div class="lbl">센서 상태</div>
+      <div><span class="val green" id="kpiStatus">-</span></div>
+      <div class="sub" id="kpiLast">마지막 수신: -</div>
+    </div>
+  </div>
+</div>
+
+<!-- 차트 + 주간 -->
+<div class="row g-2 mb-2" id="rowChart">
+  <div class="col-lg-8">
+    <div class="panel">
+      <div class="panel-title">📈 시간대별 생산량 (오늘)</div>
+      <div class="hourly-chart" id="hourlyChart"></div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="panel">
+      <div class="panel-title">📅 이번 주 일별 합계</div>
+      <div class="weekly-chart" id="weeklyList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 로그 + 시스템 -->
+<div class="row g-2" id="rowLog">
+  <div class="col-lg-7">
+    <div class="panel">
+      <div class="panel-title">📋 최근 감지 로그</div>
+      <div class="log-list" id="logList">
+        <div class="empty-log">로딩 중...</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="panel">
+      <div class="panel-title">🔧 시스템 상태</div>
+      <div id="sysList">
+        <div class="sys-row"><span class="sys-lbl">연결 방식</span><span class="sys-val" id="sysTransport">-</span></div>
+        <div class="sys-row"><span class="sys-lbl">엔드포인트</span><span class="sys-val" id="sysEndpoint">-</span></div>
+        <div class="sys-row"><span class="sys-lbl">장치 ID</span><span class="sys-val" id="sysDevice">-</span></div>
+        <div class="sys-row"><span class="sys-lbl">마지막 수신</span><span class="sys-val" id="sysLastRecv">-</span></div>
+        <div class="sys-row"><span class="sys-lbl">DB 저장</span><span class="sys-val ok" id="sysDb">-</span></div>
+      </div>
+      {% if session.get('role') == 'admin' %}
+      <div class="d-flex gap-2 mt-3 flex-wrap">
+        <button class="btn-dark-action danger" onclick="resetToday()">🗑 카운트 리셋</button>
+        <a class="btn-dark-action" href="/mes/devices">⚙️ 장치 관리</a>
+        <a class="btn-dark-action primary" href="/mes/report">📊 리포트</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+</div><!-- /main-content -->
+
+<script>
+var POLL_INTERVAL = 5000;
+var pollTimer = null;
+var currentDeviceId = '';  // 현재 선택된 장치 (URL param 또는 첫번째)
+
+function fmt(n) { return (n || 0).toLocaleString(); }
+
+// URL에서 device_id 읽기
+function getUrlDevice() {
+    var params = new URLSearchParams(window.location.search);
+    return params.get('device_id') || '';
+}
+
+// 탭 클릭 시 URL 업데이트 + 데이터 재로드
+function switchDevice(devId) {
+    if (devId === currentDeviceId) return;
+    currentDeviceId = devId;
+    var url = devId ? ('?device_id=' + encodeURIComponent(devId)) : window.location.pathname;
+    window.history.replaceState({}, '', url);
+    // 탭 UI 즉시 반영
+    document.querySelectorAll('.device-tab').forEach(function(el){
+        el.classList.toggle('active', el.dataset.id === devId);
+    });
+    stopPolling();
+    startPolling();
+}
+
+// 탭 그리기
+var IS_ADMIN = {{ 'true' if session.get('role') == 'admin' else 'false' }};
+
+function renderTabs(devices, activeId) {
+    var el = document.getElementById('deviceTabs');
+    el.style.display = '';
+    var tabsHtml = devices.map(function(d){
+        var isActive = d.device_id === activeId;
+        var lineBadge = d.line_name ? '<span class="tab-line">[' + d.line_name + ']</span>' : '';
+        return '<a class="device-tab' + (isActive ? ' active' : '') + '" data-id="' + d.device_id + '" href="?device_id=' + encodeURIComponent(d.device_id) + '" onclick="event.preventDefault(); switchDevice(\'' + d.device_id + '\');">' +
+               lineBadge + d.name + '</a>';
+    }).join('');
+    // 관리자면 + 버튼 추가
+    if (IS_ADMIN) {
+        tabsHtml += '<a class="device-tab add" href="#" onclick="event.preventDefault(); openAddModal();">+ 장치 추가</a>';
+    }
+    el.innerHTML = tabsHtml;
+}
+
+// 장치 편집 모달 (현재 선택된 장치)
+function openEditDeviceModal() {
+    if (!currentDeviceInfo.device_id) {
+        alert('장치 정보를 아직 불러오지 못했습니다. 잠시 후 다시 시도하세요.');
+        return;
+    }
+    document.getElementById('editDeviceId').textContent = currentDeviceInfo.device_id;
+    document.getElementById('editName').value      = currentDeviceInfo.name      || '';
+    document.getElementById('editTitle').value     = currentDeviceInfo.title     || '';
+    document.getElementById('editLineName').value  = currentDeviceInfo.line_name || '';
+    document.getElementById('editTarget').value    = currentDeviceInfo.target    || 0;
+    var modal = new bootstrap.Modal(document.getElementById('editDeviceModal'));
+    modal.show();
+}
+
+function submitEditDevice(e) {
+    e.preventDefault();
+    var payload = {
+        device_id:  currentDeviceInfo.device_id,
+        name:       document.getElementById('editName').value,
+        title:      document.getElementById('editTitle').value,
+        line_name:  document.getElementById('editLineName').value,
+        target:     parseInt(document.getElementById('editTarget').value, 10) || 0
+    };
+    fetch('/mes/api/update_device', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('editDeviceModal')).hide();
+            fetchData();
+        } else {
+            alert('❌ 저장 실패: ' + (d.error || 'unknown'));
+        }
+    })
+    .catch(function(e){ alert('오류: ' + e); });
+    return false;
+}
+
+// 장치 추가 모달
+function openAddModal() {
+    var form = document.getElementById('addDeviceForm');
+    if (form) form.reset();
+    var modal = new bootstrap.Modal(document.getElementById('addDeviceModal'));
+    modal.show();
+}
+
+function submitAddDevice(e) {
+    e.preventDefault();
+    var form = document.getElementById('addDeviceForm');
+    var fd = new FormData(form);
+    fd.append('action', 'add');
+    fetch('/mes/devices', {
+        method: 'POST',
+        body: fd
+    })
+    .then(function(r){
+        // /mes/devices는 HTML 응답이라 상태 코드로만 판단
+        if (r.status >= 200 && r.status < 400) {
+            bootstrap.Modal.getInstance(document.getElementById('addDeviceModal')).hide();
+            var devId = fd.get('device_id');
+            currentDeviceId = devId;
+            window.history.replaceState({}, '', '?device_id=' + encodeURIComponent(devId));
+            fetchData();
+        } else {
+            alert('저장 실패 (HTTP ' + r.status + ')');
+        }
+    })
+    .catch(function(err){ alert('오류: ' + err); });
+    return false;
+}
+
+function tickClock() {
+    var d = new Date();
+    var pad = function(x){ return String(x).padStart(2,'0'); };
+    document.getElementById('nowClock').textContent =
+        pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+function fetchData() {
+    var url = '/mes/api/realtime';
+    if (currentDeviceId) url += '?device_id=' + encodeURIComponent(currentDeviceId);
+    fetch(url)
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (!d.ok) {
+                if (d.error === 'no_device') {
+                    document.getElementById('dashSub').textContent = '등록된 장치가 없습니다. 우측 상단 + 버튼으로 추가하세요.';
+                    // 장치 0개여도 관리자에겐 + 버튼 노출
+                    if (IS_ADMIN) renderTabs([], '');
+                    else document.getElementById('deviceTabs').style.display = 'none';
+                }
+                return;
+            }
+            // 탭 갱신 + 현재 장치 동기화
+            renderTabs(d.all_devices, d.device.device_id);
+            currentDeviceId = d.device.device_id;
+            render(d);
+        })
+        .catch(function(e){ console.error(e); });
+}
+
+// 현재 선택된 장치의 전체 정보 (편집 모달용)
+var currentDeviceInfo = {};
+
+function render(d) {
+    // 제목/부제 — 커스텀 제목 우선, 없으면 기본 포맷
+    var deviceName = d.device.name || d.device.device_id;
+    var title = (d.device.title && d.device.title.trim()) || (deviceName + ' 카운터 대시보드');
+    document.getElementById('dashTitle').textContent = title;
+    document.getElementById('dashSub').textContent = d.date;
+    // 편집 모달용 정보 저장
+    currentDeviceInfo = d.device;
+
+    // 센서 상태 배지
+    var pill = document.getElementById('sensorPill');
+    var pillText = document.getElementById('sensorText');
+    var statusText = d.kpi.sensor_status;
+    pill.classList.remove('warn', 'off');
+    if (statusText === 'live') { pillText.textContent = '● 센서 연결됨'; }
+    else if (statusText === 'warn') { pill.classList.add('warn'); pillText.textContent = '⚠ 지연'; }
+    else { pill.classList.add('off'); pillText.textContent = '✕ 끊김'; }
+
+    // KPI
+    document.getElementById('kpiToday').textContent    = fmt(d.kpi.today);
+    document.getElementById('kpiLastHour').textContent = fmt(d.kpi.last_hour);
+    document.getElementById('kpiWeek').textContent     = fmt(d.kpi.week_total);
+    document.getElementById('kpiRate').textContent     = '분당 약 ' + d.kpi.per_minute + '개';
+
+    // 일 목표 + 달성률 + 편집 버튼
+    renderTarget(d.device.target, d.kpi.today);
+
+    // % vs 어제
+    var pctEl = document.getElementById('kpiPct');
+    if (d.kpi.pct === null) {
+        pctEl.innerHTML = '<span style="color:#6e7681;">어제 생산 없음</span>';
+    } else {
+        var arrow = d.kpi.pct > 0 ? '↑' : (d.kpi.pct < 0 ? '↓' : '→');
+        var cls   = d.kpi.pct > 0 ? 'v-up' : (d.kpi.pct < 0 ? 'v-down' : '');
+        var sign  = d.kpi.pct > 0 ? '+' : '';
+        pctEl.innerHTML = '<span class="' + cls + '">' + arrow + ' 어제보다 ' + sign + d.kpi.pct + '%</span>';
+    }
+
+    // 상태 요약
+    var statKo = { 'live':'정상', 'warn':'지연', 'off':'끊김' }[statusText] || '-';
+    var statCls = { 'live':'green', 'warn':'amber', 'off':'' }[statusText];
+    var kpiStatus = document.getElementById('kpiStatus');
+    kpiStatus.textContent = statKo;
+    kpiStatus.className = 'val ' + statCls;
+    document.getElementById('kpiLast').textContent = '마지막 수신: ' + (d.kpi.last_recv_rel || '-');
+
+    // 시간대별 차트 — 빈 시간대도 최소 가시 막대로
+    var hChart = document.getElementById('hourlyChart');
+    var max = Math.max.apply(null, d.hourly.concat([1]));
+    var curH = new Date().getHours();
+    var chartHtml = '';
+    d.hourly.forEach(function(v, h) {
+        var pct = v > 0 ? Math.max(Math.round(v / max * 100), 8) : 0;
+        var showLbl = (h % 3 === 0);
+        var cls = (v === 0) ? 'zero' : ((h === curH) ? 'current' : '');
+        var heightStyle = v > 0 ? ('height:' + pct + '%;') : 'height:4px;';
+        chartHtml += '<div class="hourly-bar-wrap">' +
+            (v > 0 ? '<div class="hourly-val">' + v + '</div>' : '') +
+            '<div class="hourly-bar ' + cls + '" style="' + heightStyle + '"></div>' +
+            (showLbl ? '<div class="hourly-lbl">' + h + '시</div>' : '<div class="hourly-lbl">&nbsp;</div>') +
+            '</div>';
+    });
+    hChart.innerHTML = chartHtml;
+
+    // 주간 — 가로 막대 차트
+    var wList = document.getElementById('weeklyList');
+    var weekMax = Math.max.apply(null, d.weekly.map(function(w){ return w.total; }).concat([1]));
+    wList.innerHTML = d.weekly.map(function(w){
+        var barPct = weekMax > 0 ? (w.total / weekMax * 100) : 0;
+        var valCls = w.total === 0 ? 'zero' : '';
+        return '<div class="weekly-bar-row ' + (w.is_today ? 'today' : '') + '">' +
+               '<span class="w-day">' + w.day + '</span>' +
+               '<span class="w-date">' + w.date.slice(5) + '</span>' +
+               '<div class="w-bar-wrap"><div class="w-bar" style="width:' + barPct + '%;"></div></div>' +
+               '<span class="w-val ' + valCls + '">' + fmt(w.total) + ' 개</span>' +
+               '</div>';
+    }).join('');
+
+    // 로그
+    var logHtml = '';
+    if (d.recent.length === 0) {
+        logHtml = '<div class="empty-log">아직 수신된 카운트가 없습니다</div>';
+    } else {
+        logHtml = d.recent.map(function(r){
+            return '<div class="log-row">' +
+                '<span class="log-time">' + r.time + '</span>' +
+                '<span class="log-plus">+' + r.count + '개</span>' +
+                '<span class="log-cum">누적 ' + fmt(r.cumulative) + '</span>' +
+                '</div>';
+        }).join('');
+    }
+    document.getElementById('logList').innerHTML = logHtml;
+
+    // 시스템 상태
+    document.getElementById('sysTransport').textContent = d.system.transport;
+    document.getElementById('sysEndpoint').textContent  = d.system.endpoint;
+    document.getElementById('sysDevice').textContent    = d.system.device_id;
+    document.getElementById('sysLastRecv').textContent  = d.system.last_recv;
+    var dbEl = document.getElementById('sysDb');
+    dbEl.textContent = d.system.db_status;
+}
+
+// 일 목표 렌더 + 편집 모드 토글
+function renderTarget(target, today) {
+    var area = document.getElementById('targetArea');
+    var barWrap = document.getElementById('targetBarWrap');
+    var bar = document.getElementById('targetBar');
+
+    if (target > 0) {
+        var pct = Math.round(today / target * 100);
+        barWrap.style.display = '';
+        bar.style.width = Math.min(pct, 100) + '%';
+        bar.classList.toggle('over', pct >= 100);
+    } else {
+        barWrap.style.display = 'none';
+    }
+
+    var targetText = target > 0 ? ('목표 <span class="tgt-num">' + fmt(target) + '</span>개') : '<span style="color:#6e7681;">목표 미설정</span>';
+    var editBtn = IS_ADMIN ? '<button class="tgt-edit" onclick="startEditTarget(' + target + ')" title="일 목표 수정">✏</button>' : '';
+    area.innerHTML = targetText + editBtn;
+}
+
+function startEditTarget(current) {
+    var area = document.getElementById('targetArea');
+    area.innerHTML =
+        '<input type="number" class="tgt-input" id="tgtInput" value="' + (current || 0) + '" min="0" placeholder="0">' +
+        '<button class="tgt-save"   onclick="saveTarget()"   title="저장">✓</button>' +
+        '<button class="tgt-cancel" onclick="fetchData()"   title="취소">✕</button>';
+    var input = document.getElementById('tgtInput');
+    input.focus();
+    input.select();
+    input.addEventListener('keydown', function(e){
+        if (e.key === 'Enter')  { e.preventDefault(); saveTarget(); }
+        if (e.key === 'Escape') { fetchData(); }
+    });
+}
+
+function saveTarget() {
+    var val = parseInt(document.getElementById('tgtInput').value, 10) || 0;
+    if (val < 0) { alert('0 이상의 값을 입력하세요'); return; }
+    fetch('/mes/api/update_target', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ device_id: currentDeviceId, target: val })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.ok) { fetchData(); }
+        else      { alert('❌ 실패: ' + (d.error || 'unknown')); }
+    })
+    .catch(function(e){ alert('오류: ' + e); });
+}
+
+function resetToday() {
+    var name = document.getElementById('dashTitle').textContent.replace(' 카운터 대시보드', '');
+    if (!confirm('「' + name + '」 오늘 카운트를 전부 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) return;
+    fetch('/mes/api/reset_today', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({device_id: currentDeviceId})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.ok) { alert('✅ ' + d.deleted + '건 삭제되었습니다.'); fetchData(); }
+        else      { alert('❌ 실패: ' + (d.error || 'unknown')); }
+    });
+}
+
+function startPolling() {
+    fetchData();
+    pollTimer = setInterval(fetchData, POLL_INTERVAL);
+}
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+document.addEventListener('DOMContentLoaded', function(){
+    currentDeviceId = getUrlDevice();   // URL에서 선택 장치 복원
+    tickClock();
+    setInterval(tickClock, 1000);
+    startPolling();
+});
+document.addEventListener('visibilitychange', function(){
+    if (document.hidden) stopPolling(); else startPolling();
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

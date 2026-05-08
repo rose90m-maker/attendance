@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>전력관리 대시보드 — 태인관리시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+/* ── 기본 카드 ─────────────────────────────── */
+.pw-card {
+  border:none; border-radius:12px;
+  box-shadow:0 2px 10px rgba(0,0,0,.07);
+}
+.pw-card .card-body { padding:1rem 1.25rem; }
+
+/* ── KPI 카드 ─────────────────────────────── */
+.kpi-icon { font-size:1.5rem; opacity:.85; }
+.kpi-lbl  { font-size:0.72rem; color:#888; font-weight:500; text-transform:uppercase; letter-spacing:.04em; }
+.kpi-val  { font-size:1.75rem; font-weight:700; line-height:1.1; color:#1a1a2e; }
+.kpi-unit { font-size:0.78rem; color:#888; margin-left:3px; }
+.kpi-sub  { font-size:0.75rem; margin-top:4px; }
+.up   { color:#e74c3c; }
+.dn   { color:#27ae60; }
+.na   { color:#aaa; }
+
+/* ── 게이지 바 ────────────────────────────── */
+.g-bar  { height:7px; border-radius:4px; background:#e9ecef; overflow:hidden; margin-top:6px; }
+.g-fill { height:100%; border-radius:4px; transition:width .6s; }
+
+/* ── 알람 배지 ────────────────────────────── */
+.badge-danger-soft  { background:#f8d7da; color:#842029; font-weight:500; }
+.badge-warning-soft { background:#fff3cd; color:#856404; font-weight:500; }
+.badge-info-soft    { background:#cfe2ff; color:#084298; font-weight:500; }
+
+/* ── 스마트뷰 카드 ───────────────────────── */
+.sv-card { border:none; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.07); }
+.sv-card .card-body { padding:1rem 1.25rem; }
+.sv-lbl  { font-size:0.68rem; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+.sv-val  { font-size:1.9rem; font-weight:800; line-height:1.1; }
+.sv-unit { font-size:0.78rem; color:#6c757d; margin-left:2px; }
+.sv-row  { display:flex; justify-content:space-between; align-items:baseline; padding:.22rem 0; border-bottom:1px solid #f0f0f0; font-size:0.82rem; }
+.sv-row:last-child { border-bottom:none; }
+.sv-k    { color:#666; }
+.sv-v    { font-weight:600; color:#1a1a2e; }
+.rt-table { width:100%; border-collapse:collapse; font-size:0.75rem; }
+.rt-table th, .rt-table td { text-align:center; padding:.25rem .4rem; border:1px solid #e9ecef; }
+.rt-table thead th { background:#f1f5ff; font-weight:700; color:#3b4fc8; }
+.rt-table tbody td:first-child { font-weight:600; background:#fafafa; }
+.sv-updated { font-size:0.68rem; color:#bbb; text-align:right; margin-top:.5rem; }
+
+/* ── 섹션 헤더 ────────────────────────────── */
+.sec-hd {
+  font-size:0.82rem; font-weight:700; color:#444;
+  padding:.5rem 1rem; border-bottom:1px solid #f0f0f0;
+  background:#fafafa; border-radius:12px 12px 0 0;
+}
+
+/* ── 알람 테이블 ──────────────────────────── */
+.alarm-table td, .alarm-table th {
+  font-size:0.8rem; padding:.45rem .75rem; vertical-align:middle;
+}
+.alarm-table thead th { background:#f8f9fa; font-weight:600; }
+
+/* ── 이상 감지 아이템 ─────────────────────── */
+.anomaly-item {
+  display:flex; align-items:center; gap:10px;
+  padding:.5rem .75rem; border-bottom:1px solid #f5f5f5;
+  font-size:0.8rem;
+}
+.anomaly-item:last-child { border-bottom:none; }
+.anomaly-pct-bar { flex:1; height:6px; border-radius:3px; background:#e9ecef; overflow:hidden; }
+.anomaly-pct-fill{ height:100%; border-radius:3px; background:#e74c3c; }
+</style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main-content">
+
+{% if demo %}
+<div class="alert alert-warning d-flex align-items-center mb-3 py-2" style="font-size:0.82rem;">
+  <span class="me-2">⚠️</span>
+  <strong>데모 모드</strong>&nbsp;—&nbsp;실 데이터가 없어 샘플을 표시합니다.
+  파워플래너 스크래퍼 실행 후 새로고침하세요.
+</div>
+{% endif %}
+
+<!-- ── 페이지 헤더 ─────────────────────────────────── -->
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h5 class="mb-0 fw-bold">⚡ 전력관리 대시보드</h5>
+    <small class="text-muted">최종 수집: {{ summary.last_updated | default('-') }}</small>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/power_history"  class="btn btn-outline-secondary btn-sm">📊 기간별 조회</a>
+    <a href="/power_alerts"   class="btn btn-outline-secondary btn-sm">🔔 경보 이력</a>
+    {% if is_admin %}
+    <a href="/power_settings" class="btn btn-outline-secondary btn-sm">⚙️ 설정</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if summary.smartview %}
+{% set sv = summary.smartview %}
+<!-- ══════════════════════════════════════════════════ -->
+<!-- ⓪ 스마트뷰 실시간 카드 3개                          -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+
+  <!-- 카드1: 실시간 사용량 + 요금 / 전월 실청구 -->
+  <div class="col-12 col-md-4">
+    <div class="card sv-card h-100" style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);color:#fff;">
+      <div class="card-body d-flex gap-3" style="align-items:stretch;">
+        <!-- 좌: 실시간 -->
+        <div class="d-flex flex-column justify-content-center flex-grow-1">
+          <div class="sv-lbl" style="color:rgba(255,255,255,.7);">실시간 당월 사용량</div>
+          <div class="mt-1">
+            <span class="sv-val" style="color:#fff;">{{ "{:,.0f}".format(sv.rt_kwh) }}</span>
+            <span class="sv-unit" style="color:rgba(255,255,255,.7);">kWh</span>
+          </div>
+          <div class="sv-lbl mt-3" style="color:rgba(255,255,255,.7);">실시간 당월 요금</div>
+          <div class="mt-1">
+            <span class="sv-val" style="color:#fbbf24;">{{ "{:,.0f}".format(sv.rt_bill / 10000) }}</span>
+            <span class="sv-unit" style="color:rgba(255,255,255,.7);">만원</span>
+          </div>
+          <div class="sv-updated" style="color:rgba(255,255,255,.35);">기준: {{ sv.bill_start }} ~ {{ sv.bill_end }}</div>
+        </div>
+        <!-- 구분선 -->
+        <div style="width:1px;background:rgba(255,255,255,.2);flex-shrink:0;"></div>
+        <!-- 우: 전월 실청구 -->
+        <div class="d-flex flex-column justify-content-center flex-grow-1">
+          {% set prev_bill = summary.prev_bill_amount | default(0) %}
+          <div class="sv-lbl" style="color:rgba(255,255,255,.7);">전월 실청구액</div>
+          <div class="mt-1">
+            {% if prev_bill > 0 %}
+            <span class="sv-val" style="color:#6ee7b7;">{{ "{:,.0f}".format(prev_bill / 10000) }}</span>
+            <span class="sv-unit" style="color:rgba(255,255,255,.7);">만원</span>
+            {% else %}
+            <span style="color:rgba(255,255,255,.5);font-size:1rem;">집계중</span>
+            {% endif %}
+          </div>
+          {% if sv.prev_bill_period %}
+          <div class="sv-updated" style="color:rgba(255,255,255,.35);">{{ sv.prev_bill_period }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 카드3: 당월 요금적용기준 -->
+  <div class="col-12 col-md-4">
+    <div class="card sv-card h-100">
+      <div class="card-body">
+        <div class="sv-lbl mb-2">당월 실시간 요금적용기준</div>
+        <div class="sv-row"><span class="sv-k">요금종별</span><span class="sv-v">{{ sv.tariff }}</span></div>
+        <div class="sv-row"><span class="sv-k">기본요금 단가</span><span class="sv-v">{{ "{:,.0f}".format(sv.basic_rate) }} 원/kW</span></div>
+        <div class="sv-row"><span class="sv-k">기본요금</span><span class="sv-v">{{ "{:,.0f}".format(sv.basic_bill) }} 원</span></div>
+        <div class="sv-row"><span class="sv-k">요금적용전력</span><span class="sv-v">{{ "{:,.1f}".format(sv.demand_kw) }} kW <small class="text-muted">({{ sv.demand_ym }})</small></span></div>
+        <div class="sv-row"><span class="sv-k">최대수요전력</span><span class="sv-v">{{ "{:,.1f}".format(sv.max_demand_kw) }} kW <small class="text-muted">({{ sv.max_demand_date }})</small></span></div>
+        <div class="sv-updated">갱신: {{ sv.updated_at }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 카드4: 전력량요금 단가표 -->
+  <div class="col-12 col-md-4">
+    <div class="card sv-card h-100">
+      <div class="card-body">
+        <div class="sv-lbl mb-2">전력량요금 단가 (원/kWh)</div>
+        {% if sv.rate_table %}
+        <table class="rt-table">
+          <thead>
+            <tr><th>구분</th><th>여름</th><th>봄가을</th><th>겨울</th></tr>
+          </thead>
+          <tbody>
+            {% for row in sv.rate_table %}
+            <tr>
+              <td>{{ row.load }}</td>
+              <td>{{ "{:,.1f}".format(row.summer) }}</td>
+              <td>{{ "{:,.1f}".format(row.spring_fall) }}</td>
+              <td>{{ "{:,.1f}".format(row.winter) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-muted" style="font-size:0.82rem;">단가 데이터 없음</div>
+        {% endif %}
+        <div class="sv-updated">갱신: {{ sv.updated_at }}</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endif %}
+
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- ② 월별 청구요금                                    -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card pw-card">
+      <div class="sec-hd d-flex justify-content-between align-items-center">
+        <span>💰 월별 청구요금 (최근 12개월)</span>
+        <span class="text-muted fw-normal" style="font-size:0.75rem;">파란막대: 당해 &nbsp;|&nbsp; 회색막대: 전년동월 &nbsp;|&nbsp; 녹선: 사용량</span>
+      </div>
+      <div class="card-body p-3">
+        <canvas id="chartMonthBill" height="90"></canvas>
+      </div>
+      <!-- 청구요금 표 -->
+      <div class="card-body p-0">
+        <div style="overflow-x:auto;">
+          <table class="table table-sm table-hover mb-0" style="font-size:0.78rem; min-width:700px;">
+            <thead class="table-light">
+              <tr>
+                <th>청구월</th>
+                {% for lbl in summary.monthly_labels %}
+                <th class="text-end">{{ lbl }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="text-muted">전년동월(만원)</td>
+                {% for v in summary.monthly_ly_bill_list %}
+                <td class="text-end text-muted">{{ '{:,.0f}'.format(v / 10000) if v > 0 else '–' }}</td>
+                {% endfor %}
+              </tr>
+              <tr class="fw-semibold">
+                <td>당해(만원)</td>
+                {% for v in summary.monthly_bill_list %}
+                <td class="text-end {{ 'text-primary' if v > 0 else 'text-muted' }}">{{ '{:,.0f}'.format(v / 10000) if v > 0 else '집계중' }}</td>
+                {% endfor %}
+              </tr>
+              <tr>
+                <td class="text-muted">대비(%)</td>
+                {% for i in range(summary.monthly_bill_list | length) %}
+                {% set cy = summary.monthly_bill_list[i] %}
+                {% set ly = summary.monthly_ly_bill_list[i] %}
+                {% if cy > 0 and ly > 0 %}
+                  {% set pct = ((cy - ly) / ly * 100) | round(1) %}
+                  <td class="text-end {{ 'text-danger' if pct > 0 else 'text-primary' }}">{{ '+' if pct > 0 else '' }}{{ pct }}%</td>
+                {% else %}
+                  <td class="text-end text-muted">–</td>
+                {% endif %}
+                {% endfor %}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- ③ 오늘 시간대별 전력사용 (라인)                    -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card pw-card">
+      <div class="sec-hd d-flex justify-content-between align-items-center">
+        <span>⚡ 오늘 시간대별 전력사용 (kWh)</span>
+        <span class="text-muted fw-normal" style="font-size:0.75rem;">30일 평균과 비교</span>
+      </div>
+      <div class="card-body p-3">
+        <canvas id="chartToday" height="90"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- ③ 이번달 일별 사용량                              -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card pw-card">
+      <div class="sec-hd d-flex justify-content-between align-items-center">
+        <span>📅 {{ summary.cur_month }}월 일별 사용량 (kWh)</span>
+        <span class="text-muted fw-normal" style="font-size:0.75rem;">막대: 당해 &nbsp;|&nbsp; 선: 전월동일·전년동일</span>
+      </div>
+      <div class="card-body p-3">
+        <canvas id="chartDaily" height="90"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- ④ 월별 사용량 / 청구요금 현황 (당해 vs 전년)        -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card pw-card">
+      <div class="sec-hd d-flex justify-content-between align-items-center">
+        <span>📊 월별 사용량 / 청구요금 비교 ({{ summary.prev_year }} vs {{ summary.this_year }})</span>
+        <span class="text-muted fw-normal" style="font-size:0.75rem;">1~12월 달력월 기준</span>
+      </div>
+      <!-- 사용량 차트 -->
+      <div class="card-body pb-0">
+        <div class="text-muted" style="font-size:0.72rem; margin-bottom:2px;">📦 사용량 (kWh)</div>
+        <canvas id="chartCalMonthly" height="80"></canvas>
+      </div>
+      <!-- 청구요금 차트 -->
+      <div class="card-body pb-2 pt-3">
+        <div class="text-muted" style="font-size:0.72rem; margin-bottom:2px;">💰 청구요금 (원)</div>
+        <canvas id="chartCalBill" height="80"></canvas>
+      </div>
+      <!-- 데이터 테이블 -->
+      <div class="card-body p-0 pt-0">
+        <div style="overflow-x:auto;">
+          <table class="table table-sm table-hover mb-0" style="font-size:0.78rem; min-width:720px;">
+            <thead class="table-light">
+              <tr>
+                <th>월</th>
+                <th class="text-end">{{ summary.prev_year }}년 (kWh)</th>
+                <th class="text-end">{{ summary.this_year }}년 (kWh)</th>
+                <th class="text-end">사용량 대비</th>
+                <th class="text-end">{{ summary.prev_year }}년 요금(원)</th>
+                <th class="text-end">{{ summary.this_year }}년 요금(원)</th>
+                <th class="text-end">요금 대비</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for r in summary.cal_table %}
+              {% set has_cy = r.cy > 0 %}
+              {% set has_ly = r.ly > 0 %}
+              {% set has_cy_b = r.cy_bill > 0 %}
+              {% set has_ly_b = r.ly_bill > 0 %}
+              {% set diff_kwh = ((r.cy - r.ly) / r.ly * 100) | round(1) if has_cy and has_ly else None %}
+              {% set diff_bill = ((r.cy_bill - r.ly_bill) / r.ly_bill * 100) | round(1) if has_cy_b and has_ly_b else None %}
+              <tr class="{{ 'fw-semibold bg-light' if loop.index == now_month }}">
+                <td>{{ loop.index }}월</td>
+                <td class="text-end text-muted">{{ '{:,.0f}'.format(r.ly) if has_ly else '–' }}</td>
+                <td class="text-end">{{ '{:,.0f}'.format(r.cy) if has_cy else '–' }}</td>
+                <td class="text-end {% if diff_kwh is not none %}{{ 'text-danger' if diff_kwh > 0 else 'text-primary' }}{% endif %}">
+                  {% if diff_kwh is not none %}{{ '+' if diff_kwh > 0 else '' }}{{ diff_kwh }}%{% else %}–{% endif %}
+                </td>
+                <td class="text-end text-muted">{{ '{:,.0f}'.format(r.ly_bill) if has_ly_b else '–' }}</td>
+                <td class="text-end">{{ '{:,.0f}'.format(r.cy_bill) if has_cy_b else '–' }}</td>
+                <td class="text-end {% if diff_bill is not none %}{{ 'text-danger' if diff_bill > 0 else 'text-primary' }}{% endif %}">
+                  {% if diff_bill is not none %}{{ '+' if diff_bill > 0 else '' }}{{ diff_bill }}%{% else %}–{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+            <tfoot class="table-light fw-bold">
+              <tr>
+                <td>합계</td>
+                <td class="text-end text-muted">{{ '{:,.0f}'.format(summary.cal_ly_kwh | sum) }}</td>
+                <td class="text-end">{{ '{:,.0f}'.format(summary.cal_kwh | sum) }}</td>
+                <td></td>
+                <td class="text-end text-muted">{{ '{:,.0f}'.format(summary.cal_ly_bill | sum) }}</td>
+                <td class="text-end">{{ '{:,.0f}'.format(summary.cal_bill | sum) }}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /월별 사용량·요금 현황 -->
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- ⑤ 최근 7일 + 시간대별 평균 (하단 보조 차트)        -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+
+  <div class="col-12 col-md-6">
+    <div class="card pw-card h-100">
+      <div class="sec-hd">📊 최근 7일 일별 사용량 (kWh)</div>
+      <div class="card-body p-3">
+        <canvas id="chartWeek" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6">
+    <div class="card pw-card h-100">
+      <div class="sec-hd">⏰ 시간대별 평균 전력 (kWh, 최근 30일)</div>
+      <div class="card-body p-3">
+        <canvas id="chartHourly" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</div><!-- /main-content -->
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var gc  = 'rgba(0,0,0,.05)';
+  var axX = { grid:{color:gc}, ticks:{font:{size:10}} };
+  var axY = { grid:{color:gc}, ticks:{font:{size:10}}, beginAtZero:true };
+
+  /* ─ ② 월별 청구요금 콤보 차트 (당해 + 전년동월 + 사용량선) ─ */
+  var mbLabels  = {{ summary.monthly_labels        | default([]) | tojson }};
+  var mbBill    = {{ summary.monthly_bill_list      | default([]) | tojson }};
+  var mbLyBill  = {{ summary.monthly_ly_bill_list   | default([]) | tojson }};
+  var mbKwh     = {{ summary.monthly_kwh_list       | default([]) | tojson }};
+  if (mbLabels.length > 0) {
+    new Chart(document.getElementById('chartMonthBill'), {
+      type: 'bar',
+      data: {
+        labels: mbLabels,
+        datasets: [
+          {
+            label: '전년동월(원)',
+            data: mbLyBill,
+            backgroundColor: 'rgba(156,163,175,.55)',
+            borderRadius: 3,
+            yAxisID: 'yBill', order: 3,
+          },
+          {
+            label: '당해(원)',
+            data: mbBill,
+            backgroundColor: mbBill.map(function(v,i){
+              return i === mbBill.length-1 ? 'rgba(255,149,0,.7)' : 'rgba(0,113,227,.7)';
+            }),
+            borderRadius: 3,
+            yAxisID: 'yBill', order: 2,
+          },
+          {
+            label: '사용량(kWh)',
+            data: mbKwh,
+            type: 'line',
+            borderColor: 'rgba(52,211,153,.9)',
+            backgroundColor: 'transparent',
+            borderWidth: 2, pointRadius: 3,
+            pointBackgroundColor: 'rgba(52,211,153,.9)',
+            tension: 0.3, yAxisID: 'yKwh', order: 1,
+          }
+        ]
+      },
+      options: {
+        plugins: {
+          legend: { position:'top', labels:{font:{size:11}, boxWidth:12} },
+          tooltip: {
+            callbacks: {
+              label: function(c) {
+                if (c.dataset.yAxisID === 'yBill')
+                  return c.dataset.label + ': ' + c.raw.toLocaleString() + ' 원';
+                return '사용량: ' + c.raw.toLocaleString() + ' kWh';
+              }
+            }
+          }
+        },
+        scales: {
+          x: axX,
+          yBill: {
+            position: 'left',
+            grid: {color: gc},
+            ticks: { font:{size:10}, callback: function(v){ return (v/1e6).toFixed(0)+'M원'; } },
+            beginAtZero: true,
+          },
+          yKwh: {
+            position: 'right',
+            grid: {drawOnChartArea: false},
+            ticks: { font:{size:10}, callback: function(v){ return (v/1000).toFixed(0)+'k'; } },
+            beginAtZero: true,
+          }
+        }
+      }
+    });
+  }
+
+  /* ─ ③ 오늘 시간대별 (라인 + 30일 평균 라인) ─ */
+  var todayLabels = {{ summary.today_hr_labels | default([]) | tojson }};
+  var todayData   = {{ summary.today_hr_data   | default([]) | tojson }};
+  var avgData     = {{ summary.hourly_data      | default([]) | tojson }};
+  // 오늘 라인에 맞춰 평균도 같은 길이로 자름
+  var avgSlice    = avgData.slice(0, todayLabels.length);
+
+  if (todayLabels.length > 0) {
+    new Chart(document.getElementById('chartToday'), {
+      type: 'bar',
+      data: {
+        labels: todayLabels,
+        datasets: [
+          {
+            label: '오늘',
+            data: todayData,
+            backgroundColor: todayData.map(function(v,i){
+              var avg = avgSlice[i] || 0;
+              return v > avg * 1.5 ? 'rgba(231,76,60,.75)' :
+                     v < avg * 0.4 ? 'rgba(59,130,246,.6)'  :
+                     'rgba(0,113,227,.65)';
+            }),
+            borderRadius: 4, order: 2,
+          },
+          {
+            label: '30일 평균',
+            data: avgSlice,
+            type: 'line',
+            borderColor: 'rgba(255,149,0,.9)',
+            backgroundColor: 'transparent',
+            borderWidth: 2, pointRadius: 3,
+            pointBackgroundColor: 'rgba(255,149,0,.9)',
+            tension: 0.3, order: 1,
+          }
+        ]
+      },
+      options: {
+        plugins: {
+          legend: { position:'top', labels:{font:{size:11}, boxWidth:12} },
+          tooltip: { callbacks: { label: function(c){ return c.dataset.label+': '+c.raw+' kWh'; } } }
+        },
+        scales: { x: axX, y: axY }
+      }
+    });
+  }
+
+  /* ─ ③ 이번달 일별 사용량 ─ */
+  var dailyLabels   = {{ summary.daily_labels     | default([]) | tojson }};
+  var dailyKwh      = {{ summary.daily_kwh        | default([]) | tojson }};
+  var dailyPrevMon  = {{ summary.daily_prev_month | default([]) | tojson }};
+  var dailyPrevYear = {{ summary.daily_prev_year  | default([]) | tojson }};
+  if (dailyLabels.length > 0) {
+    new Chart(document.getElementById('chartDaily'), {
+      type: 'bar',
+      data: {
+        labels: dailyLabels,
+        datasets: [
+          {
+            label: '사용량',
+            data: dailyKwh,
+            backgroundColor: 'rgba(52,211,190,.75)',
+            borderRadius: 3, order: 3,
+          },
+          {
+            label: '전월동일',
+            data: dailyPrevMon,
+            type: 'line',
+            borderColor: 'rgba(34,139,34,.85)',
+            backgroundColor: 'transparent',
+            borderWidth: 2, pointRadius: 3,
+            pointBackgroundColor: 'rgba(34,139,34,.85)',
+            tension: 0.3, order: 2, spanGaps: true,
+          },
+          {
+            label: '전년동일',
+            data: dailyPrevYear,
+            type: 'line',
+            borderColor: 'rgba(255,140,0,.9)',
+            backgroundColor: 'transparent',
+            borderWidth: 2, pointRadius: 3,
+            pointBackgroundColor: 'rgba(255,140,0,.9)',
+            tension: 0.3, order: 1, spanGaps: true,
+          }
+        ]
+      },
+      options: {
+        plugins: {
+          legend: { position:'top', labels:{font:{size:11}, boxWidth:12} },
+          tooltip: { callbacks: { label: function(c){ return c.dataset.label+': '+(c.raw||0).toLocaleString()+' kWh'; } } }
+        },
+        scales: { x: axX, y: axY }
+      }
+    });
+  }
+
+  /* ─ ④ 달력월 당해/전년 비교 ─ */
+  var calLabels  = {{ summary.cal_labels    | default([]) | tojson }};
+  var calKwh     = {{ summary.cal_kwh       | default([]) | tojson }};
+  var calLyKwh   = {{ summary.cal_ly_kwh    | default([]) | tojson }};
+  var calBill    = {{ summary.cal_bill      | default([]) | tojson }};
+  var calLyBill  = {{ summary.cal_ly_bill   | default([]) | tojson }};
+  var cyYear     = '{{ summary.this_year }}';
+  var lyYear     = '{{ summary.prev_year }}';
+
+  if (calLabels.length > 0) {
+    /* 사용량 그룹막대 */
+    new Chart(document.getElementById('chartCalMonthly'), {
+      type: 'bar',
+      data: {
+        labels: calLabels,
+        datasets: [
+          {
+            label: lyYear+'년',
+            data: calLyKwh,
+            backgroundColor: 'rgba(156,163,175,.6)',
+            borderRadius: 3,
+          },
+          {
+            label: cyYear+'년',
+            data: calKwh,
+            backgroundColor: calKwh.map(function(v){ return v > 0 ? 'rgba(52,211,190,.8)' : 'rgba(200,200,200,.2)'; }),
+            borderRadius: 3,
+          }
+        ]
+      },
+      options: {
+        plugins: {
+          legend: { position:'top', labels:{font:{size:11}, boxWidth:12} },
+          tooltip: { callbacks: { label: function(c){ return c.dataset.label+': '+c.raw.toLocaleString()+' kWh'; } } }
+        },
+        scales: { x: axX, y: { ...axY } }
+      }
+    });
+
+    /* 청구요금 그룹막대 */
+    new Chart(document.getElementById('chartCalBill'), {
+      type: 'bar',
+      data: {
+        labels: calLabels,
+        datasets: [
+          {
+            label: lyYear+'년',
+            data: calLyBill,
+            backgroundColor: 'rgba(156,163,175,.6)',
+            borderRadius: 3,
+          },
+          {
+            label: cyYear+'년',
+            data: calBill,
+            backgroundColor: calBill.map(function(v){ return v > 0 ? 'rgba(0,113,227,.7)' : 'rgba(200,200,200,.2)'; }),
+            borderRadius: 3,
+          }
+        ]
+      },
+      options: {
+        plugins: {
+          legend: { position:'top', labels:{font:{size:11}, boxWidth:12} },
+          tooltip: {
+            callbacks: {
+              label: function(c){ return c.dataset.label+': '+c.raw.toLocaleString()+' 원'; }
+            }
+          }
+        },
+        scales: {
+          x: axX,
+          y: { ...axY, ticks: { ...axY.ticks, callback: function(v){ return (v/1e6).toFixed(0)+'M'; } } }
+        }
+      }
+    });
+  }
+
+  /* ─ ⑤ 최근 7일 ─ */
+  new Chart(document.getElementById('chartWeek'), {
+    type: 'bar',
+    data: {
+      labels: {{ summary.seven_days | default([]) | tojson }},
+      datasets: [{
+        data: {{ summary.seven_kwh | default([]) | tojson }},
+        backgroundColor: 'rgba(0,113,227,.65)',
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      plugins: { legend:{display:false},
+                 tooltip:{callbacks:{label:function(c){return c.raw.toLocaleString()+' kWh';}}} },
+      scales: { x: axX, y: axY }
+    }
+  });
+
+  /* ─ ⑤ 시간대별 평균 ─ */
+  var hData = {{ summary.hourly_data | default([]) | tojson }};
+  new Chart(document.getElementById('chartHourly'), {
+    type: 'bar',
+    data: {
+      labels: {{ summary.hourly_labels | default([]) | tojson }},
+      datasets: [{
+        data: hData,
+        backgroundColor: hData.map(function(v,i){
+          return (i>=8 && i<18) ? 'rgba(255,149,0,.7)' : 'rgba(90,200,250,.65)';
+        }),
+        borderRadius: 3,
+      }]
+    },
+    options: {
+      plugins: { legend:{display:false},
+                 tooltip:{callbacks:{label:function(c){return c.raw+' kWh';}}} },
+      scales: { x: axX, y: axY }
+    }
+  });
+
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

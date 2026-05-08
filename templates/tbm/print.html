@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TBM 회의록 인쇄 — {{ week.label }}</title>
+<style>
+@page{size:A4 landscape;margin:10mm;}
+*{box-sizing:border-box;}
+body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:8pt;color:#000;margin:0;}
+.no-print{display:flex;gap:8px;padding:10px 16px;background:#f3f4f6;align-items:center;}
+.no-print button{padding:6px 16px;border:none;border-radius:6px;cursor:pointer;font-size:.85rem}
+.btn-print{background:#6d28d9;color:#fff}
+.btn-close-win{background:#6b7280;color:#fff}
+.print-wrap{width:100%;padding:4mm;}
+.tbm-title-row{display:flex;align-items:center;margin-bottom:2mm;border:1.5pt solid #000}
+.tbm-logo{font-weight:900;font-size:10pt;padding:2mm 4mm;border-right:1pt solid #000;white-space:nowrap}
+.tbm-main-title{flex:1;text-align:center;font-weight:900;font-size:11pt;letter-spacing:1pt;padding:2mm}
+.tbm-date-box{font-size:7.5pt;padding:1mm 3mm;border-left:1pt solid #000;text-align:center;white-space:nowrap}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:4mm}
+.dept-col{border:1.5pt solid #000}
+.dept-header{background:#d0d0d0;text-align:center;font-weight:700;font-size:9pt;
+  padding:1.5mm;border-bottom:1pt solid #000}
+table.form{width:100%;border-collapse:collapse}
+table.form td{border:0.5pt solid #999;padding:1mm 2mm;vertical-align:top;line-height:1.4}
+table.form .lbl{background:#e8e8e8;font-weight:700;white-space:nowrap;font-size:7.5pt}
+table.form .val{font-size:7.5pt;min-height:5mm}
+.section-hdr{background:#c8c8c8;font-weight:700;font-size:7.5pt;text-align:center;
+  padding:1mm;border-bottom:0.5pt solid #999;border-top:0.5pt solid #999}
+.hazard-table{width:100%;border-collapse:collapse;font-size:7pt}
+.hazard-table th{background:#e8e8e8;border:0.5pt solid #999;padding:1mm;font-weight:700}
+.hazard-table td{border:0.5pt solid #999;padding:1mm;min-height:5mm;vertical-align:top}
+.yn-box{display:inline-block;border:0.5pt solid #555;width:8pt;height:8pt;
+  line-height:8pt;text-align:center;font-size:6pt;margin-right:1mm;vertical-align:middle;flex-shrink:0}
+.yn-box.checked{background:#555;color:#fff}
+.yn-label{display:inline-block;font-size:7pt;margin-right:4mm;vertical-align:middle;white-space:nowrap}
+.yn-group{white-space:nowrap;display:inline-block}
+.sig-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1mm;padding:1.5mm}
+.sig-cell{border:0.5pt solid #999;text-align:center;padding:1mm;min-height:18mm}
+.sig-cell .sig-name{font-size:7pt;font-weight:700;border-bottom:0.5pt solid #ccc;margin-bottom:1mm}
+.sig-cell img{width:100%;max-height:12mm;object-fit:contain}
+.sig-cell .no-sig{height:12mm;display:flex;align-items:center;justify-content:center;
+  color:#ccc;font-size:7pt}
+.excl-list{font-size:7pt;padding:1mm 2mm;color:#555}
+@media print{
+  .no-print{display:none!important}
+  body{margin:0}
+}
+</style>
+</head>
+<body>
+<!-- 인쇄 버튼 (화면에서만 표시) -->
+<div class="no-print">
+  <button class="btn-print" onclick="window.print()">🖨️ PDF/인쇄</button>
+  <button class="btn-close-win" onclick="window.close()">닫기</button>
+  <span style="font-size:.82rem;color:#6b7280">인쇄 시 용지 방향: 가로, A4 권장</span>
+</div>
+
+<div class="print-wrap">
+  <!-- 제목 행 -->
+  <div class="tbm-title-row">
+    <div class="tbm-logo">㈜ 태인</div>
+    <div class="tbm-main-title">Tool Box Meeting 회의록</div>
+    <div class="tbm-date-box">{{ week.label }}<br>{{ week.tbm_date }}</div>
+  </div>
+
+  <!-- 2단 사업부 -->
+  <div class="cols">
+    {% for dept in tbm_depts %}
+    {% set sess = sessions.get(dept) %}
+    {% set is_elec = '전기' in dept %}
+    <div class="dept-col">
+      <div class="dept-header">{{ dept }}</div>
+      {% if not sess %}
+      <div style="text-align:center;padding:8mm;color:#888;font-size:8pt">TBM 내용 미입력</div>
+      {% else %}
+      <!-- 기본 정보 -->
+      <table class="form">
+        <tr>
+          <td class="lbl" style="width:22%">TBM 일시</td>
+          <td class="val" colspan="3">
+            {{ sess.time_start }} ~ {{ sess.time_end }}
+            &nbsp;&nbsp;
+            작업날짜와 동일:
+            <span class="yn-group">
+              <span class="yn-box {{ 'checked' if sess.same_as_job_date }}">✔</span><span class="yn-label">예</span>
+              <span class="yn-box {{ 'checked' if not sess.same_as_job_date }}">✔</span><span class="yn-label">아니오</span>
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <td class="lbl">작업명</td>
+          <td class="val" colspan="3">{{ sess.job_name or '' }}</td>
+        </tr>
+        <tr>
+          <td class="lbl">작업내용</td>
+          <td class="val" colspan="3">{{ sess.job_content or '' }}</td>
+        </tr>
+        <tr>
+          <td class="lbl">TBM 장소</td>
+          <td class="val">{{ sess.location or '' }}</td>
+          <td class="lbl" style="width:22%">위험성평가</td>
+          <td class="val" style="width:16%">
+            <span class="yn-group">
+              <span class="yn-box {{ 'checked' if sess.risk_assessed=='Y' }}">✔</span><span class="yn-label">예</span>
+              <span class="yn-box {{ 'checked' if sess.risk_assessed=='N' }}">✔</span><span class="yn-label">아니오</span>
+            </span>
+          </td>
+        </tr>
+      </table>
+
+      <!-- 잠재 위험 요인 -->
+      <div class="section-hdr">잠재 위험 요인</div>
+      <table class="hazard-table">
+        <thead><tr><th style="width:50%">위험 요인</th><th style="width:50%">대책</th></tr></thead>
+        <tbody>
+          {% if sess.hazards %}
+            {% for h in sess.hazards %}
+            <tr><td>{{ h.hazard }}</td><td>{{ h.measure }}</td></tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="2" style="height:6mm"></td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+
+      <!-- 중점 위험 요인 -->
+      <div class="section-hdr">중점 위험 요인</div>
+      <table class="form">
+        <tr>
+          <td class="lbl" style="width:22%">선정</td>
+          <td class="val">{{ sess.key_hazard_select or '' }}</td>
+        </tr>
+        <tr>
+          <td class="lbl">대책</td>
+          <td class="val">{{ sess.key_hazard_measure or '' }}</td>
+        </tr>
+      </table>
+
+      <!-- TBM 리더 -->
+      <div class="section-hdr">TBM 리더 확인</div>
+      <table class="form">
+        <tr>
+          <td class="lbl" style="width:22%">소속</td>
+          <td class="val">{{ sess.leader_dept or '' }}</td>
+          <td class="lbl" style="width:16%">직책</td>
+          <td class="val" style="width:20%">{{ sess.leader_position or '' }}</td>
+          <td class="lbl" style="width:14%">성명</td>
+          <td class="val" style="width:20%">{{ sess.leader_name or '' }}</td>
+        </tr>
+      </table>
+
+      <!-- 안전 조치 확인 -->
+      <div class="section-hdr">■ 작업 전 안전 조치 확인</div>
+      <table class="form">
+        {% for i in range(1,4) %}
+        <tr>
+          <td class="val">{{ safety_items[i-1] }}
+            &nbsp;
+            <span class="yn-group">
+              <span class="yn-box {{ 'checked' if sess['safety_check'~i]=='Y' }}">✔</span><span class="yn-label">예</span>
+              <span class="yn-box {{ 'checked' if sess['safety_check'~i]=='N' }}">✔</span><span class="yn-label">아니오</span>
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+
+      <!-- 지시사항 -->
+      <div class="section-hdr">■ 작업 전 안전 점검 결과 / 지시사항</div>
+      <table class="form">
+        <tr><td class="val" style="min-height:10mm">{{ sess.safety_instruction if sess.safety_instruction else tbm_defaults[dept].safety_instruction }}</td></tr>
+      </table>
+
+      <!-- 서명자 목록 -->
+      <div class="section-hdr">
+        참여 서명 현황
+        ({{ sess.signed_list|length }}명 서명 / 전체 {{ sess.total_workers }}명)
+      </div>
+      {% if sess.signed_list %}
+      <div class="sig-grid">
+        {% for s in sess.signed_list %}
+        <div class="sig-cell">
+          <div class="sig-name">{{ s.e_name }}</div>
+          {% if s.signature_data %}
+          <img src="{{ s.signature_data }}" alt="서명">
+          {% else %}
+          <div class="no-sig">서명없음</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="excl-list">서명자 없음</div>
+      {% endif %}
+
+      {% if sess.excluded_list %}
+      <div class="section-hdr">제외자</div>
+      <div class="excl-list">
+        {% for e in sess.excluded_list %}{{ e.e_name }}({{ e.reason }}) {% endfor %}
+      </div>
+      {% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- 인쇄 정보 -->
+  <div style="text-align:right;font-size:6.5pt;color:#aaa;margin-top:2mm">
+    출력일시: {{ print_time }}
+  </div>
+</div>
+</body>
+</html>

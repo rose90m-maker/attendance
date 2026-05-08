@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>권한그룹관리</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        .group-card { border:1px solid #e5e7eb; border-radius:8px; padding:10px 14px; cursor:pointer; transition:all .15s; background:#fff; }
+        .group-card:hover { border-color:#3b82f6; box-shadow:0 2px 6px rgba(59,130,246,.15); }
+        .group-card.active { border-color:#1e40af; background:#eff6ff; box-shadow:0 2px 8px rgba(30,64,175,.2); }
+        .group-card .g-name { font-weight:700; font-size:0.95rem; }
+        .group-card .g-desc { font-size:0.75rem; color:#6b7280; margin-top:2px; }
+        .group-card .g-meta { font-size:0.7rem; color:#9ca3af; margin-top:4px; }
+        .badge-system { background:#fef3c7; color:#92400e; font-size:0.62rem; padding:1px 6px; border-radius:8px; margin-left:4px; }
+
+        .matrix-table { font-size:0.82rem; width:100%; border-collapse:collapse; }
+        .matrix-table th, .matrix-table td { border:1px solid #e5e7eb; padding:6px 8px; text-align:center; }
+        .matrix-table th { background:#f3f4f6; font-weight:700; }
+        .matrix-table th.menu-col { text-align:left; min-width:160px; background:#eef2ff; }
+        .matrix-table td.menu-col { text-align:left; background:#f9fafb; }
+        .matrix-table tr.category-row td { background:#dbeafe !important; font-weight:700; color:#1e40af; }
+        .matrix-table tr.category-row td.menu-col { padding-left:8px; }
+        .matrix-table tr.leaf-row td.menu-col { padding-left:24px; }
+        .matrix-table input[type=checkbox] { width:18px; height:18px; cursor:pointer; }
+        .matrix-table .action-h { width:60px; }
+        .disabled-action { background:#f3f4f6; color:#d1d5db; }
+
+        @media (max-width:767.98px){
+            .matrix-table { font-size:0.72rem; }
+            .matrix-table th, .matrix-table td { padding:3px 4px; }
+            .matrix-table input[type=checkbox]{ width:14px; height:14px; }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'perm_groups' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">🔐 권한그룹관리 <small class="text-muted" style="font-size:0.55em;">{{ groups|length }}개 그룹</small></h4>
+        <button class="btn btn-success btn-sm" onclick="openCreateModal()">➕ 새 그룹</button>
+    </div>
+
+    <div class="row g-3">
+        <!-- 왼쪽: 그룹 리스트 -->
+        <div class="col-md-3">
+            <div class="d-flex flex-column gap-2" id="groupList">
+                {% for g in groups %}
+                <div class="group-card" data-gid="{{ g.id }}" onclick="selectGroup({{ g.id }})">
+                    <div class="g-name">
+                        {{ g.name }}
+                        {% if g.is_system %}<span class="badge-system">기본</span>{% endif %}
+                    </div>
+                    {% if g.description %}<div class="g-desc">{{ g.description }}</div>{% endif %}
+                    <div class="g-meta">소속 {{ user_counts.get(g.id, 0) }}명</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 오른쪽: 선택된 그룹의 권한 매트릭스 -->
+        <div class="col-md-9">
+            <div id="matrixPanel" class="d-none">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <input type="text" id="editName" class="form-control form-control-sm d-inline-block" style="width:200px;" placeholder="그룹 이름">
+                        <input type="text" id="editDesc" class="form-control form-control-sm d-inline-block ms-2" style="width:320px;" placeholder="설명 (선택)">
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary" onclick="saveGroupInfo()">📝 이름/설명 저장</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteGroup()" id="btnDelete">🗑 삭제</button>
+                    </div>
+                </div>
+                <div class="alert alert-info py-2 px-3 mb-2" style="font-size:0.78rem;">
+                    💡 대분류 행의 체크박스를 누르면 해당 분류의 모든 하위 메뉴에 일괄 적용됩니다. 체크박스가 비활성(회색)인 셀은 해당 메뉴에 의미 없는 권한입니다.
+                </div>
+                <div class="table-responsive">
+                    <table class="matrix-table">
+                        <thead>
+                            <tr>
+                                <th class="menu-col">메뉴</th>
+                                <th class="action-h">조회</th>
+                                <th class="action-h">등록</th>
+                                <th class="action-h">수정</th>
+                                <th class="action-h">삭제</th>
+                            </tr>
+                        </thead>
+                        <tbody id="matrixBody"></tbody>
+                    </table>
+                </div>
+                <div class="text-end mt-3">
+                    <button class="btn btn-primary" onclick="saveMatrix()">💾 권한 매트릭스 저장</button>
+                </div>
+            </div>
+            <div id="emptyPanel" class="text-center text-muted py-5">
+                ← 왼쪽에서 그룹을 선택하세요.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 새 그룹 모달 -->
+<div class="modal fade" id="createModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">새 권한 그룹</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-2"><label>이름 *</label>
+                    <input type="text" id="newName" class="form-control"></div>
+                <div class="mb-2"><label>설명</label>
+                    <input type="text" id="newDesc" class="form-control"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button class="btn btn-primary" onclick="createGroup()">생성</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// 서버 전달 데이터
+var MENU_STRUCTURE = {{ menu_structure|tojson }};
+var GROUP_PERMS = {{ group_perms|tojson }};
+var GROUPS = {{ groups|tojson }};
+var selectedGid = null;
+
+function findGroup(gid) { return GROUPS.find(function(g){ return g.id === gid; }); }
+
+function selectGroup(gid) {
+    selectedGid = gid;
+    document.querySelectorAll('.group-card').forEach(function(el){
+        el.classList.toggle('active', parseInt(el.dataset.gid) === gid);
+    });
+    var g = findGroup(gid);
+    if (!g) return;
+    document.getElementById('emptyPanel').classList.add('d-none');
+    document.getElementById('matrixPanel').classList.remove('d-none');
+    document.getElementById('editName').value = g.name;
+    document.getElementById('editName').disabled = !!g.is_system;
+    document.getElementById('editDesc').value = g.description || '';
+    document.getElementById('btnDelete').disabled = !!g.is_system;
+    document.getElementById('btnDelete').title = g.is_system ? '시스템 기본 그룹은 삭제할 수 없습니다' : '';
+    renderMatrix(gid);
+}
+
+function renderMatrix(gid) {
+    var perms = GROUP_PERMS[gid] || {};
+    var tbody = document.getElementById('matrixBody');
+    tbody.innerHTML = '';
+    MENU_STRUCTURE.forEach(function(item){
+        var key = item[0], parent = item[1], label = item[2], actions = item[3];
+        var isCategory = parent === null;
+        var tr = document.createElement('tr');
+        tr.className = isCategory ? 'category-row' : 'leaf-row';
+        tr.dataset.key = key;
+        if (isCategory) {
+            tr.dataset.category = '1';
+            var childKeys = MENU_STRUCTURE.filter(function(x){ return x[1] === key; }).map(function(x){ return x[0]; });
+            tr.dataset.children = childKeys.join(',');
+            tr.innerHTML = '<td class="menu-col">📁 ' + label + '</td>'
+                + ['view','create','update','delete'].map(function(a){
+                    return '<td><input type="checkbox" class="cat-cb" data-cat="' + key + '" data-action="' + a + '" onchange="toggleCategory(this)"></td>';
+                }).join('');
+        } else {
+            var cells = ['<td class="menu-col">' + label + '</td>'];
+            ['view','create','update','delete'].forEach(function(a){
+                if (actions.indexOf(a) < 0) {
+                    cells.push('<td class="disabled-action">-</td>');
+                } else {
+                    var checked = (perms[key] && perms[key][a]) ? 'checked' : '';
+                    cells.push('<td><input type="checkbox" class="leaf-cb" data-key="' + key + '" data-action="' + a + '" ' + checked + ' onchange="syncCategoryCheckbox(\'' + (parent||'') + '\',\'' + a + '\')"></td>');
+                }
+            });
+            tr.innerHTML = cells.join('');
+        }
+        tbody.appendChild(tr);
+    });
+    // 초기 대분류 체크박스 상태 동기화
+    document.querySelectorAll('tr.category-row').forEach(function(tr){
+        ['view','create','update','delete'].forEach(function(a){
+            syncCategoryCheckbox(tr.dataset.key, a);
+        });
+    });
+}
+
+function toggleCategory(cb) {
+    var catKey = cb.dataset.cat;
+    var action = cb.dataset.action;
+    var checked = cb.checked;
+    document.querySelectorAll('tr.leaf-row').forEach(function(tr){
+        var item = MENU_STRUCTURE.find(function(x){ return x[0] === tr.dataset.key; });
+        if (!item || item[1] !== catKey) return;
+        var leafCb = tr.querySelector('input.leaf-cb[data-action="' + action + '"]');
+        if (leafCb) leafCb.checked = checked;
+    });
+}
+
+function syncCategoryCheckbox(catKey, action) {
+    if (!catKey) return;
+    var catCb = document.querySelector('input.cat-cb[data-cat="' + catKey + '"][data-action="' + action + '"]');
+    if (!catCb) return;
+    var leafs = [];
+    document.querySelectorAll('tr.leaf-row').forEach(function(tr){
+        var item = MENU_STRUCTURE.find(function(x){ return x[0] === tr.dataset.key; });
+        if (!item || item[1] !== catKey) return;
+        var leafCb = tr.querySelector('input.leaf-cb[data-action="' + action + '"]');
+        if (leafCb) leafs.push(leafCb);
+    });
+    if (leafs.length === 0) { catCb.checked = false; catCb.indeterminate = false; return; }
+    var allChecked = leafs.every(function(cb){ return cb.checked; });
+    var anyChecked = leafs.some(function(cb){ return cb.checked; });
+    catCb.checked = allChecked;
+    catCb.indeterminate = !allChecked && anyChecked;
+}
+
+function saveMatrix() {
+    if (!selectedGid) return;
+    var matrix = {};
+    document.querySelectorAll('input.leaf-cb').forEach(function(cb){
+        var k = cb.dataset.key, a = cb.dataset.action;
+        if (!matrix[k]) matrix[k] = {view:0,create:0,update:0,delete:0};
+        matrix[k][a] = cb.checked ? 1 : 0;
+    });
+    fetch('/api/perm_group_matrix', {
+        method: 'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({group_id: selectedGid, matrix: matrix})
+    }).then(function(r){ return r.json(); }).then(function(j){
+        if (j.ok) {
+            GROUP_PERMS[selectedGid] = {};
+            Object.keys(matrix).forEach(function(k){
+                GROUP_PERMS[selectedGid][k] = {view: !!matrix[k].view, create: !!matrix[k].create, update: !!matrix[k].update, delete: !!matrix[k].delete};
+            });
+            alert('저장되었습니다.');
+        } else {
+            alert('저장 실패: ' + (j.error || ''));
+        }
+    });
+}
+
+function saveGroupInfo() {
+    if (!selectedGid) return;
+    var name = document.getElementById('editName').value.trim();
+    var desc = document.getElementById('editDesc').value.trim();
+    fetch('/api/perm_group', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'update', id: selectedGid, name: name, description: desc})
+    }).then(function(r){return r.json();}).then(function(j){
+        if (j.ok) location.reload(); else alert('저장 실패: ' + (j.error||''));
+    });
+}
+
+function deleteGroup() {
+    if (!selectedGid) return;
+    if (!confirm('이 그룹을 삭제하시겠습니까?')) return;
+    fetch('/api/perm_group', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'delete', id: selectedGid})
+    }).then(function(r){return r.json();}).then(function(j){
+        if (j.ok) location.reload(); else alert('삭제 실패: ' + (j.error||''));
+    });
+}
+
+function openCreateModal() {
+    document.getElementById('newName').value = '';
+    document.getElementById('newDesc').value = '';
+    new bootstrap.Modal(document.getElementById('createModal')).show();
+}
+
+function createGroup() {
+    var name = document.getElementById('newName').value.trim();
+    var desc = document.getElementById('newDesc').value.trim();
+    if (!name) { alert('이름을 입력하세요.'); return; }
+    fetch('/api/perm_group', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'create', name: name, description: desc})
+    }).then(function(r){return r.json();}).then(function(j){
+        if (j.ok) location.reload(); else alert('생성 실패: ' + (j.error||''));
+    });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로그관리</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        .badge-override { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
+        .badge-leave   { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; }
+        .badge-sync    { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
+        .log-table { font-size: 0.85rem; }
+        .log-table th { background: #e2e8f0; font-weight: 600; font-size: 0.8rem; white-space: nowrap; }
+        .log-table td { vertical-align: middle; }
+        .memo-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .memo-cell:hover { white-space: normal; overflow: visible; }
+        .sync-card { border-radius: var(--radius-md); padding: 16px 20px; color: #fff; }
+        .sync-card h6 { font-size: 0.78rem; opacity: 0.85; margin-bottom: 4px; font-weight: 400; }
+        .sync-card .val { font-size: 1.3rem; font-weight: 700; }
+        .sync-card .sub { font-size: 0.72rem; opacity: 0.75; margin-top: 2px; }
+        .sync-ok   { background: linear-gradient(135deg, #10b981, #059669); }
+        .sync-info { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+        .sync-warn { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        .sync-err  { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .daily-bar { display: inline-block; background: #3b82f6; border-radius: 3px; min-width: 2px; vertical-align: bottom; margin: 0 1px; }
+        .sync-log-mini { font-size: 0.75rem; max-height: 180px; overflow-y: auto; }
+        .sync-log-mini .lv-ok { color: #059669; font-weight: 600; }
+        .sync-log-mini .lv-info { color: #2563eb; }
+        .sync-log-mini .lv-err { color: #dc2626; font-weight: 600; }
+        .sync-log-mini .lv-skip { color: #64748b; }
+        @media (max-width: 767.98px) {
+            .log-table { font-size: 0.68rem; }
+            .log-table th, .log-table td { padding: 3px 2px; white-space: nowrap; }
+            .sync-card .val { font-size: 1.1rem; }
+            .sync-card { padding: 8px; }
+            .memo-cell { max-width: 120px; }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'log_management' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <div class="page-title mb-3">
+        <span class="title-icon">📋</span>
+        <span>로그관리</span>
+    </div>
+
+    <div class="filter-bar mb-3">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label">🔍 이름/사번</label>
+                <input type="text" name="search" class="form-control form-control-sm" value="{{ search }}" placeholder="검색...">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">📂 유형</label>
+                <select name="type" class="form-select form-select-sm">
+                    <option value="all" {{ 'selected' if log_type=='all' }}>전체</option>
+                    <option value="override" {{ 'selected' if log_type=='override' }}>근무표 수정</option>
+                    <option value="leave" {{ 'selected' if log_type=='leave' }}>연차 기록</option>
+                    <option value="sync" {{ 'selected' if log_type=='sync' }}>MDB 싱크</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">📅 시작일</label>
+                <input type="date" name="from" class="form-control form-control-sm" value="{{ date_from }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">📅 종료일</label>
+                <input type="date" name="to" class="form-control form-control-sm" value="{{ date_to }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100">🔍 조회</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- ========== MDB 싱크 현황 ========== -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-3 col-6">
+            <div class="sync-card sync-info">
+                <h6>📊 tenter 전체 레코드</h6>
+                <div class="val">{{ '{:,}'.format(sync_total) }}</div>
+                <div class="sub">최신 날짜: {{ sync_max_date or '-' }}</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="sync-card sync-info">
+                <h6>🕐 최신 업타임</h6>
+                <div class="val" style="font-size:1rem;">{{ sync_max_uptime or '-' }}</div>
+                <div class="sub">e_uptime 워터마크</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="sync-card {{ 'sync-ok' if sync_last_ok_time else 'sync-warn' }}">
+                <h6>✅ 마지막 성공 싱크</h6>
+                <div class="val" style="font-size:0.95rem;">{{ sync_last_ok_time.strftime('%m-%d %H:%M') if sync_last_ok_time else '없음' }}</div>
+                <div class="sub">{{ sync_last_ok_msg[:50] if sync_last_ok_msg else '-' }}</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="sync-card {{ 'sync-err' if sync_last_err_time else 'sync-ok' }}">
+                <h6>{{ '⚠️ 마지막 에러' if sync_last_err_time else '✅ 에러 없음' }}</h6>
+                <div class="val" style="font-size:0.95rem;">{{ sync_last_err_time.strftime('%m-%d %H:%M') if sync_last_err_time else '-' }}</div>
+                <div class="sub">{{ sync_last_err_msg[:50] if sync_last_err_msg else '정상 운영 중' }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 오늘 출퇴근 싱크 현황 -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-3 col-6">
+            <div class="sync-card {{ 'sync-ok' if today_in_cnt >= 10 else 'sync-err' }}">
+                <h6>🏢 오늘 출근 (06:00~08:30)</h6>
+                <div class="val">{{ today_in_cnt }}건</div>
+                <div class="sub">{{ '정상' if today_in_cnt >= 10 else '⚠️ 10건 미만 — 싱크 확인 필요' }}</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="sync-card {{ 'sync-ok' if today_out_cnt >= 5 else 'sync-warn' }}">
+                <h6>🏠 오늘 퇴근</h6>
+                <div class="val">{{ today_out_cnt }}건</div>
+                <div class="sub">{{ '정상' if today_out_cnt >= 5 else '⏳ 5건 미만 — 19시 이후 체크' }}</div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="sync-card {{ 'sync-ok' if docker_sync_ok else 'sync-err' }}">
+                <h6>🐳 Docker 코드 싱크 ({{ docker_sync_cnt }}개 컨테이너)</h6>
+                <div class="val" style="font-size:1rem;">{{ '✅ 동기화 완료' if docker_sync_ok else '❌ 불일치 감지' }}</div>
+                <div class="sub">
+                    {% if docker_sync_last %}
+                        마지막 체크: {{ docker_sync_last.strftime('%m-%d %H:%M') }}
+                    {% else %}
+                        아직 체크 기록 없음 (시작 후 30초 대기)
+                    {% endif %}
+                </div>
+                {% if docker_sync_files %}
+                <div style="margin-top:8px; font-size:0.72rem; opacity:0.9;">
+                    {% for f in docker_sync_files %}
+                    <div>
+                        {{ '✅' if f.ok else '❌' }} <strong>{{ f.name }}</strong>
+                        {% if not f.ok %}
+                            <span style="opacity:0.7;">— {{ f.md5s|length }}종</span>
+                        {% endif %}
+                        <span style="opacity:0.6;">
+                            ({{ f.entries|map(attribute='cid')|join(', ') }})
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-body p-3">
+                    <h6 class="mb-2" style="font-weight:600;">📅 최근 7일 일별 레코드 수</h6>
+                    {% if sync_daily %}
+                    <div class="d-flex align-items-end gap-1" style="height:80px;">
+                        {% set max_cnt = sync_daily|map(attribute=1)|max %}
+                        {% for dt, cnt in sync_daily %}
+                        <div class="text-center flex-fill">
+                            <div class="daily-bar" style="height:{{ (cnt / max_cnt * 60)|int }}px;" title="{{ cnt }}건"></div>
+                            <div style="font-size:0.65rem;color:#64748b;">{{ dt[4:6] }}/{{ dt[6:] }}</div>
+                            <div style="font-size:0.68rem;font-weight:600;">{{ cnt }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-muted text-center py-3" style="font-size:0.85rem;">최근 7일 데이터 없음</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-body p-3">
+                    <h6 class="mb-2" style="font-weight:600;">🔄 최근 싱크 로그 (10건)</h6>
+                    <div class="sync-log-mini">
+                    {% if sync_recent %}
+                        {% for lt, host, level, msg in sync_recent %}
+                        <div class="border-bottom py-1">
+                            <span class="text-muted">{{ lt.strftime('%m-%d %H:%M') }}</span>
+                            <span class="lv-{{ level|lower }}">{{ level }}</span>
+                            <span class="text-muted">[{{ host }}]</span>
+                            <span>{{ msg[:80] }}</span>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-muted text-center py-3">싱크 로그 없음</div>
+                    {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 통합 로그 테이블 ========== -->
+    <div class="card shadow-sm">
+        <div class="card-body p-2">
+            <div class="table-responsive" style="max-height: 75vh;">
+                <table class="table table-hover table-sm log-table mb-0">
+                    <thead class="sticky-top">
+                        <tr>
+                            <th>No</th>
+                            <th>유형</th>
+                            <th>이름</th>
+                            <th>대상일자</th>
+                            <th>항목</th>
+                            <th>값</th>
+                            <th>메모</th>
+                            <th>처리일시</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% if logs %}
+                        {% for log in logs %}
+                        <tr>
+                            <td class="text-muted">{{ loop.index }}</td>
+                            <td>
+                                {% if log.type == '수정' %}
+                                    <span class="badge badge-override">수정</span>
+                                {% elif log.type == '싱크' %}
+                                    <span class="badge badge-sync">싱크</span>
+                                {% else %}
+                                    <span class="badge badge-leave">{{ log.type }}</span>
+                                {% endif %}
+                            </td>
+                            <td><strong>{{ log.name }}</strong></td>
+                            <td>{{ log.date }}</td>
+                            <td>{{ log.detail }}</td>
+                            <td>{{ log.value }}</td>
+                            <td class="memo-cell" title="{{ log.memo }}">{{ log.memo }}</td>
+                            <td class="text-muted">{{ log.updated_at.strftime('%Y-%m-%d %H:%M') if log.updated_at else '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr><td colspan="8" class="text-center text-muted py-4">조회된 로그가 없습니다.</td></tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            {% if logs %}
+            <div class="text-muted text-end mt-2" style="font-size:0.78rem;">총 {{ logs|length }}건 (최대 500건)</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

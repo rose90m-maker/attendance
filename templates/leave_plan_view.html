@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>연차사용계획서</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        .plan-container { max-width: 900px; margin: 0 auto; padding: 20px; }
+        .plan-header { display: flex; justify-content: space-between; align-items: stretch; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
+        .plan-info { flex: 1; }
+        /* 결재표 */
+        .approval-box { border: 2px solid #333; border-radius: 4px; min-width: 200px; }
+        .approval-box .ab-title { background: #333; color: #fff; text-align: center; font-size: 0.75rem; font-weight: 700; padding: 4px 8px; }
+        .approval-box table { width: 100%; border-collapse: collapse; }
+        .approval-box th, .approval-box td { border: 1px solid #999; text-align: center; padding: 4px 8px; font-size: 0.75rem; }
+        .approval-box th { background: #f0f0f0; font-weight: 600; white-space: nowrap; }
+        .approval-box td { min-width: 70px; height: 70px; vertical-align: middle; }
+        .ab-stamp { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 56px; height: 56px; border: 3px solid #dc2626; border-radius: 50%; text-align: center; }
+        .ab-stamp .stamp-name { font-size: 0.95rem; font-weight: 900; color: #dc2626; font-family: 'Noto Serif KR', serif; margin-top: 4px; }
+        .ab-stamp .stamp-date { font-size: 0.6rem; color: #dc2626; }
+        .ab-clickable { cursor: pointer; transition: background 0.2s; }
+        .ab-clickable:hover { background: #e0f2fe; }
+        .ab-clickable .ab-plus { display: inline-block; width: 56px; height: 56px; border: 3px dashed #94a3b8; border-radius: 50%; text-align: center; line-height: 56px; font-size: 1.3rem; color: #94a3b8; }
+        .ab-pending { color: #9ca3af; }
+        .ab-rejected { color: #dc2626; font-weight: 700; }
+        /* 달력 */
+        .cal-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.82rem; }
+        .cal-table th { background: #f8f9fa; color: #333; text-align: center; padding: 6px 2px; font-size: 0.78rem; font-weight: 600; border: 1px solid #dee2e6; }
+        .cal-table th.sat-h { color: #2563eb; }
+        .cal-table th.sun-h { color: #dc2626; }
+        .cal-table td { border: 1px solid #dee2e6; text-align: center; vertical-align: top; padding: 6px 4px; height: 80px; position: relative; }
+        .cal-table td.empty { background: #f8fafc; }
+        .cal-table td.sat { background: #f8fafc; }
+        .cal-table td.sun, .cal-table td.hol { background: #f8fafc; }
+        .cal-table td.leave-day { background: #dbeafe !important; }
+        .day-num { font-weight: 600; font-size: 0.82rem; margin-bottom: 2px; }
+        .day-num.sat-num { color: #2563eb; }
+        .day-num.sun-num, .day-num.hol-num { color: #dc2626; }
+        .hol-label { font-size: 0.6rem; color: #dc2626; display: block; }
+        .badge-yc { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; font-size: 0.7rem; padding: 3px 8px; border-radius: 10px; display: inline-block; margin-top: 2px; }
+        .badge-bc { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; font-size: 0.7rem; padding: 3px 8px; border-radius: 10px; display: inline-block; margin-top: 2px; }
+        .plan-summary { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+        @media print {
+            @page { size: A4 portrait; margin: 15mm 10mm; }
+            .no-print { display: none !important; }
+            body { margin: 0; padding: 0; font-size: 11pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .plan-container { max-width: 100%; padding: 0; margin: 0; }
+            .plan-header { margin-bottom: 12px; }
+            .plan-info table { font-size: 10pt; }
+            .approval-box th, .approval-box td { font-size: 9pt; }
+            .cal-table { font-size: 9pt; }
+            .cal-table td { height: 65px; padding: 3px 2px; }
+            .cal-table th { font-size: 8pt; padding: 4px 2px; }
+            .plan-summary { padding: 8px 12px; }
+            h5 { font-size: 14pt; margin-bottom: 10px; }
+        }
+        @media (max-width: 767.98px) {
+            .plan-header { flex-direction: row; align-items: stretch; flex-wrap: nowrap; gap: 10px; }
+            .plan-info { flex: 1; min-width: 0; }
+            .approval-box { width: auto; }
+            .approval-box th, .approval-box td { font-size: 0.65rem; padding: 2px 4px; }
+            .approval-box td { min-width: 40px; height: 42px; }
+            .ab-stamp { width: 32px; height: 32px; border-width: 2px; }
+            .ab-stamp .stamp-name { font-size: 0.52rem; margin-top: 2px; white-space: nowrap; }
+            .ab-stamp .stamp-date { font-size: 0.38rem; }
+            .ab-clickable .ab-plus { width: 32px; height: 32px; line-height: 32px; font-size: 0.9rem; border-width: 2px; }
+            .cal-table { font-size: 0.68rem; }
+            .cal-table td { height: 60px; padding: 2px; }
+            .plan-summary { padding: 8px 10px; }
+            .plan-summary .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .plan-summary table { font-size: 0.68rem !important; white-space: nowrap; }
+            .plan-summary table th, .plan-summary table td { padding: 2px 3px !important; }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'leave_approval' %}
+{% include '_sidebar.html' %}
+
+<div class="plan-container">
+    <div class="no-print mb-3">
+        <a href="/leave_approval" class="btn btn-outline-secondary btn-sm">← 목록으로</a>
+        <button class="btn btn-outline-dark btn-sm ms-1" onclick="window.print()">🖨️ 인쇄</button>
+        {% if plan.status == '승인' and is_owner %}
+        <a href="/annual_leave?month={{ year }}-{{ '%02d'|format(month) }}&amend={{ plan.id }}" class="btn btn-outline-warning btn-sm ms-1">📝 수정보고서</a>
+        {% endif %}
+        {% if is_admin %}
+        <button class="btn btn-outline-danger btn-sm ms-1" onclick="deletePlan({{ plan.id }})">🗑️ 삭제</button>
+        {% endif %}
+    </div>
+
+    <h5 class="fw-bold text-center mb-3">연차사용계획서</h5>
+
+    <div class="plan-header">
+        <div class="plan-info">
+            <table class="table table-sm table-bordered mb-0" style="font-size:0.85rem; max-width:320px;">
+                <tr><th style="width:80px; background:#f8f9fa;">성 명</th><td class="fw-bold">{{ plan.user_name }}</td></tr>
+                <tr><th style="background:#f8f9fa;">소 속</th><td>{{ plan.group_name }}</td></tr>
+                <tr><th style="background:#f8f9fa;">계획월</th><td>{{ year }}년 {{ month }}월</td></tr>
+                <tr><th style="background:#f8f9fa;">사용일수</th><td><strong>{{ plan.total_days }}일</strong> ({{ plan.date_count }}건)</td></tr>
+            </table>
+        </div>
+
+        <!-- 결재표 -->
+        <div class="approval-box">
+            <div class="ab-title">결 재</div>
+            <table>
+                <tr>
+                    <th>작성</th>
+                    <th>검토</th>
+                    <th>결재</th>
+                </tr>
+                <tr>
+                    <!-- 작성자: 신청자 자동 표시 -->
+                    <td>
+                        <div class="ab-stamp">
+                            <div class="stamp-name">{{ plan.user_name }}</div>
+                            <div class="stamp-date">{{ plan.created_at[5:10] }}</div>
+                        </div>
+                    </td>
+                    <!-- 검토 (step 1) -->
+                    {% if 1 in done_steps %}
+                    <td>
+                        <div class="ab-stamp">
+                            <div class="stamp-name">{{ done_steps[1].user_name }}</div>
+                            <div class="stamp-date">{{ done_steps[1].created_at[5:10] }}</div>
+                        </div>
+                    </td>
+                    {% elif plan.status == '반려' %}
+                    <td><div class="ab-rejected">✗</div></td>
+                    {% elif can_approve and next_step == 1 %}
+                    <td class="ab-clickable" onclick="approvePlan({{ plan.id }})" title="클릭하여 검토">
+                        <div class="ab-plus">+</div>
+                    </td>
+                    {% else %}
+                    <td>
+                        <div class="ab-pending">
+                            {% if step_reviewers.get(1) %}{% for r in step_reviewers[1] %}<div style="font-size:0.68rem;">{{ r.user_name }}</div>{% endfor %}{% else %}-{% endif %}
+                        </div>
+                    </td>
+                    {% endif %}
+                    <!-- 결재 (step 2) -->
+                    {% if 2 in done_steps %}
+                    <td>
+                        <div class="ab-stamp">
+                            <div class="stamp-name">{{ done_steps[2].user_name }}</div>
+                            <div class="stamp-date">{{ done_steps[2].created_at[5:10] }}</div>
+                        </div>
+                    </td>
+                    {% elif plan.status == '반려' %}
+                    <td><div class="ab-rejected">✗</div></td>
+                    {% elif can_approve and next_step == 2 %}
+                    <td class="ab-clickable" onclick="approvePlan({{ plan.id }})" title="클릭하여 결재">
+                        <div class="ab-plus">+</div>
+                    </td>
+                    {% else %}
+                    <td>
+                        <div class="ab-pending">
+                            {% if step_reviewers.get(2) %}{% for r in step_reviewers[2] %}<div style="font-size:0.68rem;">{{ r.user_name }}</div>{% endfor %}{% else %}-{% endif %}
+                        </div>
+                    </td>
+                    {% endif %}
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- 상태 배지 -->
+    <div class="plan-summary d-flex justify-content-between align-items-center">
+        <div>
+            <strong>상태:</strong>
+            {% if plan.status == '대기' %}<span class="badge bg-secondary">대기</span>
+            {% elif plan.status == '1차승인' %}<span class="badge bg-info">검토완료</span>
+            {% elif plan.status == '승인' %}<span class="badge bg-success">완료</span>
+            {% elif plan.status == '반려' %}<span class="badge bg-danger">반려</span>
+            {% endif %}
+            <span class="text-muted ms-2" style="font-size:0.8rem;">신청일: {{ plan.created_at }}</span>
+        </div>
+        {% if plan.status in ['대기','1차승인'] and can_approve %}
+        <div class="no-print">
+            <button class="btn btn-sm btn-outline-danger" onclick="rejectPlan({{ plan.id }})">❌ 반려</button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 달력 -->
+    <table class="cal-table">
+        <thead>
+            <tr><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th class="sat-h">토</th><th class="sun-h">일</th></tr>
+        </thead>
+        <tbody>
+            {% set ns = namespace(cell=0) %}
+            <tr>
+            {% for blank in range(first_wd) %}
+                <td class="empty"></td>
+                {% set ns.cell = ns.cell + 1 %}
+            {% endfor %}
+            {% for di in day_info %}
+                <td class="{% if di.leave_type %}leave-day {% endif %}{% if di.is_sun %}sun{% elif di.is_sat %}sat{% elif di.is_holiday %}hol{% endif %}">
+                    <div class="day-num {% if di.is_sun or di.is_holiday %}sun-num{% elif di.is_sat %}sat-num{% endif %}">{{ di.day }}</div>
+                    {% if di.hol_name %}<span class="hol-label">{{ di.hol_name }}</span>{% endif %}
+                    {% if di.leave_type == '연차' %}
+                    <span class="badge-yc">연차</span>
+                    {% elif di.leave_type == '반차' %}
+                    <span class="badge-bc">반차</span>
+                    {% endif %}
+                </td>
+                {% set ns.cell = ns.cell + 1 %}
+                {% if ns.cell % 7 == 0 and not loop.last %}
+            </tr><tr>
+                {% endif %}
+            {% endfor %}
+            {% for blank in range((7 - ns.cell % 7) % 7) %}
+                <td class="empty"></td>
+            {% endfor %}
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- 요약 -->
+    <div class="mt-3 plan-summary">
+        <h6 class="fw-bold mb-2" style="font-size:0.85rem;">📊 요약</h6>
+        {% if plan.reason %}
+        <div class="mb-2" style="font-size:0.85rem;"><strong>사유:</strong> {{ plan.reason }}</div>
+        {% endif %}
+        {% if plan.reject_reason %}
+        <div class="mb-2" style="font-size:0.85rem; color:#dc2626;"><strong>반려사유:</strong> {{ plan.reject_reason }}</div>
+        {% endif %}
+        <!-- 발생/사용/잔여 (모바일 별도 표시) -->
+        <div class="d-md-none mb-2 d-flex gap-3" style="font-size:0.85rem;">
+            <span><strong>발생:</strong> {{ al.total }}</span>
+            <span><strong class="text-danger">사용:</strong> <span class="text-danger">{{ al.used }}</span></span>
+            <span><strong>잔여:</strong> <span class="{% if al.total - al.used > 0 %}text-success{% else %}text-danger{% endif %}">{{ al.total - al.used }}</span></span>
+        </div>
+        <div class="table-responsive">
+        <table class="table table-sm table-bordered mb-0 text-center" style="font-size:0.8rem;">
+            <thead class="table-light">
+                <tr>
+                    <th class="d-none d-md-table-cell" style="background:#1e293b; color:#fff;">발생</th>
+                    <th class="d-none d-md-table-cell" style="background:#1e293b; color:#fff;">사용</th>
+                    <th class="d-none d-md-table-cell" style="background:#1e293b; color:#fff;">잔여</th>
+                    {% for m in range(1,13) %}
+                    <th>{{ m }}월</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="d-none d-md-table-cell fw-bold">{{ al.total }}</td>
+                    <td class="d-none d-md-table-cell fw-bold text-danger">{{ al.used }}</td>
+                    <td class="d-none d-md-table-cell fw-bold {% if al.total - al.used > 0 %}text-success{% else %}text-danger{% endif %}">{{ al.total - al.used }}</td>
+                    {% for m in range(1,13) %}
+                    <td>{% if al['m'~m] > 0 %}{{ al['m'~m] }}{% else %}-{% endif %}</td>
+                    {% endfor %}
+                </tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% if approval_log %}
+    <div class="mt-3">
+        <h6 class="fw-bold" style="font-size:0.85rem;">📋 결재이력</h6>
+        <table class="table table-sm table-bordered" style="font-size:0.8rem;">
+            <thead class="table-light"><tr><th>단계</th><th>처리</th><th>처리자</th><th>일시</th></tr></thead>
+            <tbody>
+            {% for a in approval_log %}
+            <tr>
+                <td>{{ step_labels.get(a.step, a.step~'차') }}</td>
+                <td>{% if a.action == '반려' %}<span class="text-danger fw-bold">반려</span>{% else %}<span class="text-success">승인</span>{% endif %}</td>
+                <td>{{ a.user_name }}</td>
+                <td class="text-muted">{{ a.created_at }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function approvePlan(id) {
+    if (!confirm('이 계획서를 승인하시겠습니까?')) return;
+    fetch('/process_leave_plan', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id:id, status:'승인'})
+    }).then(r=>r.json()).then(d=>{
+        if(d.ok) { alert('처리되었습니다.'); location.reload(); }
+        else alert(d.error||'처리 실패');
+    });
+}
+function rejectPlan(id) {
+    var reason = prompt('반려 사유를 입력해 주세요 (필수):');
+    if (reason === null) return;
+    reason = reason.trim();
+    if (!reason) { alert('반려 사유를 입력해 주세요.'); return; }
+    fetch('/process_leave_plan', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id:id, status:'반려', reject_reason:reason})
+    }).then(r=>r.json()).then(d=>{
+        if(d.ok) { alert('반려되었습니다.'); location.reload(); }
+        else alert(d.error||'처리 실패');
+    });
+}
+
+function deletePlan(id) {
+    if (!confirm('이 연차사용계획서를 삭제하시겠습니까?\n(관련된 휴가 데이터도 함께 삭제됩니다)')) return;
+    fetch('/api/leave_plan/' + id, {method:'DELETE'})
+    .then(r=>r.json()).then(d=>{
+        if(d.ok) { alert('삭제되었습니다.'); location.href='/leave_approval'; }
+        else alert(d.error||'삭제 실패');
+    });
+}
+</script>
+</body>
+</html>

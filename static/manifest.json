@@ -1,0 +1,16 @@
+{
+  "name": "태인관리시스템",
+  "short_name": "태인관리",
+  "description": "태인 근태관리시스템",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#1e40af",
+  "icons": [
+    {
+      "src": "/static/LOGO.GIF",
+      "sizes": "298x273",
+      "type": "image/gif"
+    }
+  ]
+}

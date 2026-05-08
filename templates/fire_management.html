@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>소방관리</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        .status-card { border-radius: 14px; color: #fff; padding: 14px 16px; }
+        .st-normal { background: linear-gradient(135deg, #16a34a, #15803d); }
+        .st-alarm { background: linear-gradient(135deg, #dc2626, #b91c1c); }
+        .st-offline { background: linear-gradient(135deg, #64748b, #475569); }
+        .st-other { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+        .status-card .label { font-size: 0.82rem; opacity: 0.9; }
+        .status-card .val { font-size: 1.5rem; font-weight: 700; line-height: 1.1; }
+        .status-pill { padding: 3px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; }
+        .pill-normal { background: #dcfce7; color: #166534; }
+        .pill-alarm { background: #fee2e2; color: #991b1b; }
+        .pill-offline { background: #e2e8f0; color: #334155; }
+        .pill-other { background: #dbeafe; color: #1e3a8a; }
+        .table-sm td, .table-sm th { vertical-align: middle; }
+    </style>
+</head>
+<body>
+{% set active_page = 'fire_management' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div class="page-title mb-0">
+            <span class="title-icon">🚨</span>
+            <span>소방관리</span>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-danger btn-sm" onclick="createMockAlarm()">테스트 경보 생성</button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="clearMockAlarms()">이벤트 삭제</button>
+            <button class="btn btn-primary btn-sm" onclick="loadFireStatus()">새로고침</button>
+        </div>
+    </div>
+
+    <div class="alert alert-info py-2" style="font-size:0.86rem;">
+        연기감지기/화재감지기 상태 모니터링 화면입니다. 이 화면은 보조 모니터링 용도이며 법정 소방설비를 대체하지 않습니다.
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-3 col-6"><div class="status-card st-normal"><div class="label">정상</div><div class="val" id="sumNormal">0</div></div></div>
+        <div class="col-md-3 col-6"><div class="status-card st-alarm"><div class="label">경보/이상</div><div class="val" id="sumAlarm">0</div></div></div>
+        <div class="col-md-3 col-6"><div class="status-card st-offline"><div class="label">오프라인</div><div class="val" id="sumOffline">0</div></div></div>
+        <div class="col-md-3 col-6"><div class="status-card st-other"><div class="label">기타</div><div class="val" id="sumOther">0</div></div></div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">장비 상태</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height:60vh;">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>장비명</th>
+                                    <th>위치</th>
+                                    <th>상태</th>
+                                    <th>배터리</th>
+                                    <th>마지막 수신</th>
+                                </tr>
+                            </thead>
+                            <tbody id="deviceRows">
+                                <tr><td colspan="5" class="text-center text-muted py-3">데이터 로딩 중...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">최근 이벤트</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height:60vh;">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>시각</th>
+                                    <th>장비</th>
+                                    <th>유형</th>
+                                    <th>메시지</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logRows">
+                                <tr><td colspan="4" class="text-center text-muted py-3">데이터 로딩 중...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function statusBadge(status) {
+    const st = (status || '').toLowerCase();
+    if (['normal','ok','safe'].includes(st)) {
+        return '<span class="status-pill pill-normal">정상</span>';
+    }
+    if (['alarm','smoke','fire','fault'].includes(st)) {
+        return '<span class="status-pill pill-alarm">경보/이상</span>';
+    }
+    if (['offline','disconnected'].includes(st)) {
+        return '<span class="status-pill pill-offline">오프라인</span>';
+    }
+    return '<span class="status-pill pill-other">기타</span>';
+}
+
+function esc(s) {
+    return String(s || '').replace(/[&<>'\"]/g, function(c){
+        return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c];
+    });
+}
+
+function loadFireStatus() {
+    fetch('/api/fire/status', {credentials: 'include'})
+    .then(r => r.json())
+    .then(d => {
+        if (!d.ok) {
+            alert(d.error || '소방 상태 조회 실패');
+            return;
+        }
+        document.getElementById('sumNormal').textContent = d.summary.normal || 0;
+        document.getElementById('sumAlarm').textContent = d.summary.alarm || 0;
+        document.getElementById('sumOffline').textContent = d.summary.offline || 0;
+        document.getElementById('sumOther').textContent = d.summary.other || 0;
+
+        const deviceRows = document.getElementById('deviceRows');
+        if (!d.devices || d.devices.length === 0) {
+            deviceRows.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">등록된 장비가 없습니다.</td></tr>';
+        } else {
+            deviceRows.innerHTML = d.devices.map(v => {
+                const bat = v.battery === null || v.battery === undefined ? '-' : (v.battery + '%');
+                return '<tr>' +
+                    '<td>' + esc(v.device_name) + '</td>' +
+                    '<td>' + esc(v.location) + '</td>' +
+                    '<td>' + statusBadge(v.status) + '</td>' +
+                    '<td>' + esc(bat) + '</td>' +
+                    '<td>' + esc(v.last_seen || '-') + '</td>' +
+                    '</tr>';
+            }).join('');
+        }
+
+        const logRows = document.getElementById('logRows');
+        if (!d.logs || d.logs.length === 0) {
+            logRows.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">최근 이벤트가 없습니다.</td></tr>';
+        } else {
+            logRows.innerHTML = d.logs.map(v => {
+                const sev = (v.severity || '').toLowerCase();
+                const rowClass = sev === 'critical' ? 'table-danger' : (sev === 'warning' ? 'table-warning' : '');
+                return '<tr class="' + rowClass + '">' +
+                    '<td>' + esc(v.created_at) + '</td>' +
+                    '<td>' + esc(v.device_key) + '</td>' +
+                    '<td>' + esc(v.event_type) + '</td>' +
+                    '<td>' + esc(v.message || '-') + '</td>' +
+                    '</tr>';
+            }).join('');
+        }
+    })
+    .catch(e => console.warn('소방 상태 조회 오류:', e));
+}
+
+function createMockAlarm() {
+    if (!confirm('테스트 경보를 생성하시겠습니까?')) return;
+    fetch('/api/fire/mock_alarm', { method: 'POST', credentials: 'include' })
+    .then(r => r.json())
+    .then(d => {
+        if (!d.ok) { alert(d.error || '테스트 경보 생성 실패'); return; }
+        loadFireStatus();
+    })
+    .catch(() => alert('요청 중 오류가 발생했습니다.'));
+}
+
+function clearMockAlarms() {
+    if (!confirm('이벤트 로그를 모두 삭제하시겠습니까?')) return;
+    fetch('/api/fire/clear_mock', { method: 'POST', credentials: 'include' })
+    .then(r => r.json())
+    .then(d => {
+        if (!d.ok) { alert(d.error || '삭제 실패'); return; }
+        loadFireStatus();
+    })
+    .catch(() => alert('요청 중 오류가 발생했습니다.'));
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+    loadFireStatus();
+    setInterval(loadFireStatus, 15000);
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

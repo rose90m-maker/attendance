@@ -1,0 +1,542 @@
+{% extends "tbm/base.html" %}
+{% block title %}{{ week.label }} 상세{% endblock %}
+{% block extra_style %}
+.nav-tabs .nav-link{font-weight:600;color:#6b7280;}
+.nav-tabs .nav-link.active{color:#6d28d9;border-color:#dee2e6 #dee2e6 #fff;}
+.hazard-row td{padding:4px 6px;vertical-align:middle;}
+.hazard-row input{border:1px solid #d1d5db;border-radius:6px;padding:4px 8px;width:100%;font-size:.85rem;}
+.hazard-row input:focus{outline:none;border-color:#6d28d9;}
+.section-title{font-weight:700;font-size:.85rem;color:#374151;border-left:3px solid #6d28d9;
+  padding-left:8px;margin:16px 0 8px;}
+.yn-group label{cursor:pointer;margin-right:10px;font-size:.85rem;}
+.yn-group input[type=radio]{margin-right:3px;}
+.missing-row{background:#fef2f2;}
+.signed-row{background:#f0fdf4;}
+{% endblock %}
+{% block content %}
+<div class="page-header mb-3">
+  <div>
+    <h4>{{ week.label }}</h4>
+    <span class="text-muted" style="font-size:.85rem">TBM 날짜: {{ week.tbm_date }}</span>
+    <span class="ms-2 status-{{ week.status }}">{{ '작성중' if week.status=='draft' else ('진행중' if week.status=='open' else '마감') }}</span>
+  </div>
+  <div class="d-flex gap-2">
+    {% if week.status == 'draft' %}
+    <span class="text-info" style="font-size:.85rem">내용 입력 후 저장하면 주차가 등록됩니다</span>
+    {% elif week.status == 'open' %}
+    <form method="POST" action="/tbm/admin/week/{{ week.id }}/close"
+          onsubmit="return confirm('{{ week.label }} 주차를 마감하시겠습니까?')">
+      <button class="btn btn-sm btn-outline-danger">마감</button>
+    </form>
+    {% else %}
+    <form method="POST" action="/tbm/admin/week/{{ week.id }}/reopen">
+      <button class="btn btn-sm btn-outline-warning">재오픈</button>
+    </form>
+    {% endif %}
+    <a href="/tbm/print/{{ week.id }}" target="_blank" class="btn btn-sm btn-outline-secondary">🖨️ 인쇄/PDF</a>
+    <a href="/tbm/admin" class="btn btn-sm btn-outline-secondary">← 목록</a>
+  </div>
+</div>
+
+<!-- 참여 통계 요약 -->
+<div class="row g-2 mb-3">
+  {% for dept in tbm_depts %}
+  {% set att = attendance[dept] %}
+  {% set is_elec = '전기' in dept %}
+  <div class="col-6 col-md-3">
+    <div class="stat-card {{ 'sc-blue' if is_elec else 'sc-green' }}">
+      <div class="sc-lbl">{{ dept[:2] }}사업부 서명</div>
+      <div class="sc-val">{{ att.signed }}<span style="font-size:1rem">/{{ att.target }}</span></div>
+      {% set pct = ((att.signed / att.target)*100)|int if att.target > 0 else 0 %}
+      <div class="progress mt-1" style="height:4px;background:rgba(255,255,255,.3)">
+        <div class="progress-bar bg-white" style="width:{{ pct }}%"></div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- 탭 -->
+<ul class="nav nav-tabs" id="deptTab">
+  {% for dept in tbm_depts %}
+  <li class="nav-item">
+    <button class="nav-link {% if loop.first %}active{% endif %}"
+            data-bs-toggle="tab" data-bs-target="#tab-{{ loop.index }}">
+      {{ dept }}
+    </button>
+  </li>
+  {% endfor %}
+</ul>
+
+<div class="tab-content">
+{% for dept in tbm_depts %}
+{% set sess = sessions[dept] %}
+{% set hzds = hazards[dept] %}
+{% set att = attendance[dept] %}
+{% set excl = exclusions[dept] %}
+{% set tab_id = "tab-" ~ loop.index %}
+{% set is_elec = '전기' in dept %}
+<div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="{{ tab_id }}">
+  <div class="card mt-0" style="border-top:none;border-radius:0 0 12px 12px">
+    <div class="card-body">
+      <div class="row g-3">
+        <!-- TBM 내용 입력 폼 -->
+        <div class="col-12 col-xl-7">
+          <form id="form-{{ dept|replace('사업부','') }}" class="tbm-form" data-dept="{{ dept }}">
+            {% if week.status == 'closed' %}
+            <div class="alert alert-secondary py-2 mb-3" style="font-size:.85rem">마감된 주차입니다.</div>
+            {% endif %}
+
+            <div class="row g-2">
+              <div class="col-3">
+                <label class="form-label fw-600" style="font-size:.8rem">시작 시간</label>
+                <input type="time" name="time_start" class="form-control form-control-sm"
+                       value="{{ sess.time_start if sess else '08:30' }}"
+                       {{ 'disabled' if week.status == 'closed' }}>
+              </div>
+              <div class="col-3">
+                <label class="form-label fw-600" style="font-size:.8rem">종료 시간</label>
+                <input type="time" name="time_end" class="form-control form-control-sm"
+                       value="{{ sess.time_end if sess else '08:40' }}"
+                       {{ 'disabled' if week.status == 'closed' }}>
+              </div>
+              <div class="col-6">
+                <label class="form-label fw-600" style="font-size:.8rem">작업날짜와 동일</label>
+                <div class="yn-group mt-1">
+                  <label><input type="radio" name="same_as_job_date" value="Y"
+                    {{ 'checked' if not sess or sess.same_as_job_date }}
+                    {{ 'disabled' if week.status == 'closed' }}>예</label>
+                  <label><input type="radio" name="same_as_job_date" value="N"
+                    {{ 'checked' if sess and not sess.same_as_job_date }}
+                    {{ 'disabled' if week.status == 'closed' }}>아니오</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-2">
+              <label class="form-label fw-600" style="font-size:.8rem">작업명</label>
+              <input type="text" name="job_name" class="form-control form-control-sm"
+                     value="{{ sess.job_name if sess and sess.job_name else tbm_defaults[dept].job_name }}" maxlength="200"
+                     {{ 'disabled' if week.status == 'closed' }}>
+            </div>
+            <div class="mt-2">
+              <label class="form-label fw-600" style="font-size:.8rem">작업내용</label>
+              <input type="text" name="job_content" class="form-control form-control-sm"
+                     value="{{ sess.job_content if sess and sess.job_content else tbm_defaults[dept].job_content }}" maxlength="200"
+                     {{ 'disabled' if week.status == 'closed' }}>
+            </div>
+            <div class="row g-2 mt-0">
+              <div class="col-8">
+                <label class="form-label fw-600" style="font-size:.8rem">TBM 장소</label>
+                <input type="text" name="location" class="form-control form-control-sm"
+                       value="{{ sess.location if sess and sess.location else tbm_defaults[dept].location }}" maxlength="100"
+                       {{ 'disabled' if week.status == 'closed' }}>
+              </div>
+              <div class="col-4">
+                <label class="form-label fw-600" style="font-size:.8rem">위험성평가 실시</label>
+                <div class="yn-group mt-1">
+                  <label><input type="radio" name="risk_assessed" value="Y"
+                    {{ 'checked' if not sess or sess.risk_assessed=='Y' }}
+                    {{ 'disabled' if week.status == 'closed' }}>예</label>
+                  <label><input type="radio" name="risk_assessed" value="N"
+                    {{ 'checked' if sess and sess.risk_assessed=='N' }}
+                    {{ 'disabled' if week.status == 'closed' }}>아니오</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- 잠재 위험 요인 -->
+            <div class="section-title mt-3">잠재 위험 요인</div>
+            <table class="table table-bordered mb-0" style="font-size:.82rem;margin-bottom:0">
+              <thead class="table-light">
+                <tr><th style="width:45%">위험 요인</th><th style="width:45%">대책</th><th style="width:10%"></th></tr>
+              </thead>
+              <tbody id="hazard-tbody-{{ loop.index }}">
+                {% if hzds %}
+                  {% for h in hzds %}
+                  <tr class="hazard-row">
+                    <td><input type="text" class="h-hazard" value="{{ h.hazard }}"
+                               {{ 'disabled' if week.status == 'closed' }}></td>
+                    <td><input type="text" class="h-measure" value="{{ h.measure }}"
+                               {{ 'disabled' if week.status == 'closed' }}></td>
+                    <td class="text-center">
+                      {% if week.status != 'closed' %}
+                      <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 del-hazard">✕</button>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr class="hazard-row">
+                    <td><input type="text" class="h-hazard" placeholder="위험 요인"
+                               {{ 'disabled' if week.status == 'closed' }}></td>
+                    <td><input type="text" class="h-measure" placeholder="대책"
+                               {{ 'disabled' if week.status == 'closed' }}></td>
+                    <td class="text-center">
+                      {% if week.status != 'closed' %}
+                      <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 del-hazard">✕</button>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+            {% if week.status != 'closed' %}
+            <button type="button" class="btn btn-sm btn-outline-secondary mt-1 add-hazard"
+                    data-tbody="hazard-tbody-{{ loop.index }}">
+              + 위험요인 추가
+            </button>
+            {% endif %}
+
+            <!-- 중점 위험 요인 -->
+            <div class="section-title">중점 위험 요인</div>
+            <div class="mb-2">
+              <label class="form-label fw-600" style="font-size:.8rem">선정 위험 요인</label>
+              <input type="text" name="key_hazard_select" class="form-control form-control-sm"
+                     value="{{ sess.key_hazard_select if sess else '' }}"
+                     {{ 'disabled' if week.status == 'closed' }}>
+            </div>
+            <div class="mb-2">
+              <label class="form-label fw-600" style="font-size:.8rem">대책</label>
+              <input type="text" name="key_hazard_measure" class="form-control form-control-sm"
+                     value="{{ sess.key_hazard_measure if sess else '' }}"
+                     {{ 'disabled' if week.status == 'closed' }}>
+            </div>
+
+            <!-- TBM 리더 -->
+            <div class="section-title">TBM 리더 확인</div>
+            <div class="row g-2">
+              <div class="col-4">
+                <label class="form-label fw-600" style="font-size:.8rem">소속</label>
+                {% set cur_leader_dept = sess.leader_dept if sess and sess.leader_dept else tbm_defaults[dept].leader_dept %}
+                <select name="leader_dept" class="form-select form-select-sm leader-dept-select"
+                        data-dept="{{ dept }}"
+                        {{ 'disabled' if week.status == 'closed' }}>
+                  <option value="">선택</option>
+                  {% for m in roster_members.get(dept, []) %}
+                    {% if loop.first or m.org_dept != roster_members.get(dept, [])[loop.index0 - 1].org_dept %}
+                    <option value="{{ m.org_dept }}" {{ 'selected' if cur_leader_dept == m.org_dept }}>{{ m.org_dept }}</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-4">
+                <label class="form-label fw-600" style="font-size:.8rem">성명</label>
+                <input type="text" name="leader_name" class="form-control form-control-sm leader-name-input"
+                       data-dept="{{ dept }}"
+                       value="{{ sess.leader_name if sess and sess.leader_name else tbm_defaults[dept].leader_name }}"
+                       {{ 'disabled' if week.status == 'closed' }}>
+              </div>
+              <div class="col-4">
+                <label class="form-label fw-600" style="font-size:.8rem">직책</label>
+                {% set cur_pos = sess.leader_position if sess and sess.leader_position else tbm_defaults[dept].leader_position %}
+                <select name="leader_position" class="form-select form-select-sm leader-position-select"
+                        {{ 'disabled' if week.status == 'closed' }}>
+                  <option value="">선택</option>
+                  {% for p in ['기사','주임','대리','과장','차장','부장'] %}
+                  <option value="{{ p }}" {{ 'selected' if cur_pos == p }}>{{ p }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
+            <!-- 안전 조치 확인 -->
+            <div class="section-title">■ 작업 전 안전 조치 확인</div>
+            {% for item in safety_items %}
+            <div class="d-flex align-items-center mb-1">
+              <span style="font-size:.8rem;flex:1">{{ item }}</span>
+              <div class="yn-group mb-0 ms-2">
+                <label><input type="radio" name="safety_check{{ loop.index }}" value="Y"
+                  {{ 'checked' if not sess or sess['safety_check'~loop.index]=='Y' }}
+                  {{ 'disabled' if week.status == 'closed' }}>예</label>
+                <label><input type="radio" name="safety_check{{ loop.index }}" value="N"
+                  {{ 'checked' if sess and sess['safety_check'~loop.index]=='N' }}
+                  {{ 'disabled' if week.status == 'closed' }}>아니오</label>
+              </div>
+            </div>
+            {% endfor %}
+
+            <!-- 지시사항 -->
+            <div class="section-title">■ 작업 전 안전 점검 결과 / 지시사항</div>
+            <textarea name="safety_instruction" class="form-control form-control-sm" rows="3"
+                      {{ 'disabled' if week.status == 'closed' }}>{{ sess.safety_instruction if sess and sess.safety_instruction else tbm_defaults[dept].safety_instruction }}</textarea>
+
+            {% if week.status != 'closed' %}
+            <div class="d-flex justify-content-end mt-3">
+              <button type="button" class="btn btn-tbm-primary btn-sm save-btn"
+                      data-dept="{{ dept }}" data-week="{{ week.id }}"
+                      data-tbody="hazard-tbody-{{ loop.index }}">
+                💾 저장
+              </button>
+            </div>
+            <div class="save-msg-{{ loop.index }} mt-2 text-center" style="font-size:.82rem"></div>
+            {% endif %}
+          </form>
+        </div>
+
+        <!-- 참여 현황 -->
+        <div class="col-12 col-xl-5">
+          <div class="section-title" style="margin-top:0">참여 현황</div>
+          <div class="row g-2 mb-3">
+            <div class="col-3">
+              <div class="stat-card sc-purple" style="padding:10px 12px">
+                <div class="sc-lbl">전체</div>
+                <div class="sc-val" style="font-size:1.4rem">{{ att.total }}</div>
+              </div>
+            </div>
+            <div class="col-3">
+              <div class="stat-card" style="background:#2563eb;padding:10px 12px">
+                <div class="sc-lbl">출근대상</div>
+                <div class="sc-val" style="font-size:1.4rem">{{ att.target }}</div>
+              </div>
+            </div>
+            <div class="col-3">
+              <div class="stat-card sc-green" style="padding:10px 12px">
+                <div class="sc-lbl">서명완료</div>
+                <div class="sc-val" style="font-size:1.4rem">{{ att.signed }}</div>
+              </div>
+            </div>
+            <div class="col-3">
+              <div class="stat-card sc-red" style="padding:10px 12px">
+                <div class="sc-lbl">미제출</div>
+                <div class="sc-val" style="font-size:1.4rem">{{ att.missing|length }}</div>
+              </div>
+            </div>
+            <div class="col-3">
+              <div class="stat-card" style="background:#6b7280;padding:10px 12px">
+                <div class="sc-lbl">제외(계)</div>
+                <div class="sc-val" style="font-size:1.4rem">{{ att.excluded }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 근무표 자동제외 (연차/무급) -->
+          {% if att.auto_excl_list %}
+          <div class="mb-3">
+            <div class="fw-700 mb-1" style="font-size:.82rem;color:#d97706">근무표 제외 (연차·무급)</div>
+            <div class="d-flex flex-wrap gap-1">
+              {% for info in att.auto_excl_list %}
+              <span class="badge" style="background:#fef3c7;color:#92400e;font-weight:500">{{ info.e_name }}<span style="font-weight:400;margin-left:.3rem;font-size:.7rem">{{ info.reason|replace('[근무표] ','') }}</span></span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- 미제출자 -->
+          {% if att.missing %}
+          <div class="mb-3">
+            <div class="fw-700 mb-1" style="font-size:.82rem;color:#dc2626">미제출자</div>
+            <div class="table-responsive">
+              <table class="table table-sm table-bordered" style="font-size:.8rem">
+                <tbody>
+                {% for emp in att.missing %}
+                <tr class="missing-row">
+                  <td>{% if emp.emp_no %}<span style="color:#6b7280;font-size:.75rem;margin-right:.3rem">{{ emp.emp_no }}</span>{% endif %}{{ emp.e_name }}</td>
+                  <td class="text-end" style="white-space:nowrap">
+                    {% if week.status != 'closed' %}
+                    <button class="btn btn-sm btn-outline-secondary py-0 exclude-btn"
+                            data-eid="{{ emp.e_id }}" data-name="{{ emp.e_name }}"
+                            data-dept="{{ dept }}" data-week="{{ week.id }}"
+                            data-bs-toggle="modal" data-bs-target="#excludeModal-{{ loop.index0 }}-{{ dept|replace('사업부','') }}">
+                      제외
+                    </button>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- 서명완료자 -->
+          {% if att.signed_list %}
+          <div class="mb-3">
+            <div class="fw-700 mb-1" style="font-size:.82rem;color:#065f46">서명완료</div>
+            <div class="d-flex flex-wrap gap-1">
+              {% for emp in att.signed_list %}
+              <span class="badge" style="background:#d1fae5;color:#065f46;font-weight:500">{{ emp.e_name }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- 제외자 목록 -->
+          {% if excl %}
+          <div>
+            <div class="fw-700 mb-1" style="font-size:.82rem;color:#6b7280">제외자</div>
+            <div class="table-responsive">
+              <table class="table table-sm table-bordered" style="font-size:.8rem">
+                <tbody>
+                {% for eid, info in excl.items() %}
+                <tr>
+                  <td>{{ info.e_name }}</td>
+                  <td><span class="badge bg-secondary">{{ info.reason }}</span></td>
+                  <td class="text-end">
+                    {% if week.status != 'closed' %}
+                    <button class="btn btn-sm btn-outline-danger py-0 unexclude-btn"
+                            data-eid="{{ eid }}" data-week="{{ week.id }}">제외취소</button>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 위험요인 행 추가
+document.querySelectorAll('.add-hazard').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tbody = document.getElementById(btn.dataset.tbody);
+    const tr = document.createElement('tr');
+    tr.className = 'hazard-row';
+    tr.innerHTML = `<td><input type="text" class="h-hazard" placeholder="위험 요인"></td>
+      <td><input type="text" class="h-measure" placeholder="대책"></td>
+      <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 del-hazard">✕</button></td>`;
+    tbody.appendChild(tr);
+    tr.querySelector('.del-hazard').addEventListener('click', () => tr.remove());
+  });
+});
+
+// 위험요인 행 삭제 (기존)
+document.querySelectorAll('.del-hazard').forEach(btn => {
+  btn.addEventListener('click', () => btn.closest('tr').remove());
+});
+
+// TBM 저장
+document.querySelectorAll('.save-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const dept = btn.dataset.dept;
+    const weekId = btn.dataset.week;
+    const tbodyId = btn.dataset.tbody;
+    const form = btn.closest('form');
+    const msgEl = form.querySelector('[class*="save-msg-"]');
+
+    const fd = new FormData(form);
+    fd.append('dept', dept);
+
+    // 위험요인 수집
+    const tbody = document.getElementById(tbodyId);
+    const hazards = [];
+    tbody.querySelectorAll('tr.hazard-row').forEach(tr => {
+      const h = tr.querySelector('.h-hazard')?.value.trim() || '';
+      const m = tr.querySelector('.h-measure')?.value.trim() || '';
+      if (h || m) hazards.push({hazard: h, measure: m});
+    });
+    fd.append('hazards_json', JSON.stringify(hazards));
+
+    btn.disabled = true;
+    btn.textContent = '저장중...';
+    try {
+      const res = await fetch(`/tbm/admin/week/${weekId}/session`, {method:'POST', body:fd});
+      const data = await res.json();
+      if (data.ok) {
+        msgEl.innerHTML = '<span class="text-success">✔ 저장 완료</span>';
+      } else {
+        msgEl.innerHTML = `<span class="text-danger">오류: ${data.error}</span>`;
+      }
+    } catch(e) {
+      msgEl.innerHTML = '<span class="text-danger">저장 실패</span>';
+    }
+    btn.disabled = false;
+    btn.textContent = '💾 저장';
+    setTimeout(() => msgEl.innerHTML = '', 4000);
+  });
+});
+
+// 제외자 추가
+document.querySelectorAll('.exclude-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const reason = prompt(`${btn.dataset.name}님 제외 사유 입력\n(연차/반차/무급휴가/결근/병가)`, '연차');
+    if (!reason) return;
+    const res = await fetch(`/tbm/admin/week/${btn.dataset.week}/exclude`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action:'add', e_id: btn.dataset.eid,
+        e_name: btn.dataset.name, e_dept: btn.dataset.dept, reason})
+    });
+    const data = await res.json();
+    if (data.ok) location.reload();
+    else alert('오류: ' + data.error);
+  });
+});
+
+// 제외 취소
+document.querySelectorAll('.unexclude-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm('제외를 취소하시겠습니까?')) return;
+    const res = await fetch(`/tbm/admin/week/${btn.dataset.week}/exclude`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action:'remove', e_id: btn.dataset.eid})
+    });
+    const data = await res.json();
+    if (data.ok) location.reload();
+    else alert('오류: ' + data.error);
+  });
+});
+
+// 리더 성명 입력 시 직책 자동 매칭 (소속 우선)
+const rosterMembers = {{ roster_members | tojson }};
+
+function autoSelectLeaderPosition(nameInput) {
+  const dept = nameInput.dataset.dept;
+  const name = nameInput.value.trim();
+  const row = nameInput.closest('.row');
+  if (!row) return;
+
+  const deptSel = row.querySelector('.leader-dept-select');
+  const posSel = row.querySelector('.leader-position-select');
+  if (!posSel) return;
+
+  const selectedOrgDept = deptSel ? (deptSel.value || '') : '';
+  const candidates = rosterMembers[dept] || [];
+
+  let matched = null;
+  if (name) {
+    if (selectedOrgDept) {
+      matched = candidates.find(r => r.name === name && r.org_dept === selectedOrgDept) || null;
+    }
+    if (!matched) {
+      matched = candidates.find(r => r.name === name) || null;
+    }
+  }
+
+  if (matched && matched.position) {
+    for (const opt of posSel.options) {
+      if (opt.value === matched.position) {
+        opt.selected = true;
+        return;
+      }
+    }
+  }
+  posSel.value = '';
+}
+
+document.querySelectorAll('.leader-name-input').forEach(inp => {
+  inp.addEventListener('input', () => autoSelectLeaderPosition(inp));
+  inp.addEventListener('change', () => autoSelectLeaderPosition(inp));
+});
+
+document.querySelectorAll('.leader-dept-select').forEach(sel => {
+  sel.addEventListener('change', () => {
+    const row = sel.closest('.row');
+    const nameInput = row ? row.querySelector('.leader-name-input') : null;
+    if (nameInput) autoSelectLeaderPosition(nameInput);
+  });
+});
+</script>
+{% endblock %}

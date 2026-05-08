@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>연차사용계획</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        @media (max-width: 767.98px) {
+            .col-desktop-only { display: none !important; }
+            .plan-row { cursor: pointer; }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'leave_approval' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <div class="page-title mb-3">
+        <span class="title-icon">✅</span>
+        <span>연차사용계획</span>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    {% if is_admin %}
+    <div class="card mb-3">
+        <div class="card-header bg-secondary text-white" style="border-radius: 10px 10px 0 0;">
+            <span class="fw-bold">⚙️ 그룹별 결재라인 설정</span>
+        </div>
+        <div class="card-body">
+            <!-- ① 그룹 관리 -->
+            <div class="mb-3 p-3 border rounded" style="background:#f8f9fa;">
+                <span class="fw-bold">① 그룹 관리</span>
+                <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
+                    {% for g in groups %}
+                    <div class="btn-group">
+                        <a href="/leave_approval?gid={{ g.id }}" class="btn btn-sm {% if sel_group == g.id %}btn-dark{% else %}btn-outline-dark{% endif %}">
+                            {{ g.name }}
+                            {% if g.status == '완료' %}<span class="badge bg-success ms-1" style="font-size:0.65rem;">✅완료</span>
+                            {% else %}<span class="badge bg-secondary ms-1" style="font-size:0.65rem;">설정중</span>{% endif %}
+                        </a>
+                        {% if sel_group == g.id %}
+                        <button class="btn btn-sm btn-outline-dark" onclick="renameGroup({{ g.id }},'{{ g.name }}')" title="수정">✏️</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteGroup({{ g.id }},'{{ g.name }}')" title="삭제">🗑️</button>
+                        {% if g.status == '완료' %}<button class="btn btn-sm btn-outline-warning" onclick="reopenGroup({{ g.id }})" title="재설정">🔄</button>{% endif %}
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    <button class="btn btn-sm btn-success" onclick="createGroup()">➕ 새 그룹</button>
+                </div>
+                <div class="mt-2 text-muted small">※ 결재라인: 작성자(신청자 자동) → 검토 → 결재 (2단계 고정)</div>
+            </div>
+
+            {% if sel_group %}
+            <!-- ② 검토자 설정 -->
+            <div class="mb-3 p-3 border rounded" style="background:#e3f2fd;">
+                <span class="fw-bold">② 결재자 설정</span>
+                <div class="mb-2 mt-2">
+                    <select id="revDeptFilter" class="form-select form-select-sm d-inline-block" style="width:auto;font-size:0.78rem;" onchange="filterRevSelects()">
+                        <option value="">부서 전체</option>
+                        {% for d in dept_list %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+                    </select>
+                    <select id="revSubDeptFilter" class="form-select form-select-sm d-inline-block ms-1" style="width:auto;font-size:0.78rem;" onchange="filterRevSelects()">
+                        <option value="">소속 전체</option>
+                        {% for s in sub_dept_list %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="row g-3">
+                    {% for step in [1,2] %}
+                    <div class="col-md-6">
+                        <div class="p-2 border rounded bg-white">
+                            <label class="small fw-bold mb-1 {% if step==1 %}text-info{% else %}text-success{% endif %}">
+                                {% if step == 1 %}검토자{% else %}결재자 (최종){% endif %}
+                            </label>
+                            <div class="mb-1">
+                                {% for a in reviewers[step|string] %}
+                                <span class="badge {% if step==1 %}bg-info{% else %}bg-success{% endif %} mb-1" style="font-size:0.78rem;">
+                                    {{ a.user_name }}
+                                    <span style="cursor:pointer;" onclick="removeReviewer({{ sel_group }},{{ step }},{{ a.user_id }})">×</span>
+                                </span>
+                                {% endfor %}
+                            </div>
+                            <select class="form-select form-select-sm rev-select" onchange="addReviewer({{ sel_group }},{{ step }},this)" style="font-size:0.78rem;">
+                                <option value="">+ {% if step == 1 %}검토자{% else %}결재자{% endif %} 추가</option>
+                                {% for u in reviewer_users %}
+                                <option value="{{ u.id }}" data-dept="{{ u.dept }}" data-subdept="{{ u.sub_dept }}">{{ u.name }}{% if u.position %} {{ u.position }}{% endif %}{% if u.sub_dept %} ({{ u.sub_dept }}){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <button class="btn btn-sm btn-dark mt-2" onclick="confirmSection(2)">✅ 결재자 확정</button>
+            </div>
+
+            <!-- ③ 대상 인원 -->
+            <div class="p-3 border rounded" style="background:#e8f5e9;">
+                <span class="fw-bold">③ 대상 인원 ({{ members|length }}명)</span>
+                <button class="btn btn-sm btn-outline-success ms-2" onclick="toggleEmpPanel()">➕ 인원 추가/수정</button>
+                <div class="mt-2 d-flex flex-wrap gap-1 mb-2">
+                    {% for m in members %}
+                    <span class="badge bg-dark" style="font-size:0.78rem;">{{ m.user_name }}
+                        <span style="cursor:pointer;" onclick="removeMember({{ sel_group }},{{ m.user_id }})">×</span>
+                    </span>
+                    {% endfor %}
+                </div>
+                <div id="empPanel" style="display:none;">
+                <div class="row g-2 mb-2">
+                    <div class="col-auto">
+                        <select id="filterDept" class="form-select form-select-sm" style="font-size:0.78rem;" onchange="filterEmpList()">
+                            <option value="">부서 전체</option>
+                            {% for d in dept_list %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <select id="filterSubDept" class="form-select form-select-sm" style="font-size:0.78rem;" onchange="filterEmpList()">
+                            <option value="">소속 전체</option>
+                            {% for s in sub_dept_list %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <input type="text" id="filterName" class="form-control form-control-sm" placeholder="이름 검색" style="font-size:0.78rem;" oninput="filterEmpList()">
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-sm btn-primary" onclick="addCheckedMembers()">✅ 선택 추가</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="toggleAllEmp(true)">전체선택</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="toggleAllEmp(false)">전체해제</button>
+                        <span class="small text-muted ms-1" id="empVisCount"></span>
+                    </div>
+                </div>
+                <div id="empCheckList" class="d-flex flex-wrap gap-1" style="max-height:180px; overflow-y:auto;">
+                    {% for u in all_users %}
+                    <label class="emp-chk-item" data-dept="{{ u.dept }}" data-subdept="{{ u.sub_dept }}" data-name="{{ u.name }}" style="font-size:0.78rem; white-space:nowrap; cursor:pointer;">
+                        <input type="checkbox" value="{{ u.id }}" class="emp-chk"> {{ u.name }}
+                    </label>
+                    {% endfor %}
+                </div>
+                </div>
+                <button class="btn btn-sm btn-dark mt-2" onclick="confirmSection(3)">✅ 인원 확정 (완료)</button>
+            </div>
+            {% endif %}
+
+            <!-- 그룹 현황 요약 -->
+            {% if not sel_group %}
+            <div class="mt-3">
+                <table class="table table-sm" style="font-size:0.82rem;">
+                    <thead><tr><th>그룹</th><th>상태</th><th>결재자</th><th>인원</th></tr></thead>
+                    <tbody>
+                    {% for g in groups %}
+                    {% set info = all_group_info[g.id] %}
+                    <tr>
+                        <td><a href="/leave_approval?gid={{ g.id }}">{{ g.name }}</a></td>
+                        <td><span class="badge {% if info.status=='완료' %}bg-success{% else %}bg-secondary{% endif %}">{{ info.status }}</span></td>
+                        <td>{% for s in [1,2] %}{% if info.revs[s|string] %}<span class="small">{% if s==1 %}검토{% else %}결재{% endif %}: {{ info.revs[s|string]|join(', ') }}</span><br>{% endif %}{% endfor %}</td>
+                        <td>{{ info.member_count }}명 <span class="text-muted small">({{ info.member_names[:5]|join(', ') }}{% if info.member_names|length > 5 %}…{% endif %})</span></td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ═══ 연차사용계획서 목록 ═══ -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center" style="border-radius: 10px 10px 0 0;">
+            <span class="fw-bold">📝 연차사용계획 신청</span>
+            <span class="fw-normal" style="font-size:0.85rem">{{ plans|length }}건</span>
+        </div>
+        <div class="card-body">
+            {% if is_reviewer %}
+            <div class="mb-3">
+                <div class="btn-group" role="group">
+                    <a href="/leave_approval?plan_status=전체{% if sel_group %}&gid={{ sel_group }}{% endif %}" class="btn btn-sm {% if plan_status == '전체' %}btn-dark{% else %}btn-outline-dark{% endif %}">전체</a>
+                    <a href="/leave_approval?plan_status=대기{% if sel_group %}&gid={{ sel_group }}{% endif %}" class="btn btn-sm {% if plan_status == '대기' %}btn-warning{% else %}btn-outline-warning{% endif %}">대기</a>
+                    <a href="/leave_approval?plan_status=승인{% if sel_group %}&gid={{ sel_group }}{% endif %}" class="btn btn-sm {% if plan_status == '승인' %}btn-success{% else %}btn-outline-success{% endif %}">승인</a>
+                    <a href="/leave_approval?plan_status=반려{% if sel_group %}&gid={{ sel_group }}{% endif %}" class="btn btn-sm {% if plan_status == '반려' %}btn-danger{% else %}btn-outline-danger{% endif %}">반려</a>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if not is_reviewer %}
+            <!-- ═══ 개인용: 월별 뷰 ═══ -->
+            <div class="accordion" id="monthlyAccordion">
+                {% for m in range(1, 13) %}
+                {% set month_plans = plans_by_month[m] %}
+                {% set has_plans = month_plans|length > 0 %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="mh{{ m }}">
+                        <button class="accordion-button {% if not has_plans %}collapsed{% endif %} py-2" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#mc{{ m }}"
+                                style="font-size:0.9rem;">
+                            <span class="fw-bold">{{ cur_year }}년 {{ m }}월</span>
+                            {% if has_plans %}
+                            <span class="badge bg-primary ms-2">{{ month_plans|length }}건</span>
+                            {% set last_plan = month_plans[-1] %}
+                            {% if last_plan.status == '승인' %}<span class="badge bg-success ms-1" style="font-size:0.65rem;">완료</span>
+                            {% elif last_plan.status in ['대기', '1차승인'] %}<span class="badge bg-warning text-dark ms-1" style="font-size:0.65rem;">대기</span>
+                            {% elif last_plan.status == '반려' %}<span class="badge bg-danger ms-1" style="font-size:0.65rem;">반려</span>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-muted ms-2" style="font-size:0.8rem;">미신청</span>
+                            {% endif %}
+                        </button>
+                    </h2>
+                    <div id="mc{{ m }}" class="accordion-collapse collapse {% if has_plans %}show{% endif %}" data-bs-parent="#monthlyAccordion">
+                        <div class="accordion-body p-2">
+                            {% if not has_plans %}
+                            <div class="text-center text-muted py-2" style="font-size:0.85rem;">
+                                <a href="/annual_leave?month={{ cur_year }}-{{ '%02d'|format(m) }}" class="btn btn-sm btn-outline-primary">📝 {{ m }}월 계획서 작성</a>
+                            </div>
+                            {% else %}
+                            <table class="table table-hover table-sm mb-0" style="font-size:0.85rem;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="text-center">일수</th>
+                                        <th>사유</th>
+                                        <th class="text-center">상태</th>
+                                        <th class="text-center">신청일시</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for p in month_plans %}
+                                    <tr class="plan-row{% if p.is_amendment %} table-warning{% endif %}" onclick="location.href='/leave_plan_view/{{ p.id }}'" style="cursor:pointer;">
+                                        <td class="text-center">{% if p.is_amendment %}↳ {% endif %}{{ p.total_days }}일 <span class="text-muted small">({{ p.date_count }}건)</span></td>
+                                        <td style="font-size:0.8rem; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{{ p.reason }}">
+                                            {% if p.is_amendment %}<span class="badge bg-warning text-dark" style="font-size:0.6rem;">수정</span> {% endif %}{{ p.reason or '-' }}
+                                        </td>
+                                        <td class="text-center">
+                                            {% if p.status == '대기' %}<span class="badge bg-secondary">대기</span>
+                                            {% elif p.status == '1차승인' %}<span class="badge bg-info">1차승인</span>
+                                            {% elif p.status == '2차승인' %}<span class="badge" style="background:#6f42c1;">2차승인</span>
+                                            {% elif p.status == '승인' %}<span class="badge bg-success">완료</span>
+                                            {% else %}<span class="badge bg-danger">반려</span>{% endif %}
+                                        </td>
+                                        <td class="text-center text-muted" style="font-size:0.78rem;">{{ p.created_at.strftime('%m-%d %H:%M') if p.created_at else '-' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% elif plans|length == 0 %}
+            <div class="text-center text-muted py-4">{% if plan_status == '전체' %}계획서가 없습니다.{% else %}{{ plan_status }} 상태의 계획서가 없습니다.{% endif %}</div>
+            {% else %}
+            <!-- ═══ 관리자/검토자용: 기존 테이블 ═══ -->
+            {% if is_admin %}
+            <div class="mb-2">
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteSelectedPlans()">🗑️ 선택 삭제</button>
+            </div>
+            {% endif %}
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0" style="font-size:0.88rem;">
+                    <thead class="table-light">
+                        <tr>
+                            {% if is_admin %}<th class="text-center" style="width:35px;"><input type="checkbox" onclick="toggleAll(this)"></th>{% endif %}
+                            <th class="text-center" style="width:40px;">#</th>
+                            <th class="text-center">계획월</th>
+                            <th>이름</th>
+                            <th>그룹</th>
+                            <th class="text-center">일수</th>
+                            <th>사유</th>
+                            <th class="text-center">상태</th>
+                            <th class="text-center">신청일시</th>
+                            <th class="text-center col-desktop-only" style="width:100px;">보기</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in plans %}
+                        <tr class="plan-row{% if p.is_amendment %} table-warning{% endif %}">
+                            {% if is_admin %}<td class="text-center" onclick="event.stopPropagation()"><input type="checkbox" class="plan-chk" value="{{ p.id }}"></td>{% endif %}
+                            <td class="text-center" onclick="location.href='/leave_plan_view/{{ p.id }}'">{{ loop.index }}</td>
+                            <td class="text-center" onclick="location.href='/leave_plan_view/{{ p.id }}'">{{ p.disp_month }}</td>
+                            <td class="fw-bold" onclick="location.href='/leave_plan_view/{{ p.id }}'">{% if p.is_amendment %}↳ {% endif %}{{ p.user_name }}</td>
+                            <td onclick="location.href='/leave_plan_view/{{ p.id }}'">{{ p.group_name }}</td>
+                            <td class="text-center" onclick="location.href='/leave_plan_view/{{ p.id }}'">{{ p.total_days }}일 <span class="text-muted small">({{ p.date_count }}건)</span></td>
+                            <td style="font-size:0.8rem; max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{{ p.reason }}" onclick="location.href='/leave_plan_view/{{ p.id }}'">{{ p.reason or '-' }}</td>
+                            <td class="text-center" onclick="location.href='/leave_plan_view/{{ p.id }}'">
+                                {% if p.is_amendment %}<span class="badge bg-warning text-dark" style="font-size:0.65rem;">수정</span> {% endif %}
+                                {% if p.status == '대기' %}<span class="badge bg-secondary">대기</span>
+                                {% elif p.status == '1차승인' %}<span class="badge bg-info">1차승인</span>
+                                {% elif p.status == '2차승인' %}<span class="badge" style="background:#6f42c1;">2차승인</span>
+                                {% elif p.status == '승인' %}<span class="badge bg-success">완료</span>
+                                {% else %}<span class="badge bg-danger">반려</span>{% endif %}
+                            </td>
+                            <td class="text-center text-muted" style="font-size:0.8rem;" onclick="location.href='/leave_plan_view/{{ p.id }}'">{{ p.created_at.strftime('%m-%d %H:%M') if p.created_at else '-' }}</td>
+                            <td class="text-center col-desktop-only">
+                                <a href="/leave_plan_view/{{ p.id }}" class="btn btn-sm btn-outline-primary px-3">📄 보기</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ═══ 선택 삭제 ═══
+function toggleAll(el) {
+    document.querySelectorAll('.plan-chk').forEach(c => c.checked = el.checked);
+}
+function deleteSelectedPlans() {
+    const ids = [...document.querySelectorAll('.plan-chk:checked')].map(c => c.value);
+    if (ids.length === 0) { alert('삭제할 항목을 선택하세요.'); return; }
+    if (!confirm(ids.length + '개의 연차사용계획서를 삭제하시겠습니까?')) return;
+    Promise.all(ids.map(id => fetch('/api/leave_plan/' + id, {method:'DELETE'}).then(r=>r.json())))
+    .then(results => {
+        const ok = results.filter(r => r.ok).length;
+        alert(ok + '개 삭제 완료');
+        location.reload();
+    });
+}
+
+// ═══ 그룹 관리 ═══
+function apiPost(url, data, cb) {
+    fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
+    .then(r=>r.json()).then(d=>{ if(d.ok) { if(cb) cb(d); else location.reload(); } else alert(d.error||d.msg||'오류'); });
+}
+function createGroup() {
+    var n = prompt('새 그룹 이름:'); if(!n) return;
+    apiPost('/save_lp_group', {action:'create', name:n});
+}
+function renameGroup(id, old) {
+    var n = prompt('그룹명 수정:', old); if(!n) return;
+    apiPost('/save_lp_group', {action:'rename', id:id, name:n});
+}
+function deleteGroup(id, name) {
+    if(!confirm(name+' 그룹을 삭제하시겠습니까?')) return;
+    apiPost('/save_lp_group', {action:'delete', id:id});
+}
+function reopenGroup(id) { apiPost('/save_lp_group', {action:'reopen', id:id}); }
+function confirmSection(s) {
+    var gid = {{ sel_group or 0 }};
+    apiPost('/save_lp_group', {action:'confirm', id:gid, section:s});
+}
+function addReviewer(gid, step, sel) {
+    if(!sel.value) return;
+    apiPost('/save_lp_group_reviewer', {group_id:gid, step:step, user_id:parseInt(sel.value)});
+}
+function removeReviewer(gid, step, uid) {
+    apiPost('/save_lp_group_reviewer', {group_id:gid, step:step, user_id:uid, action:'delete'});
+}
+function removeMember(gid, uid) {
+    apiPost('/save_lp_group_member', {group_id:gid, user_id:uid, action:'delete'});
+}
+function toggleEmpPanel() {
+    var p = document.getElementById('empPanel');
+    p.style.display = p.style.display === 'none' ? '' : 'none';
+}
+function filterRevSelects() {
+    var dept = document.getElementById('revDeptFilter').value;
+    var sub = document.getElementById('revSubDeptFilter').value;
+    document.querySelectorAll('.rev-select').forEach(function(sel) {
+        var opts = sel.querySelectorAll('option[data-dept]');
+        opts.forEach(function(o) {
+            var show = true;
+            if (dept && o.dataset.dept !== dept) show = false;
+            if (sub && o.dataset.subdept !== sub) show = false;
+            o.style.display = show ? '' : 'none';
+        });
+    });
+}
+function filterEmpList() {
+    var dept = document.getElementById('filterDept').value;
+    var sub = document.getElementById('filterSubDept').value;
+    var name = document.getElementById('filterName').value.toLowerCase();
+    var items = document.querySelectorAll('.emp-chk-item');
+    var vis = 0;
+    items.forEach(function(el) {
+        var show = true;
+        if (dept && el.dataset.dept !== dept) show = false;
+        if (sub && el.dataset.subdept !== sub) show = false;
+        if (name && el.dataset.name.toLowerCase().indexOf(name) < 0) show = false;
+        el.style.display = show ? '' : 'none';
+        if (show) vis++;
+    });
+    document.getElementById('empVisCount').textContent = vis + '명 표시';
+}
+function addCheckedMembers() {
+    var gid = {{ sel_group or 0 }};
+    var ids = []; document.querySelectorAll('.emp-chk:checked').forEach(function(c){ ids.push(parseInt(c.value)); });
+    if(!ids.length) { alert('인원을 선택하세요'); return; }
+    apiPost('/save_lp_group_member', {group_id:gid, action:'add_batch', user_ids:ids});
+}
+function toggleAllEmp(check) {
+    document.querySelectorAll('.emp-chk-item').forEach(function(el) {
+        if (el.style.display !== 'none') {
+            el.querySelector('.emp-chk').checked = check;
+        }
+    });
+}
+
+</script>
+</body>
+</html>

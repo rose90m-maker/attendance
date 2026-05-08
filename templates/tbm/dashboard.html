@@ -1,0 +1,218 @@
+{% extends "tbm/base.html" %}
+{% block title %}관리자 대시보드{% endblock %}
+{% block content %}
+<div class="page-header mb-3">
+  <h4>📋 TBM 주차 현황</h4>
+  <div class="d-flex gap-2">
+    <div class="dropdown">
+      <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+        🖨️ 월 인쇄
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        {% for m in range(1, 13) %}
+        <li><a class="dropdown-item" href="/tbm/summary/{{ this_year }}/{{ m }}">{{ this_year }}년 {{ m }}월</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    <button class="btn btn-tbm-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newWeekModal">
+      + 새 주차 등록
+    </button>
+  </div>
+</div>
+
+<!-- 검색 필터 -->
+<div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+  <select id="filterYear" class="form-select form-select-sm" style="width:auto" onchange="filterWeeks()">
+    <option value="">전체 연도</option>
+    {% set years = weeks | map(attribute='year') | list | unique | sort(reverse=true) %}
+    {% for y in years %}
+    <option value="{{ y }}" {% if y == this_year %}selected{% endif %}>{{ y }}년</option>
+    {% endfor %}
+  </select>
+  <select id="filterMonth" class="form-select form-select-sm" style="width:auto" onchange="filterWeeks()">
+    <option value="">전체 월</option>
+    {% for m in range(1, 13) %}
+    <option value="{{ m }}월">{{ m }}월</option>
+    {% endfor %}
+  </select>
+  <div class="btn-group btn-group-sm" role="group">
+    <button type="button" class="btn btn-outline-secondary active" data-status="" onclick="setStatus(this)">전체</button>
+    <button type="button" class="btn btn-outline-success" data-status="진행중" onclick="setStatus(this)">진행중</button>
+    <button type="button" class="btn btn-outline-danger" data-status="마감" onclick="setStatus(this)">마감</button>
+  </div>
+  <button class="btn btn-sm btn-light" onclick="resetFilter()">초기화</button>
+</div>
+
+{% if not weeks %}
+<div class="text-center py-5 text-muted">
+  <div style="font-size:3rem">📅</div>
+  <p class="mt-2">등록된 주차가 없습니다.<br>새 주차를 등록하세요.</p>
+</div>
+{% else %}
+<div class="row g-3" id="weekList">
+{% for w in weeks %}
+<div class="col-12 col-lg-6 week-card"
+     data-label="{{ w.label }}"
+     data-date="{{ w.tbm_date }}"
+     data-status="{{ '진행중' if w.status=='open' else '마감' }}">
+  <div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div>
+        <span class="fw-700 me-2" style="color:#4b5563">{{ w.label }}</span>
+        <span class="status-{{ w.status }}">{{ '진행중' if w.status=='open' else '마감' }}</span>
+      </div>
+      <span class="text-muted" style="font-size:.8rem">{{ w.tbm_date }}</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-2 mb-3">
+        {% for dept in tbm_depts %}
+        {% set s = w.stats[dept] %}
+        {% set is_elec = '전기' in dept %}
+        <div class="col-6">
+          <div class="p-2" style="background:{{ '#dbeafe' if is_elec else '#d1fae5' }};border-radius:8px">
+            <div class="fw-700" style="font-size:.8rem;color:{{ '#1d4ed8' if is_elec else '#065f46' }}">
+              {{ dept[:2] }}사업부
+            </div>
+            <div class="mt-1 d-flex align-items-baseline gap-1">
+              <span style="font-size:1.4rem;font-weight:800;color:{{ '#1d4ed8' if is_elec else '#065f46' }}">
+                {{ s.signed }}
+              </span>
+              <span style="font-size:.8rem;color:#6b7280">/ {{ s.total - s.excluded }} 명
+                {% if s.excluded %}<span class="text-muted">(제외 {{ s.excluded }})</span>{% endif %}
+              </span>
+            </div>
+            {% if s.session_id %}
+            <div class="progress mt-1" style="height:5px">
+              {% set pct = ((s.signed / (s.total - s.excluded)) * 100)|int if (s.total - s.excluded) > 0 else 0 %}
+              <div class="progress-bar" style="width:{{ pct }}%;background:{{ '#2563eb' if is_elec else '#047857' }}"></div>
+            </div>
+            {% else %}
+            <div class="text-muted mt-1" style="font-size:.75rem">TBM 미입력</div>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="/tbm/admin/week/{{ w.id }}" class="btn btn-outline-secondary btn-sm">✏️ 편집</a>
+        <a href="/tbm/print/{{ w.id }}" target="_blank" class="btn btn-outline-secondary btn-sm">🖨️ 인쇄</a>
+        {% if w.status == 'open' %}
+        <form method="POST" action="/tbm/admin/week/{{ w.id }}/close" class="ms-auto"
+              onsubmit="return confirm('{{ w.label }} 주차를 마감하시겠습니까?')">
+          <button class="btn btn-sm btn-outline-danger">마감</button>
+        </form>
+        {% else %}
+        <form method="POST" action="/tbm/admin/week/{{ w.id }}/reopen" class="ms-auto">
+          <button class="btn btn-sm btn-outline-warning">재오픈</button>
+        </form>
+        {% endif %}
+        <form method="POST" action="/tbm/admin/week/{{ w.id }}/delete"
+              onsubmit="return confirm('{{ w.label }} 주차와 모든 서명 데이터가 삭제됩니다.\n정말 삭제하시겠습니까?')">
+          <button class="btn btn-sm btn-danger">🗑️ 삭제</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+{% endif %}
+
+<!-- 새 주차 등록 모달 -->
+<div class="modal fade" id="newWeekModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-700">새 주차 등록</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="/tbm/admin/week/create">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-4">
+              <label class="form-label fw-600">연도</label>
+              <input type="number" name="year" class="form-control" value="{{ this_year }}" required>
+            </div>
+            <div class="col-4">
+              <label class="form-label fw-600">월</label>
+              <select name="month" class="form-select" required>
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}" {% if m == this_month %}selected{% endif %}>{{ m }}월</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-4">
+              <label class="form-label fw-600">주차</label>
+              <select name="week_in_month" class="form-select" required>
+                {% for w in range(1, 6) %}
+                <option value="{{ w }}" {% if w == this_week_in_month %}selected{% endif %}>{{ w }}주차</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-600">TBM 실시 날짜</label>
+              <input type="date" name="tbm_date" class="form-control"
+                     value="{{ this_wednesday }}" required>
+            </div>
+          </div>
+          {% if has_this_week %}
+          <div class="alert alert-warning mt-3 py-2" style="font-size:.85rem">
+            이번 주({{ this_month }}월 {{ this_week_in_month }}주차)는 이미 등록돼 있습니다.
+          </div>
+          {% endif %}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+          <button type="submit" class="btn btn-tbm-primary btn-sm">등록</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 검색결과 없음 -->
+<div id="searchEmpty" class="text-center py-4 text-muted" style="display:none">
+  <p>검색 결과가 없습니다.</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let activeStatus = '';
+
+function setStatus(btn) {
+  activeStatus = btn.dataset.status;
+  document.querySelectorAll('[data-status]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  filterWeeks();
+}
+
+function filterWeeks() {
+  const year  = document.getElementById('filterYear').value;
+  const month = document.getElementById('filterMonth').value;
+  const cards = document.querySelectorAll('.week-card');
+  let visible = 0;
+  cards.forEach(c => {
+    const label  = c.dataset.label;
+    const status = c.dataset.status;
+    const matchYear   = !year   || label.includes(year);
+    const matchMonth  = !month  || label.includes(month);
+    const matchStatus = !activeStatus || status === activeStatus;
+    const show = matchYear && matchMonth && matchStatus;
+    c.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  const empty = document.getElementById('searchEmpty');
+  if (empty) empty.style.display = visible === 0 ? '' : 'none';
+}
+
+function resetFilter() {
+  document.getElementById('filterYear').value = '';
+  document.getElementById('filterMonth').value = '';
+  activeStatus = '';
+  document.querySelectorAll('[data-status]').forEach(b => b.classList.remove('active'));
+  document.querySelector('[data-status=""]').classList.add('active');
+  filterWeeks();
+}
+</script>
+{% endblock %}

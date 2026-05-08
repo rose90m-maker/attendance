@@ -1,0 +1,1589 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>근무보고서 관리</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@700;900&display=swap" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        .wr-table { font-size: 0.82rem; border-collapse: collapse; }
+        .wr-table th { background: #1e293b; color: #fff; font-weight: 600; font-size: 0.78rem; text-align: center; padding: 6px 8px; white-space: nowrap; }
+        .wr-table td { vertical-align: top; padding: 4px 6px; border: 1px solid #cbd5e1; min-width: 80px; }
+        .name-tag { display: inline-block; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 1px 6px; margin: 1px; font-size: 0.78rem; cursor: default; }
+        .name-tag .remove-btn { cursor: pointer; color: #ef4444; margin-left: 3px; font-weight: 700; }
+        .name-cell { min-height: 28px; }
+        .name-cell .name-tag { display: block; }
+        .badge-대기 { background: #3b82f6; color: #fff; }
+        .badge-작성완료 { background: #f59e0b; color: #fff; }
+        .badge-검토 { background: #8b5cf6; color: #fff; }
+        .badge-결재 { background: #10b981; color: #fff; }
+        .badge-반려 { background: #ef4444; color: #fff; }
+        .report-item { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; transition: box-shadow 0.15s; cursor: pointer; }
+        .report-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .drop-zone { min-height: 50px; border: 2px dashed #cbd5e1; border-radius: 6px; padding: 4px; }
+        .drop-zone.drag-over { border-color: #3b82f6; background: #eff6ff; }
+        .member-pool .name-tag { cursor: grab; }
+        .member-pool .name-tag:active { cursor: grabbing; }
+        .wr-table th.clickable { cursor: pointer; position: relative; }
+        .wr-table th.clickable:hover { background: #334155; }
+        .wr-table th.clickable::after { content: ' +'; font-size: 0.7rem; opacity: 0.7; }
+        .assign-popup { position: fixed; z-index: 9999; background: #fff; border: 2px solid #1e293b; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.25); padding: 12px; min-width: 340px; max-width: 520px; }
+        .assign-popup .popup-title { font-weight: 700; font-size: 0.85rem; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0; }
+        .assign-popup .popup-select-all { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0; }
+        .assign-popup .popup-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+        .assign-popup label { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 4px; cursor: pointer; font-size: 0.82rem; }
+        .assign-popup label:hover { background: #f1f5f9; }
+        .assign-popup label input[type=checkbox] { width: 16px; height: 16px; accent-color: #1e293b; }
+        .assign-popup .popup-btns { margin-top: 8px; padding-top: 6px; border-top: 1px solid #e2e8f0; display: flex; gap: 6px; justify-content: flex-end; }
+        .assign-popup .popup-paste-area { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0; }
+        .assign-popup .popup-paste-input { width: 100%; font-size: 0.78rem; resize: none; border: 1px dashed #cbd5e1; border-radius: 4px; padding: 4px 8px; color: #475569; background: #f8fafc; outline: none; font-family: inherit; }
+        .assign-popup .popup-paste-input:focus { border-color: #3b82f6; background: #fff; }
+        .assign-popup .popup-paste-result { font-size: 0.72rem; margin-top: 3px; min-height: 14px; }
+        @media (max-width: 767.98px) {
+            .wr-table { font-size: 0.68rem; }
+            .wr-table th, .wr-table td { padding: 3px 4px; min-width: 55px; }
+            .name-tag { font-size: 0.68rem; padding: 0 4px; }
+            .container-fluid { padding-left: 8px; padding-right: 8px; }
+            .page-title { font-size: 1.1rem; }
+            /* 보고서 목록 모바일 */
+            .report-item { padding: 8px 10px; flex-wrap: wrap !important; }
+            .report-item .d-flex { flex-direction: column; gap: 2px !important; }
+            /* 필터 폼 모바일 */
+            .card-body .row.g-2 { flex-direction: column; }
+            .card-body .row.g-2 .col-auto { width: 100%; }
+            .card-body .row.g-2 input[type=month],
+            .card-body .row.g-2 select { width: 100% !important; }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'work_report' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <div class="page-title mb-3">
+        <span class="title-icon">📋</span>
+        <span>근무보고서 관리</span>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">{{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+    {% endfor %}{% endif %}{% endwith %}
+
+    {# ═══════ 관리자: 그룹 설정 ═══════ #}
+    {% if is_admin %}
+    <div class="card mb-4">
+        <div class="card-header bg-secondary text-white" style="border-radius:10px 10px 0 0;">
+            <span class="fw-bold">⚙️ 그룹별 검토자 설정</span>
+        </div>
+        <div class="card-body">
+            <!-- ① 그룹 관리 -->
+            <div class="mb-3 p-3 border rounded" style="background:#f8f9fa;">
+                <span class="fw-bold">① 그룹 관리</span>
+                <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
+                    {% for g in groups %}
+                    <div class="btn-group">
+                        <a href="/work_report?status={{ status_filter }}&month={{ sel_month }}&gid={{ g.id }}" class="btn btn-sm {% if sel_group == g.id %}btn-dark{% else %}btn-outline-dark{% endif %}">
+                            {{ g.name }}
+                            {% if g.status == '완료' %}<span class="badge bg-success ms-1" style="font-size:0.65rem;">✅완료</span>
+                            {% else %}<span class="badge bg-secondary ms-1" style="font-size:0.65rem;">설정중</span>{% endif %}
+                        </a>
+                        {% if sel_group == g.id %}
+                        <button class="btn btn-sm btn-outline-dark" onclick="renameGroup({{ g.id }},'{{ g.name }}')" title="수정">✏️</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteGroup({{ g.id }},'{{ g.name }}')" title="삭제">🗑️</button>
+                        {% if g.status == '완료' %}<button class="btn btn-sm btn-outline-warning" onclick="reopenGroup({{ g.id }})" title="재설정">🔄</button>{% endif %}
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    <button class="btn btn-sm btn-success" onclick="createGroup()">➕ 새 그룹</button>
+                </div>
+                {% if sel_group %}
+                <div class="mt-2">
+                    <span class="text-muted small">결재흐름: 검토 → 결재</span>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if sel_group %}
+            <!-- ② 검토자 설정 -->
+            <div class="mb-3 p-3 border rounded" style="background:#e3f2fd;">
+                <span class="fw-bold">② 결재자 설정</span>
+                <div class="mb-2 mt-2">
+                    <select id="revDeptFilter" class="form-select form-select-sm d-inline-block" style="width:auto;font-size:0.78rem;" onchange="filterRevSelects()">
+                        <option value="">부서 전체</option>
+                        {% for d in dept_list %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+                    </select>
+                    <select id="revSubDeptFilter" class="form-select form-select-sm d-inline-block ms-1" style="width:auto;font-size:0.78rem;" onchange="filterRevSelects()">
+                        <option value="">소속 전체</option>
+                        {% for s in sub_dept_list %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="row g-3">
+                    {% for step in [1,2] %}
+                    <div class="col-md-6">
+                        <div class="p-2 border rounded bg-white">
+                            <label class="small fw-bold mb-1 {% if step==1 %}text-info{% else %}text-success{% endif %}">
+                                {% if step == 1 %}검토자{% else %}결재자 (최종){% endif %}
+                            </label>
+                            <div class="mb-1">
+                                {% for a in reviewers[step|string] %}
+                                <span class="badge {% if step==1 %}bg-info{% else %}bg-success{% endif %} mb-1" style="font-size:0.78rem;">
+                                    {{ a.user_name }}
+                                    <span style="cursor:pointer;" onclick="removeReviewer({{ sel_group }},{{ step }},{{ a.user_id }})">×</span>
+                                </span>
+                                {% endfor %}
+                            </div>
+                            <select class="form-select form-select-sm rev-select" onchange="addReviewer({{ sel_group }},{{ step }},this)" style="font-size:0.78rem;">
+                                <option value="">+ {% if step == 1 %}검토자{% else %}결재자{% endif %} 추가</option>
+                                {% for u in reviewer_users %}
+                                <option value="{{ u.id }}" data-dept="{{ u.dept }}" data-subdept="{{ u.sub_dept }}">{{ u.name }}{% if u.position %} {{ u.position }}{% endif %}{% if u.sub_dept %} ({{ u.sub_dept }}){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <button class="btn btn-sm btn-dark mt-2" onclick="confirmSection(2)">✅ 결재자 확정</button>
+            </div>
+
+            <!-- ③ 대상 인원 -->
+            <div class="p-3 border rounded" style="background:#e8f5e9;">
+                <span class="fw-bold">③ 대상 인원 ({{ members|length }}명)</span>
+                <button class="btn btn-sm btn-outline-success ms-2" onclick="toggleEmpPanel()">➕ 인원 추가/수정</button>
+                <div class="mt-2 d-flex flex-wrap gap-1 mb-2">
+                    {% for m in members %}
+                    <span class="badge bg-dark" style="font-size:0.78rem;">{{ m.user_name }}
+                        <span style="cursor:pointer;" onclick="removeMember({{ sel_group }},{{ m.user_id }})">×</span>
+                    </span>
+                    {% endfor %}
+                </div>
+                <div id="empPanel" style="display:none;">
+                <div class="row g-2 mb-2">
+                    <div class="col-auto">
+                        <select id="filterDept" class="form-select form-select-sm" style="font-size:0.78rem;" onchange="filterEmpList()">
+                            <option value="">부서 전체</option>
+                            {% for d in dept_list %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <select id="filterSubDept" class="form-select form-select-sm" style="font-size:0.78rem;" onchange="filterEmpList()">
+                            <option value="">소속 전체</option>
+                            {% for s in sub_dept_list %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <input type="text" id="filterName" class="form-control form-control-sm" placeholder="이름 검색" style="font-size:0.78rem;" oninput="filterEmpList()">
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-sm btn-primary" onclick="addCheckedMembers()">✅ 선택 추가</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="toggleAllEmp(true)">전체선택</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="toggleAllEmp(false)">전체해제</button>
+                        <span class="small text-muted ms-1" id="empVisCount"></span>
+                    </div>
+                </div>
+                <div id="empCheckList" class="d-flex flex-wrap gap-1" style="max-height:180px; overflow-y:auto;">
+                    {% for u in all_users %}
+                    <label class="emp-chk-item" data-dept="{{ u.dept }}" data-subdept="{{ u.sub_dept }}" data-name="{{ u.name }}" style="font-size:0.78rem; white-space:nowrap; cursor:pointer;">
+                        <input type="checkbox" value="{{ u.id }}" class="emp-chk"> {{ u.name }}
+                    </label>
+                    {% endfor %}
+                </div>
+                </div>
+                <button class="btn btn-sm btn-dark mt-2" onclick="confirmSection(3)">✅ 인원 확정 (완료)</button>
+            </div>
+
+            <!-- ④ 작성자 (대상인원에 포함 안 됨) -->
+            <div class="p-3 border rounded" style="background:#fff3e0;">
+                <span class="fw-bold">④ 작성자 ({{ writers|length }}명)</span>
+                <small class="text-muted ms-2">대상인원에 포함되지 않고 보고서 작성만 가능</small>
+                <button class="btn btn-sm btn-outline-warning ms-2" onclick="toggleWriterPanel()">➕ 작성자 추가/수정</button>
+                <div class="mt-2 d-flex flex-wrap gap-1 mb-2">
+                    {% for w in writers %}
+                    <span class="badge bg-warning text-dark" style="font-size:0.78rem;">{{ w.user_name }}
+                        <span style="cursor:pointer;" onclick="removeWriter({{ sel_group }},{{ w.user_id }})">×</span>
+                    </span>
+                    {% endfor %}
+                </div>
+                <div id="writerPanel" style="display:none;">
+                <div class="row g-2 mb-2">
+                    <div class="col-auto">
+                        <select id="writerDeptFilter" class="form-select form-select-sm" style="font-size:0.78rem;" onchange="filterWriterList()">
+                            <option value="">부서 전체</option>
+                            {% for d in dept_list %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <select id="writerSubDeptFilter" class="form-select form-select-sm" style="font-size:0.78rem;" onchange="filterWriterList()">
+                            <option value="">소속 전체</option>
+                            {% for s in sub_dept_list %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <input type="text" id="writerNameFilter" class="form-control form-control-sm" placeholder="이름 검색" style="font-size:0.78rem;" oninput="filterWriterList()">
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-sm btn-warning" onclick="addCheckedWriters()">✅ 선택 추가</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="toggleAllWriter(true)">전체선택</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="toggleAllWriter(false)">전체해제</button>
+                        <span class="small text-muted ms-1" id="writerVisCount"></span>
+                    </div>
+                </div>
+                <div id="writerCheckList" class="d-flex flex-wrap gap-1" style="max-height:180px; overflow-y:auto;">
+                    {% for u in reviewer_users %}
+                    <label class="writer-chk-item" data-dept="{{ u.dept }}" data-subdept="{{ u.sub_dept }}" data-name="{{ u.name }}" style="font-size:0.78rem; white-space:nowrap; cursor:pointer;">
+                        <input type="checkbox" value="{{ u.id }}" class="writer-chk"> {{ u.name }}
+                    </label>
+                    {% endfor %}
+                </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 그룹 현황 요약 -->
+            {% if not sel_group and groups %}
+            <div class="mt-3">
+                <table class="table table-sm" style="font-size:0.82rem;">
+                    <thead><tr><th>그룹</th><th>상태</th><th>최종</th><th>결재자</th><th>인원</th></tr></thead>
+                    <tbody>
+                    {% for g in groups %}
+                    {% set info = all_group_info[g.id] %}
+                    <tr>
+                        <td><a href="/work_report?gid={{ g.id }}">{{ g.name }}</a></td>
+                        <td><span class="badge {% if info.status=='완료' %}bg-success{% else %}bg-secondary{% endif %}">{{ info.status }}</span></td>
+                        <td>{{ info.final_step }}차</td>
+                        <td>{% for s in [1,2,3] %}{% if info.revs[s|string] %}<span class="small">{% if s==1 %}작성자{% elif s==2 %}검토{% else %}2차검토{% endif %}: {{ info.revs[s|string]|join(', ') }}</span><br>{% endif %}{% endfor %}</td>
+                        <td>{{ info.member_count }}명 <span class="text-muted small">({{ info.member_names[:5]|join(', ') }}{% if info.member_names|length > 5 %}…{% endif %})</span></td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# ═══════ 보고서 목록 ═══════ #}
+    <div class="card mb-4">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+            <span class="fw-bold">📋 근무보고서 목록</span>
+            {% if has_wr_perm %}
+            <button class="btn btn-sm btn-light" onclick="openWriteModal()">✏️ 보고서 작성</button>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            <form method="get" class="row g-2 mb-3 align-items-end">
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.78rem;">📅 월별</label>
+                    <input type="month" name="month" class="form-control form-control-sm" value="{{ sel_month }}" onchange="this.form.submit()">
+                </div>
+                {% if recent_mode %}
+                <div class="col-auto d-flex align-items-end">
+                    <span class="badge bg-secondary" style="font-size:0.75rem;">최근 10건</span>
+                </div>
+                {% endif %}
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.78rem;">상태</label>
+                    <select name="status" class="form-select form-select-sm" style="min-width:90px;">
+                        <option value="all" {{ 'selected' if status_filter=='all' }}>전체</option>
+                        <option value="대기" {{ 'selected' if status_filter=='대기' }}>대기</option>
+                        <option value="작성완료" {{ 'selected' if status_filter=='작성완료' }}>작성완료</option>
+                        <option value="검토" {{ 'selected' if status_filter=='검토' }}>검토</option>
+                        <option value="결재" {{ 'selected' if status_filter=='결재' }}>결재</option>
+                        <option value="반려" {{ 'selected' if status_filter=='반려' }}>반려</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-sm btn-dark">🔍 검색</button>
+                    <a href="/work_report" class="btn btn-sm btn-outline-secondary">초기화</a>
+                </div>
+                {% if sel_group %}<input type="hidden" name="gid" value="{{ sel_group }}">{% endif %}
+            </form>
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="text-muted" style="font-size:0.78rem;">총 <strong>{{ wr_total }}</strong>건{% if recent_mode and wr_total_pages > 1 %} · 최근 10건씩{% endif %}</div>
+                {% if is_admin or has_wr_perm %}
+                <div class="d-flex align-items-center gap-2">
+                    <label class="form-check-label" style="font-size:0.75rem;cursor:pointer;"><input type="checkbox" class="form-check-input" id="chkAll" onchange="toggleAllReports(this.checked)"> 전체선택</label>
+                    <button class="btn btn-outline-danger btn-sm" style="font-size:0.75rem;" onclick="deleteSelectedReports()" id="btnDeleteSelected" disabled>🗑️ 선택 삭제</button>
+                </div>
+                {% endif %}
+            </div>
+
+            {% for rg in report_groups %}
+            <div class="report-item d-flex align-items-stretch gap-0" style="flex-wrap:nowrap;">
+                {% for r in rg %}
+                <div class="d-flex align-items-start gap-2 {% if rg|length > 1 %}{% if not loop.first %}border-start ps-2{% endif %}{% endif %}" style="flex:1;min-width:0;">
+                    {% if is_admin or has_wr_perm %}
+                    <div style="padding-top:6px;" onclick="event.stopPropagation();">
+                        <input type="checkbox" class="form-check-input report-chk" value="{{ r.id }}" data-status="{{ r.status }}" onchange="updateDeleteBtn()">
+                    </div>
+                    {% endif %}
+                    <div style="flex:1;cursor:pointer;min-width:0;" onclick="viewReport({{ r.id }})">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center" style="gap:4px;">
+                        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                            {% if loop.first %}
+                            {% set date_red = r.is_holiday or r.is_weekend %}
+                            <span class="fw-bold d-none d-md-inline" style="font-size:0.9rem;{% if date_red %}color:#dc2626;{% endif %}">{{ r.disp_date[:10] }}{% if r.disp_weekday %}({{ r.disp_weekday }}){% endif %}</span>
+                            <span class="fw-bold d-inline d-md-none" style="font-size:0.82rem;{% if date_red %}color:#dc2626;{% endif %}">{{ r.disp_date[5:10] }}{% if r.disp_weekday %}({{ r.disp_weekday }}){% endif %}</span>
+                            <span class="badge bg-dark ms-1" style="font-size:0.68rem;">{{ r.group_name }}</span>
+                            {% endif %}
+                            {% if r.total > 1 %}
+                            <span class="badge {% if r.seq == 1 %}bg-secondary{% else %}bg-info text-dark{% endif %} ms-1" style="font-size:0.62rem;">{% if r.seq == 1 %}원본{% else %}수정{{ r.seq - 1 }}{% endif %}</span>
+                            {% endif %}
+                            <span class="badge badge-{{ r.status }} ms-1" style="font-size:0.66rem;">{{ r.status }}</span>
+                            {% if r.skip_count %}<span class="badge bg-danger ms-1" style="font-size:0.62rem;">⛔{{ r.skip_count }}</span>{% endif %}
+                        </div>
+                        <div class="text-muted" style="font-size:0.68rem;white-space:nowrap;">
+                            {{ r.entry_count }}명 · {{ r.created_by_name }}
+                        </div>
+                    </div>
+                    {% if r.approval_flow %}
+                    <div class="mt-1" style="font-size:0.72rem;">
+                        {% for a in r.approval_flow %}
+                        {% if a.done %}
+                        <span class="badge bg-success" style="font-size:0.68rem;">{{ a.label }}</span>
+                        <span class="fw-bold text-dark">{{ a.name }}</span>
+                        {% else %}
+                        <span class="badge bg-secondary" style="font-size:0.68rem;">{{ a.label }}</span>
+                        <span class="text-muted">{{ a.name }}</span>
+                        {% endif %}
+                        {% if not loop.last %}<span class="text-muted mx-1">→</span>{% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% if r.reject_reason %}
+                    <div class="text-danger small mt-1">📝 {{ r.reject_reason }}</div>
+                    {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+            {% if not reports %}
+            <div class="text-center text-muted py-4">보고서가 없습니다.</div>
+            {% endif %}
+
+            {% if wr_total_pages > 1 %}
+            {% set base_url = '/work_report?' ~ ('month=' ~ sel_month ~ '&' if not recent_mode else '') ~ 'status=' ~ status_filter ~ ('&gid=' ~ sel_group if sel_group else '') %}
+            <nav class="mt-3">
+                <ul class="pagination pagination-sm justify-content-center flex-wrap mb-0">
+                    <li class="page-item {% if wr_page == 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ base_url }}&wr_page={{ wr_page - 1 }}">◀ 이전</a>
+                    </li>
+                    {% for p in range(1, wr_total_pages + 1) %}
+                    <li class="page-item {% if p == wr_page %}active{% endif %}">
+                        <a class="page-link" href="{{ base_url }}&wr_page={{ p }}">{{ p }}</a>
+                    </li>
+                    {% endfor %}
+                    <li class="page-item {% if wr_page == wr_total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ base_url }}&wr_page={{ wr_page + 1 }}">다음 ▶</a>
+                    </li>
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- ═══════ 작성 모달 ═══════ -->
+<div class="modal fade" id="writeModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-fullscreen-md-down">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title fw-bold" id="writeModalTitle" style="font-size:0.95rem;">✏️ 근무보고서 작성</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-auto">
+                        <label class="form-label mb-0 small">그룹 <span class="text-danger">*</span></label>
+                        <select id="wrGroupId" class="form-select form-select-sm" onchange="loadGroupMembers()">
+                            <option value="">선택</option>
+                            {% for g in groups %}{% if g.status == '완료' %}
+                            <option value="{{ g.id }}">{{ g.name }}</option>
+                            {% endif %}{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label mb-0 small">날짜 <span class="text-danger">*</span></label>
+                        <input type="date" id="wrDate" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-auto d-flex align-items-end">
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="copyPrevReport()">📋 전일복사</button>
+                    </div>
+                </div>
+                <!-- 엑셀 형태 테이블 -->
+                <div class="table-responsive">
+                    <table class="table wr-table" id="wrTable">
+                        <thead>
+                            <tr>
+                                <th class="clickable" onclick="openAssignPopup('주간기본',this)">주간기본 <span class="badge bg-light text-dark" id="cnt-주간기본" style="font-size:0.65rem;">0</span></th>
+                                <th style="background:#dc2626;color:#fff;">공제</th>
+                                <th id="th-시간" style="background:#f59e0b;color:#fff;display:none;">시간</th>
+                                <th class="clickable" onclick="openAssignPopup('주간연장',this)">주간연장 <span class="badge bg-light text-dark" id="cnt-주간연장" style="font-size:0.65rem;">0</span></th>
+                                <th class="clickable" onclick="openAssignPopup('야간기본',this)">야간기본 <span class="badge bg-light text-dark" id="cnt-야간기본" style="font-size:0.65rem;">0</span></th>
+                                <th class="clickable" onclick="openAssignPopup('야간연장',this)">야간연장 <span class="badge bg-light text-dark" id="cnt-야간연장" style="font-size:0.65rem;">0</span></th>
+                                <th id="th-기타" class="clickable" onclick="openAssignPopup('기타',this)">기타 <span class="badge bg-light text-dark" id="cnt-기타" style="font-size:0.65rem;">0</span></th>
+                                <th style="background:#dc2626;color:#fff;">신청</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td id="zone-주간기본"><div class="name-cell"></div></td>
+                                <td id="zone-공제" style="background:#fff8e1;"></td>
+                                <td id="zone-시간" style="background:#fef3c7;display:none;"></td>
+                                <td id="zone-주간연장"><div class="name-cell"></div></td>
+                                <td id="zone-야간기본"><div class="name-cell"></div></td>
+                                <td id="zone-야간연장"><div class="name-cell"></div></td>
+                                <td id="zone-기타"><div class="name-cell"></div></td>
+                                <td id="zone-연차무급" style="background:#fff3e0;"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-2 p-2 border rounded" style="background:#f0f4ff;">
+                    <span class="fw-bold small">👥 미배정 인원</span>
+                    <span class="text-muted small ms-2" id="unassignedCount"></span>
+                    <div class="small text-muted">위 항목(주간기본, 주간연장 등)을 클릭하여 인원을 배정하세요</div>
+                    <div id="memberPool" class="member-pool d-flex flex-wrap gap-1 mt-1"></div>
+                </div>
+                <!-- 인원선택 팝업 (동적) -->
+                <div id="assignPopup" class="assign-popup" style="display:none;"></div>
+                <div class="mt-2">
+                    <label class="form-label mb-0 small fw-bold">📝 메모</label>
+                    <textarea id="wrMemo" class="form-control form-control-sm" rows="2" placeholder="추가 메모를 입력하세요 (선택사항)" style="font-size:0.82rem;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="submitReport()">💾 저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════ 상세보기 모달 ═══════ -->
+<div class="modal fade" id="viewModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-fullscreen-md-down">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title fw-bold" style="font-size:0.95rem;">📄 근무보고서 상세</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="viewBody" style="overflow-x:auto;"></div>
+            <div class="modal-footer flex-wrap" id="viewFooter"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 반려 사유 모달 -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header"><h6 class="modal-title fw-bold">❌ 반려 사유</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <input type="hidden" id="rejectReportId">
+                <textarea id="rejectReason" class="form-control" rows="3" placeholder="반려 사유를 입력하세요"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button class="btn btn-danger btn-sm" onclick="submitReject()">반려 확인</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+var writeModal, viewModal, rejectModal;
+var groupMembers = [];
+var assignments = {};
+var categories = ['주간기본','주간연장','야간기본','야간연장','기타'];
+var userGroupSteps = {{ user_group_steps | tojson }};
+var userDefaultGroup = {{ user_default_group | tojson if user_default_group else 'null' }};
+var allGroupInfo = {{ all_group_info | tojson }};
+var loginUserName = {{ login_user_name | tojson }};
+var isAdmin = {{ 'true' if is_admin else 'false' }};
+var hasWrPerm = {{ 'true' if has_wr_perm else 'false' }};
+var isHoliday = false;  // 공휴일 여부
+var holidayName = '';   // 공휴일명
+
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        writeModal = new bootstrap.Modal(document.getElementById('writeModal'));
+        viewModal = new bootstrap.Modal(document.getElementById('viewModal'));
+        rejectModal = new bootstrap.Modal(document.getElementById('rejectModal'));
+        document.getElementById('wrDate').value = new Date().toISOString().slice(0,10);
+        // 사용자 소속 그룹 자동 선택 (완료 상태인 그룹만)
+        var autoGroupId = null;
+        // 1. userGroupSteps에서 먼저 찾기
+        if (userDefaultGroup && allGroupInfo[userDefaultGroup] && allGroupInfo[userDefaultGroup].status === '완료') {
+            autoGroupId = userDefaultGroup;
+        }
+        // 2. 없으면 allGroupInfo에서 멤버 이름으로 찾기
+        if (!autoGroupId && loginUserName) {
+            for (var gid in allGroupInfo) {
+                var info = allGroupInfo[gid];
+                if (info.status === '완료' && info.member_names && info.member_names.indexOf(loginUserName) >= 0) {
+                    autoGroupId = parseInt(gid);
+                    break;
+                }
+            }
+        }
+        if (autoGroupId) {
+            document.getElementById('wrGroupId').value = autoGroupId;
+            loadGroupMembers();
+        }
+        checkHoliday();
+    } catch(e) {
+        console.error('DOMContentLoaded error:', e);
+    }
+});
+
+// ═══ 그룹 관리 ═══
+function apiPost(url, data, cb) {
+    fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
+    .then(r=>r.json()).then(d=>{ if(d.ok) { if(cb) cb(d); else location.reload(); } else alert(d.error||d.msg||'오류'); });
+}
+function createGroup() {
+    var n = prompt('새 그룹 이름:'); if(!n) return;
+    apiPost('/save_wr_group', {action:'create', name:n, final_step:1});
+}
+function renameGroup(id, old) {
+    var n = prompt('그룹명 수정:', old); if(!n) return;
+    apiPost('/save_wr_group', {action:'rename', id:id, name:n});
+}
+function deleteGroup(id, name) {
+    if(!confirm(name+' 그룹을 삭제하시겠습니까?\n(관련 보고서도 모두 삭제)')) return;
+    apiPost('/save_wr_group', {action:'delete', id:id});
+}
+function setFinalStep(id, step) { apiPost('/save_wr_group', {action:'set_final_step', id:id, final_step:step}); }
+function reopenGroup(id) { apiPost('/save_wr_group', {action:'reopen', id:id}); }
+function confirmSection(s) {
+    var gid = {{ sel_group or 0 }};
+    apiPost('/save_wr_group', {action:'confirm', id:gid, section:s});
+}
+function addReviewer(gid, step, sel) {
+    if(!sel.value) return;
+    apiPost('/save_wr_group_reviewer', {group_id:gid, step:step, user_id:parseInt(sel.value)});
+}
+function removeReviewer(gid, step, uid) {
+    apiPost('/save_wr_group_reviewer', {group_id:gid, step:step, user_id:uid, action:'delete'});
+}
+function removeMember(gid, uid) {
+    apiPost('/save_wr_group_member', {group_id:gid, user_id:uid, action:'delete'});
+}
+function addWriter() {
+    var sel = document.getElementById('writerSelect');
+    if(!sel.value) { alert('작성자를 선택하세요.'); return; }
+    var gid = {{ sel_group or 0 }};
+    apiPost('/save_wr_group_writer', {group_id:gid, user_id:parseInt(sel.value)});
+}
+function removeWriter(gid, uid) {
+    apiPost('/save_wr_group_writer', {group_id:gid, user_id:uid, action:'delete'});
+}
+function filterWriterSelect() {
+    var dept = document.getElementById('writerDeptFilter').value;
+    var sub = document.getElementById('writerSubDeptFilter').value;
+    var sel = document.getElementById('writerSelect');
+    var opts = sel.querySelectorAll('option[data-dept]');
+    opts.forEach(function(o) {
+        var show = true;
+        if (dept && o.dataset.dept !== dept) show = false;
+        if (sub && o.dataset.subdept !== sub) show = false;
+        o.style.display = show ? '' : 'none';
+    });
+    sel.value = '';
+}
+function toggleWriterPanel() {
+    var p = document.getElementById('writerPanel');
+    p.style.display = p.style.display === 'none' ? '' : 'none';
+}
+function filterWriterList() {
+    var dept = document.getElementById('writerDeptFilter').value;
+    var sub = document.getElementById('writerSubDeptFilter').value;
+    var name = document.getElementById('writerNameFilter').value.toLowerCase();
+    var items = document.querySelectorAll('.writer-chk-item');
+    var vis = 0;
+    items.forEach(function(el) {
+        var show = true;
+        if (dept && el.dataset.dept !== dept) show = false;
+        if (sub && el.dataset.subdept !== sub) show = false;
+        if (name && el.dataset.name.toLowerCase().indexOf(name) < 0) show = false;
+        el.style.display = show ? '' : 'none';
+        if (show) vis++;
+    });
+    document.getElementById('writerVisCount').textContent = vis + '명 표시';
+}
+function addCheckedWriters() {
+    var gid = {{ sel_group or 0 }};
+    var ids = [];
+    document.querySelectorAll('.writer-chk:checked').forEach(function(c){ ids.push(parseInt(c.value)); });
+    if(!ids.length) { alert('작성자를 선택하세요'); return; }
+    apiPost('/save_wr_group_writer', {group_id:gid, action:'add_batch', user_ids:ids});
+}
+function toggleAllWriter(check) {
+    document.querySelectorAll('.writer-chk-item').forEach(function(el) {
+        if (el.style.display !== 'none') {
+            el.querySelector('.writer-chk').checked = check;
+        }
+    });
+}
+function toggleEmpPanel() {
+    var p = document.getElementById('empPanel');
+    p.style.display = p.style.display === 'none' ? '' : 'none';
+}
+function filterRevSelects() {
+    var dept = document.getElementById('revDeptFilter').value;
+    var sub = document.getElementById('revSubDeptFilter').value;
+    document.querySelectorAll('.rev-select').forEach(function(sel) {
+        var opts = sel.querySelectorAll('option[data-dept]');
+        opts.forEach(function(o) {
+            var show = true;
+            if (dept && o.dataset.dept !== dept) show = false;
+            if (sub && o.dataset.subdept !== sub) show = false;
+            o.style.display = show ? '' : 'none';
+        });
+    });
+}
+function filterEmpList() {
+    var dept = document.getElementById('filterDept').value;
+    var sub = document.getElementById('filterSubDept').value;
+    var name = document.getElementById('filterName').value.toLowerCase();
+    var items = document.querySelectorAll('.emp-chk-item');
+    var vis = 0;
+    items.forEach(function(el) {
+        var show = true;
+        if (dept && el.dataset.dept !== dept) show = false;
+        if (sub && el.dataset.subdept !== sub) show = false;
+        if (name && el.dataset.name.toLowerCase().indexOf(name) < 0) show = false;
+        el.style.display = show ? '' : 'none';
+        if (show) vis++;
+    });
+    document.getElementById('empVisCount').textContent = vis + '명 표시';
+}
+function addCheckedMembers() {
+    var gid = {{ sel_group or 0 }};
+    var ids = []; document.querySelectorAll('.emp-chk:checked').forEach(function(c){ ids.push(parseInt(c.value)); });
+    if(!ids.length) { alert('인원을 선택하세요'); return; }
+    apiPost('/save_wr_group_member', {group_id:gid, action:'add_batch', user_ids:ids});
+}
+function toggleAllEmp(check) {
+    document.querySelectorAll('.emp-chk-item').forEach(function(el) {
+        if (el.style.display !== 'none') {
+            el.querySelector('.emp-chk').checked = check;
+        }
+    });
+}
+
+// ═══ 보고서 작성 ═══
+var currentEditId = null;
+function openWriteModal() {
+    currentEditId = null;
+    assignments = {};
+    categories.forEach(function(c){ assignments[c] = []; });
+    groupMembers = [];
+    document.getElementById('wrGroupId').value = '';
+    document.getElementById('memberPool').innerHTML = '';
+    document.getElementById('wrMemo').value = '';
+    document.getElementById('writeModalTitle').textContent = '✏️ 근무보고서 작성';
+    // 사용자 소속 그룹 자동 선택 (완료 상태인 그룹만)
+    var autoGroupId = null;
+    if (userDefaultGroup && allGroupInfo[userDefaultGroup] && allGroupInfo[userDefaultGroup].status === '완료') {
+        autoGroupId = userDefaultGroup;
+    }
+    if (!autoGroupId && loginUserName) {
+        for (var gid in allGroupInfo) {
+            var info = allGroupInfo[gid];
+            if (info.status === '완료' && info.member_names && info.member_names.indexOf(loginUserName) >= 0) {
+                autoGroupId = parseInt(gid);
+                break;
+            }
+        }
+    }
+    if (autoGroupId) {
+        document.getElementById('wrGroupId').value = autoGroupId;
+        loadGroupMembers();
+    }
+    renderTable();
+    writeModal.show();
+}
+
+function copyPrevReport() {
+    var gid = document.getElementById('wrGroupId').value;
+    var date = document.getElementById('wrDate').value;
+    if (!gid) { alert('그룹을 먼저 선택하세요.'); return; }
+    if (!groupMembers.length) { alert('그룹을 먼저 선택하세요.'); return; }
+    var url = '/api/wr_prev_report/' + gid;
+    if (date) url += '?date=' + date;
+    fetch(url).then(function(r){ return r.json(); }).then(function(d) {
+        if (!d.ok) { alert(d.msg || '이전 보고서가 없습니다.'); return; }
+        assignments = {};
+        categories.forEach(function(c){ assignments[c] = []; });
+        d.entries.forEach(function(e) {
+            if (assignments[e.category]) {
+                assignments[e.category].push({
+                    user_id: e.user_id, user_name: e.user_name,
+                    deduction: e.deduction || 0, etc_value: e.etc_value || ''
+                });
+            }
+        });
+        renderPool();
+        renderTable();
+        alert('✅ ' + d.prev_date + ' 보고서를 불러왔습니다. 수정 후 저장하세요.');
+    });
+}
+
+function loadGroupMembers() {
+    var gid = document.getElementById('wrGroupId').value;
+    if (!gid) { groupMembers = []; renderTable(); return; }
+    fetch('/api/wr_group_members/' + gid).then(r=>r.json()).then(d => {
+        groupMembers = d.members || [];
+        assignments = {};
+        categories.forEach(function(c){ assignments[c] = []; });
+        renderPool();
+        renderTable();
+        autoLoadLeaves();
+    });
+}
+
+function autoLoadLeaves() {
+    var gid = document.getElementById('wrGroupId').value;
+    var date = document.getElementById('wrDate').value;
+    if (!gid || !date || !groupMembers.length) return;
+    if (currentEditId) return;  // 수정 모드에서는 자동 로드 안함
+    fetch('/api/wr_approved_leaves/' + gid + '?date=' + date).then(r=>r.json()).then(function(d) {
+        if (!d.ok || !d.leaves || !d.leaves.length) return;
+        // 이미 배정된 user_id 수집
+        var assigned = new Set();
+        categories.forEach(function(c) {
+            (assignments[c]||[]).forEach(function(a){ assigned.add(a.user_id); });
+        });
+        var added = [];
+        d.leaves.forEach(function(lv) {
+            if (!assigned.has(lv.user_id)) {
+                var etcVal = lv.leave_type === '반차' ? '반차' : '연차';
+                assignments['기타'].push({
+                    user_id: lv.user_id, user_name: lv.user_name,
+                    deduction: 0, etc_value: etcVal, skipped: 0
+                });
+                assigned.add(lv.user_id);
+                added.push(lv.user_name + '(' + lv.leave_type + ')');
+            }
+        });
+        if (added.length) {
+            renderPool();
+            renderTable();
+            alert('🏖️ 승인된 연차 자동 반영: ' + added.join(', '));
+        }
+    });
+}
+
+// 공휴일 체크 함수
+function checkHoliday() {
+    var date = document.getElementById('wrDate').value;
+    if (!date) return;
+    fetch('/api/check_holiday?date=' + date).then(r=>r.json()).then(function(d) {
+        isHoliday = d.is_holiday || false;
+        holidayName = d.holiday_name || '';
+        // 공휴일 표시
+        var dateInput = document.getElementById('wrDate');
+        var holidayLabel = document.getElementById('holidayLabel');
+        if (!holidayLabel) {
+            holidayLabel = document.createElement('span');
+            holidayLabel.id = 'holidayLabel';
+            holidayLabel.style.cssText = 'margin-left:8px;font-size:0.82rem;font-weight:600;';
+            dateInput.parentNode.appendChild(holidayLabel);
+        }
+        if (isHoliday) {
+            holidayLabel.innerHTML = '<span style="color:#dc2626;">🔴 ' + holidayName + ' (휴일근무)</span>';
+        } else {
+            holidayLabel.innerHTML = '';
+        }
+        renderTable();
+    });
+}
+
+// 날짜 변경 시 연차 자동 로드 + 공휴일 체크
+document.addEventListener('DOMContentLoaded', function() {
+    var wrDateEl = document.getElementById('wrDate');
+    if (wrDateEl) {
+        wrDateEl.addEventListener('change', function() {
+            checkHoliday();
+            if (groupMembers.length && !currentEditId) autoLoadLeaves();
+        });
+    }
+});
+
+var currentPopupCat = null;
+
+function renderPool() {
+    var pool = document.getElementById('memberPool');
+    var assigned = new Set();
+    categories.forEach(function(c) {
+        (assignments[c]||[]).forEach(function(a){ assigned.add(a.user_id); });
+    });
+    var unassigned = groupMembers.filter(function(m){ return !assigned.has(m.user_id); });
+    pool.innerHTML = '';
+    unassigned.forEach(function(m) {
+        var tag = document.createElement('span');
+        tag.className = 'name-tag';
+        tag.textContent = m.user_name;
+        pool.appendChild(tag);
+    });
+    document.getElementById('unassignedCount').textContent = '(' + unassigned.length + '명)';
+}
+
+function openAssignPopup(cat, thEl) {
+    if (!groupMembers.length) { alert('먼저 그룹을 선택하세요.'); return; }
+    if (cat === '기타' && isHoliday) {
+        alert('토/일/공휴일에는 기타를 배정할 수 없습니다.');
+        return;
+    }
+    currentPopupCat = cat;
+    var popup = document.getElementById('assignPopup');
+    // 이미 이 카테고리에 배정된 user_id
+    var assignedIds = new Set();
+    (assignments[cat]||[]).forEach(function(a){ assignedIds.add(a.user_id); });
+    // 다른 카테고리에 배정된 user_id (비활성 표시용)
+    var otherAssigned = new Set();
+    categories.forEach(function(c) {
+        if (c !== cat) (assignments[c]||[]).forEach(function(a){ otherAssigned.add(a.user_id); });
+    });
+    var html = '<div class="popup-title">👥 ' + cat + ' 인원 선택</div>';
+    html += '<div class="popup-select-all"><label><input type="checkbox" id="popupSelectAll" onchange="toggleSelectAll(this)"> <strong>전체선택</strong></label></div>';
+    html += '<div class="popup-paste-area">';
+    html += '<textarea class="popup-paste-input" rows="1" id="popupPasteInput" placeholder="📋 엑셀에서 이름 붙여넣기 (Ctrl+V)"></textarea>';
+    html += '<div class="popup-paste-result" id="popupPasteResult"></div>';
+    html += '</div>';
+    html += '<div class="popup-list">';
+    groupMembers.forEach(function(m) {
+        var checked = assignedIds.has(m.user_id) ? ' checked' : '';
+        var inOther = otherAssigned.has(m.user_id);
+        var disabled = inOther ? ' disabled' : '';
+        var dimStyle = inOther ? ' style="opacity:0.4;"' : '';
+        var otherCat = '';
+        if (inOther) {
+            categories.forEach(function(c) {
+                if (c !== cat) (assignments[c]||[]).forEach(function(a) {
+                    if (a.user_id === m.user_id) otherCat = c;
+                });
+            });
+        }
+        html += '<label' + dimStyle + '>';
+        html += '<input type="checkbox" value="' + m.user_id + '" data-uname="' + esc(m.user_name) + '"' + checked + disabled + '> ';
+        html += esc(m.user_name);
+        if (inOther) html += ' <span style="font-size:0.68rem;color:#94a3b8;">(' + otherCat + ')</span>';
+        html += '</label>';
+    });
+    html += '</div>';
+    html += '<div class="popup-btns">';
+    html += '<button class="btn btn-sm btn-outline-secondary" onclick="closeAssignPopup()">취소</button>';
+    html += '<button class="btn btn-sm btn-dark" onclick="applyAssignPopup()">✅ 적용</button>';
+    html += '</div>';
+    popup.innerHTML = html;
+    // 세로 정렬: 인원 수 기준으로 열당 행 수 계산
+    var listEl = popup.querySelector('.popup-list');
+    var itemCount = listEl.children.length;
+    var rowCount = Math.ceil(itemCount / 2);
+    listEl.style.gridAutoFlow = 'column';
+    listEl.style.gridAutoColumns = '1fr';
+    listEl.style.gridTemplateRows = 'repeat(' + rowCount + ', auto)';
+    listEl.style.gridTemplateColumns = '';
+    // 엑셀 붙여넣기 이벤트
+    document.getElementById('popupPasteInput').addEventListener('paste', function(e) {
+        e.preventDefault();
+        var text = (e.clipboardData || window.clipboardData).getData('text');
+        var names = text.split(/[\n\r\t,]+/).map(function(n){ return n.trim(); }).filter(Boolean);
+        var matched = 0, notFound = [];
+        names.forEach(function(name) {
+            var cb = popup.querySelector('.popup-list input[data-uname="' + name + '"]:not(:disabled)');
+            if (cb) { cb.checked = true; matched++; }
+            else notFound.push(name);
+        });
+        var all = popup.querySelectorAll('.popup-list input[type=checkbox]:not(:disabled)');
+        var checkedAll = popup.querySelectorAll('.popup-list input[type=checkbox]:not(:disabled):checked');
+        var sa = document.getElementById('popupSelectAll');
+        if (sa) {
+            sa.checked = checkedAll.length === all.length;
+            sa.indeterminate = checkedAll.length > 0 && checkedAll.length < all.length;
+        }
+        var msg = '✅ ' + matched + '명 적용';
+        if (notFound.length) msg += ' · ❌ 미등록: ' + notFound.join(', ');
+        var res = document.getElementById('popupPasteResult');
+        res.textContent = msg;
+        res.style.color = notFound.length ? '#dc2626' : '#16a34a';
+        this.value = '';
+    });
+    // 위치 계산 (헤더 아래)
+    var rect = thEl.getBoundingClientRect();
+    var popupW = 260;
+    var left = Math.min(rect.left, window.innerWidth - popupW - 10);
+    left = Math.max(10, left);
+    popup.style.left = left + 'px';
+    popup.style.top = (rect.bottom + 4) + 'px';
+    popup.style.display = 'block';
+    // 개별 체크박스 변경 시 전체선택 상태 동기화
+    popup.querySelector('.popup-list').addEventListener('change', function() {
+        var all = popup.querySelectorAll('.popup-list input[type=checkbox]:not(:disabled)');
+        var checked = popup.querySelectorAll('.popup-list input[type=checkbox]:not(:disabled):checked');
+        var sa = document.getElementById('popupSelectAll');
+        if (!sa) return;
+        sa.checked = checked.length === all.length;
+        sa.indeterminate = checked.length > 0 && checked.length < all.length;
+    });
+    // 바깥 클릭 닫기
+    setTimeout(function() { document.addEventListener('mousedown', onPopupOutsideClick); }, 50);
+}
+function toggleSelectAll(cb) {
+    var popup = document.getElementById('assignPopup');
+    popup.querySelectorAll('.popup-list input[type=checkbox]:not(:disabled)')
+         .forEach(function(c){ c.checked = cb.checked; });
+}
+function onPopupOutsideClick(e) {
+    var popup = document.getElementById('assignPopup');
+    if (!popup.contains(e.target) && !e.target.closest('.clickable')) {
+        closeAssignPopup();
+    }
+}
+function closeAssignPopup() {
+    document.getElementById('assignPopup').style.display = 'none';
+    document.removeEventListener('mousedown', onPopupOutsideClick);
+    currentPopupCat = null;
+}
+function applyAssignPopup() {
+    var cat = currentPopupCat;
+    if (!cat) return;
+    var popup = document.getElementById('assignPopup');
+    var checks = popup.querySelectorAll('.popup-list input[type=checkbox]:not(:disabled)');
+    var newList = [];
+    checks.forEach(function(cb) {
+        if (cb.checked) {
+            var uid = parseInt(cb.value);
+            var uname = cb.dataset.uname;
+            // 기존 데이터 유지 (deduction, etc_value)
+            var existing = (assignments[cat]||[]).find(function(a){ return a.user_id === uid; });
+            newList.push(existing || {user_id: uid, user_name: uname, deduction: 0, etc_value: ''});
+        }
+    });
+    assignments[cat] = newList;
+    closeAssignPopup();
+    renderPool();
+    renderTable();
+}
+
+function renderTable() {
+    var titleEl = document.getElementById('writeModalTitle');
+    var isRevision = titleEl ? (titleEl.textContent.indexOf('(수정)근무보고서') >= 0) : false;
+    // 카운트 표시
+    categories.forEach(function(c) {
+        var badge = document.getElementById('cnt-' + c);
+        if (badge) badge.textContent = (assignments[c]||[]).length;
+    });
+    
+    // 공휴일일 때 시간 컬럼 표시
+    var thTime = document.getElementById('th-시간');
+    var tdTime = document.getElementById('zone-시간');
+    if (thTime && tdTime) {
+        if (isHoliday) {
+            thTime.style.display = '';
+            tdTime.style.display = '';
+        } else {
+            thTime.style.display = 'none';
+            tdTime.style.display = 'none';
+        }
+    }
+
+    // 토/일/공휴일일 때 휴무 컬럼 비활성화
+    var thHyumu = document.getElementById('th-기타');
+    if (thHyumu) {
+        if (isHoliday) {
+            thHyumu.classList.remove('clickable');
+            thHyumu.style.opacity = '0.4';
+            thHyumu.style.cursor = 'not-allowed';
+            thHyumu.onclick = null;
+        } else {
+            thHyumu.classList.add('clickable');
+            thHyumu.style.opacity = '';
+            thHyumu.style.cursor = '';
+            thHyumu.onclick = function() { openAssignPopup('기타', thHyumu); };
+        }
+    }
+    
+    // 주간기본
+    var zone = document.querySelector('#zone-주간기본 .name-cell');
+    if (zone) {
+        zone.innerHTML = '';
+        (assignments['주간기본']||[]).forEach(function(a, i) {
+            var skipStyle = a.skipped ? 'text-decoration:line-through;color:#aaa;' : '';
+            zone.innerHTML += '<div class="name-tag" style="' + skipStyle + '">' + esc(a.user_name) +
+                (isRevision ? '<span class="skip-btn" onclick="toggleSkip(\'주간기본\',' + i + ')" title="스킵(근무취소)" style="cursor:pointer;margin-left:4px;color:' + (a.skipped ? '#dc2626' : '#94a3b8') + ';font-size:1rem;">' + (a.skipped ? '⛔' : '⏭') + '</span>' : '') +
+                '<span class="remove-btn" onclick="unassign(\'주간기본\',' + a.user_id + ')">×</span></div>';
+        });
+    }
+    // 공제
+    var dedZone = document.getElementById('zone-공제');
+    if (dedZone) {
+        dedZone.innerHTML = '';
+        (assignments['주간기본']||[]).forEach(function(a, i) {
+            dedZone.innerHTML += '<div style="display:flex;align-items:center;justify-content:center;gap:2px;margin:1px 0;' + (a.skipped ? 'opacity:0.4;' : '') + '">' +
+                '<span style="font-size:0.72rem;">' + esc(a.user_name) + '</span>' +
+                '<input type="number" min="0" max="8" value="' + (a.deduction||0) + '" style="width:38px;font-size:0.72rem;padding:0 2px;text-align:center;" ' +
+                'onchange="setDeduction(' + i + ',this.value)"' + (a.skipped ? ' disabled' : '') + '>' +
+                '</div>';
+        });
+    }
+    // 공휴일 시간 입력 (etc_value에 저장)
+    if (isHoliday && tdTime) {
+        tdTime.innerHTML = '';
+        (assignments['주간기본']||[]).forEach(function(a, i) {
+            var hours = parseFloat(a.etc_value) || 8;  // 기본값 8시간
+            tdTime.innerHTML += '<div style="display:flex;align-items:center;justify-content:center;gap:2px;margin:1px 0;' + (a.skipped ? 'opacity:0.4;' : '') + '">' +
+                '<span style="font-size:0.72rem;">' + esc(a.user_name) + '</span>' +
+                '<input type="number" min="0" max="12" step="0.5" value="' + hours + '" style="width:45px;font-size:0.72rem;padding:0 2px;text-align:center;" ' +
+                'onchange="setBasicHours(' + i + ',this.value)"' + (a.skipped ? ' disabled' : '') + '>h' +
+                '</div>';
+        });
+    }
+    // 주간연장, 야간기본, 야간연장
+    ['주간연장','야간기본','야간연장'].forEach(function(cat) {
+        var z = document.querySelector('#zone-' + cat + ' .name-cell');
+        if (!z) return;
+        z.innerHTML = '';
+        (assignments[cat]||[]).forEach(function(a, i) {
+            var skipStyle = a.skipped ? 'text-decoration:line-through;color:#aaa;' : '';
+            z.innerHTML += '<div class="name-tag" style="' + skipStyle + '">' + esc(a.user_name) +
+                (isRevision ? '<span class="skip-btn" onclick="toggleSkip(\'' + cat + '\',' + i + ')" title="스킵(근무취소)" style="cursor:pointer;margin-left:4px;color:' + (a.skipped ? '#dc2626' : '#94a3b8') + ';font-size:1rem;">' + (a.skipped ? '⛔' : '⏭') + '</span>' : '') +
+                '<span class="remove-btn" onclick="unassign(\'' + cat + '\',' + a.user_id + ')">×</span></div>';
+        });
+    });
+    // 기타
+    var hzone = document.querySelector('#zone-기타 .name-cell');
+    if (hzone) {
+        hzone.innerHTML = '';
+        (assignments['기타']||[]).forEach(function(a, i) {
+            var skipStyle = a.skipped ? 'text-decoration:line-through;color:#aaa;' : '';
+            hzone.innerHTML += '<div class="name-tag" style="' + skipStyle + '">' + esc(a.user_name) +
+                (isRevision ? '<span class="skip-btn" onclick="toggleSkip(\'기타\',' + i + ')" title="스킵(근무취소)" style="cursor:pointer;margin-left:4px;color:' + (a.skipped ? '#dc2626' : '#94a3b8') + ';font-size:1rem;">' + (a.skipped ? '⛔' : '⏭') + '</span>' : '') +
+                '<span class="remove-btn" onclick="unassign(\'기타\',' + a.user_id + ')">×</span></div>';
+        });
+    }
+    // 신청
+    var etcZone = document.getElementById('zone-연차무급');
+    if (etcZone) {
+        etcZone.innerHTML = '';
+        (assignments['기타']||[]).forEach(function(a, i) {
+            etcZone.innerHTML += '<div style="display:flex;align-items:center;gap:2px;margin:1px 0;' + (a.skipped ? 'opacity:0.4;' : '') + '">' +
+                '<span style="font-size:0.72rem;">' + esc(a.user_name) + '</span>' +
+                '<select style="font-size:0.72rem;padding:0 2px;" onchange="setEtc(' + i + ',this.value)"' + (a.skipped ? ' disabled' : '') + '>' +
+                '<option value="">-</option>' +
+                '<option value="연차"' + (a.etc_value=="연차"?" selected":"") + '>연차</option>' +
+                '<option value="무급"' + (a.etc_value=="무급"?" selected":"") + '>무급</option>' +
+                '<option value="휴무"' + (a.etc_value=="휴무"?" selected":"") + '>휴무</option>' +
+                '<option value="훈련"' + (a.etc_value=="훈련"?" selected":"") + '>훈련</option>' +
+                '<option value="경조"' + (a.etc_value=="경조"?" selected":"") + '>경조</option>' +
+                '<option value="교육"' + (a.etc_value=="교육"?" selected":"") + '>교육</option>' +
+            '</select></div>';
+        });
+    }
+}
+
+// 공휴일 주간기본 시간 설정
+function setBasicHours(idx, val) {
+    if (assignments['주간기본'][idx]) {
+        assignments['주간기본'][idx].etc_value = val;
+    }
+}
+
+function toggleSkip(cat, idx) {
+    if (assignments[cat] && assignments[cat][idx]) {
+        assignments[cat][idx].skipped = assignments[cat][idx].skipped ? 0 : 1;
+        renderTable();
+    }
+}
+
+function unassign(cat, uid) {
+    assignments[cat] = (assignments[cat]||[]).filter(function(a){ return a.user_id !== uid; });
+    renderPool(); renderTable();
+}
+function setDeduction(idx, val) {
+    if (assignments['주간기본'][idx]) assignments['주간기본'][idx].deduction = parseInt(val)||0;
+}
+function setEtc(idx, val) {
+    if (assignments['기타'][idx]) assignments['기타'][idx].etc_value = val;
+}
+
+function submitReport(skipLeaveCheck) {
+    var gid = document.getElementById('wrGroupId').value;
+    var date = document.getElementById('wrDate').value;
+    if (!gid || !date) { alert('그룹과 날짜를 선택하세요.'); return; }
+    var entries = [];
+    categories.forEach(function(cat) {
+        (assignments[cat]||[]).forEach(function(a) {
+            entries.push({
+                user_id: a.user_id, user_name: a.user_name,
+                category: cat, deduction: a.deduction || 0,
+                etc_value: a.etc_value || '', skipped: a.skipped || 0
+            });
+        });
+    });
+    if (!entries.length) { alert('인원을 배정하세요.\n\n표의 열 제목(주간기본, 주간연장 등)을 클릭하여 인원을 배정한 후 저장하세요.'); return; }
+    var memo = document.getElementById('wrMemo').value.trim();
+    var payload = {group_id: parseInt(gid), report_date: date, entries: entries, memo: memo};
+    if (currentEditId) payload.report_id = currentEditId;
+    if (skipLeaveCheck) payload.skip_leave_check = true;
+    fetch('/api/wr_report', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(r=>r.json()).then(d => {
+        if (d.ok) { writeModal.hide(); location.href = '/work_report?status=대기&month=' + date.substring(0,7); }
+        else if (d.leave_conflicts) {
+            var names = d.leave_conflicts.map(function(c){ return c.user_name + '(' + c.leave_type + ')'; }).join(', ');
+            if (confirm('⚠️ 연차 사용 인원이 근무에 배정되어 있습니다.\n\n' + names + '\n\n그래도 저장하시겠습니까?')) {
+                submitReport(true);
+            }
+        }
+        else alert(d.msg || '저장 실패');
+    }).catch(function(e){ alert('저장 오류: ' + e); });
+}
+
+// ═══ 보고서 테이블 HTML 생성 ═══
+function _buildReportTable(rep, entries, approval_log, opts) {
+    opts = opts || {};
+    var cats = {};
+    categories.forEach(function(c){ cats[c] = []; });
+    entries.forEach(function(e) { if (cats[e.category]) cats[e.category].push(e); });
+    var maxRows = 0;
+    categories.forEach(function(c){ if(cats[c].length > maxRows) maxRows = cats[c].length; });
+    if (maxRows < 1) maxRows = 1;
+
+    var html = '';
+    var isMobile = window.innerWidth < 768;
+    // 보고서 제목 (가운데 정렬)
+    var skipCount = entries.filter(function(e){ return e.skipped; }).length;
+    var title = opts.title || '근 무 보 고 서';
+    var titleSize = isMobile ? '0.95rem' : '1.5rem';
+    html += '<div style="text-align:center;margin-bottom:8px;">';
+    html += '<h3 style="font-weight:800;margin-bottom:2px;letter-spacing:' + (isMobile ? '2px' : '6px') + ';font-size:' + titleSize + ';">' + title + '</h3>';
+    html += '<div style="font-size:' + (isMobile ? '0.85rem' : '1.3rem') + ';font-weight:700;color:#1e293b;">(' + esc(rep.group_name) + ')</div>';
+    html += '</div>';
+
+    // 정보 영역 + 결재란 (가로 배치)
+    var logs = approval_log || [];
+    var stepLabels = ['작성자', '검토', '결재'];
+    var finalStep = rep.final_step || 3;
+    var colToStep = [1, (finalStep >= 3 ? 2 : 0), finalStep];
+    var statusToNextStep = {'대기':1, '작성완료':2, '검토':3};
+    var nextStep = statusToNextStep[rep.status] || 0;
+    var mySteps = userGroupSteps[rep.group_id] || [];
+    var canClickApprove = !opts.readOnly && (isAdmin || mySteps.indexOf(nextStep) >= 0) && rep.status !== '결재' && rep.status !== '반려';
+
+    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:' + (isMobile ? '12px' : '16px') + ';">';
+    // 왼쪽: 정보 (45%)
+    var infoFs = isMobile ? '0.68rem' : '0.82rem';
+    html += '<table class="table table-sm mb-0" style="font-size:' + infoFs + ';width:45%;">';
+    var dateIsRed = rep.is_holiday || rep.is_weekend;
+    var dateColor = dateIsRed ? '#dc2626' : 'inherit';
+    var wdText = rep.disp_weekday ? ' (' + rep.disp_weekday + ')' : '';
+    html += '<tr><td class="fw-bold" style="background:#f0f4ff;text-align:center;white-space:nowrap;' + (isMobile ? '' : 'width:80px;') + '">보고일자</td><td style="text-align:center;color:' + dateColor + ';' + (dateIsRed ? 'font-weight:700;' : '') + '">' + rep.disp_date.replace(/^(\d{4}-\d{2}-\d{2})/, '$1' + wdText) + '</td></tr>';
+    html += '<tr><td class="fw-bold" style="background:#f0f4ff;text-align:center;">상태</td><td style="text-align:center;"><span class="badge badge-' + rep.status + '">' + rep.status + '</span>' + (skipCount > 0 ? ' <span style="background:#dc2626;color:#fff;padding:1px 6px;border-radius:4px;font-size:' + (isMobile ? '0.6rem' : '0.75rem') + ';font-weight:700;">⛔ 스킵 ' + skipCount + '명</span>' : '') + '</td></tr>';
+    html += '<tr><td class="fw-bold" style="background:#f0f4ff;text-align:center;">작성자</td><td style="text-align:center;">' + esc(rep.created_by_name) + '</td></tr>';
+    html += '</table>';
+
+    // 오른쪽: 결재란 (45%)
+    html += '<div style="width:45%;display:flex;justify-content:flex-end;margin-top:4px;">';
+    html += '<table style="border-collapse:collapse;font-size:' + (isMobile ? '0.6rem' : '0.82rem') + ';" border="1">';
+    html += '<tr>';
+    for (var si = 0; si < stepLabels.length; si++) {
+        html += '<td style="text-align:center;padding:' + (isMobile ? '2px 6px' : '6px 20px') + ';background:#f0f4ff;font-weight:700;border:1px solid #333;">' + stepLabels[si] + '</td>';
+    }
+    html += '</tr><tr>';
+    for (var si = 0; si < stepLabels.length; si++) {
+        var actualStep = colToStep[si];
+        if (actualStep === 0) {
+            html += '<td style="text-align:center;padding:' + (isMobile ? '4px 4px' : '10px 16px') + ';border:1px solid #333;min-width:' + (isMobile ? '38px' : '80px') + ';height:' + (isMobile ? '40px' : '70px') + ';background:#f9fafb;color:#ccc;">-</td>';
+            continue;
+        }
+        var found = null;
+        for (var li = 0; li < logs.length; li++) {
+            if (logs[li].step == actualStep && logs[li].action !== '반려') { found = logs[li]; break; }
+        }
+        var stampSize = isMobile ? '30px' : '56px';
+        var stampBorder = isMobile ? '2px' : '3px';
+        var cellPad = isMobile ? '3px 4px' : '10px 16px';
+        var cellMin = isMobile ? '38px' : '80px';
+        var cellH = isMobile ? '40px' : '70px';
+        if (found) {
+            var logDate = found.created_at.substring(5, 10);
+            html += '<td style="text-align:center;padding:' + cellPad + ';border:1px solid #333;min-width:' + cellMin + ';">';
+            html += '<div style="display:inline-block;width:' + stampSize + ';height:' + stampSize + ';border:' + stampBorder + ' solid #dc2626;border-radius:50%;position:relative;text-align:center;line-height:1.2;">';
+            html += '<div style="font-size:' + (isMobile ? '0.5rem' : '0.95rem') + ';font-weight:900;color:#dc2626;margin-top:' + (isMobile ? '3px' : '8px') + ';font-family:\'Noto Serif KR\',serif;">' + esc(found.user_name) + '</div>';
+            html += '<div style="font-size:' + (isMobile ? '0.38rem' : '0.6rem') + ';color:#dc2626;">' + logDate + '</div>';
+            html += '</div></td>';
+        } else if (canClickApprove && actualStep === nextStep) {
+            html += '<td style="text-align:center;padding:' + cellPad + ';border:1px solid #333;min-width:' + cellMin + ';height:' + cellH + ';cursor:pointer;transition:background 0.2s;" onclick="approveReport('+rep.id+')" onmouseover="this.style.background=\'#e0f2fe\'" onmouseout="this.style.background=\'#fff\'" title="클릭하여 결재">';
+            html += '<div style="display:inline-block;width:' + stampSize + ';height:' + stampSize + ';border:' + stampBorder + ' dashed #94a3b8;border-radius:50%;text-align:center;line-height:' + stampSize + ';">';
+            html += '<span style="font-size:' + (isMobile ? '0.8rem' : '1.3rem') + ';color:#94a3b8;">+</span></div></td>';
+        } else {
+            html += '<td style="text-align:center;padding:' + cellPad + ';border:1px solid #333;min-width:' + cellMin + ';height:' + cellH + ';">&nbsp;</td>';
+        }
+    }
+    html += '</tr></table>';
+    html += '</div>';
+    html += '</div>'; // 정보+결재란 wrapper
+
+    if (rep.reject_reason) {
+        html += '<div class="alert alert-danger py-1 mb-2" style="font-size:0.82rem;">📝 반려사유: ' + esc(rep.reject_reason) + '</div>';
+    }
+
+    // 테이블
+    var minRows = Math.max(maxRows, 10);
+    var tblFs = isMobile ? '0.68rem' : '0.82rem';
+    var thPad = isMobile ? '4px 6px' : '8px 12px';
+    var tdPad = isMobile ? '2px 4px' : '4px 8px';
+    html += '<div style="overflow-x:auto;">';
+    var nameColW = (isMobile ? '16%' : '14%');
+    html += '<table class="table table-bordered mb-0" style="font-size:' + tblFs + ';border-collapse:collapse;width:100%;table-layout:fixed;" id="reportTable">';
+    html += '<thead><tr style="background:#1e293b;color:#fff;text-align:center;font-weight:700;">';
+    html += '<th style="padding:' + thPad + ';width:' + nameColW + ';">주간기본</th>';
+    html += '<th style="padding:' + thPad + ';background:#dc2626;color:#fff;width:' + (isMobile ? '35px' : '50px') + ';">공제</th>';
+    html += '<th style="padding:' + thPad + ';width:' + nameColW + ';">주간연장</th>';
+    html += '<th style="padding:' + thPad + ';width:' + nameColW + ';">야간기본</th>';
+    html += '<th style="padding:' + thPad + ';width:' + nameColW + ';">야간연장</th>';
+    html += '<th style="padding:' + thPad + ';width:' + nameColW + ';">기타</th>';
+    html += '<th style="padding:' + thPad + ';background:#dc2626;color:#fff;width:' + (isMobile ? '40px' : '60px') + ';white-space:nowrap;">신청</th>';
+    html += '</tr></thead><tbody>';
+
+    for (var i = 0; i < minRows; i++) {
+        html += '<tr>';
+        var jg = cats['주간기본'][i];
+        html += '<td style="text-align:center;padding:' + tdPad + ';">' + (jg ? (jg.skipped ? '<span style="text-decoration:line-through;color:#dc2626;" title="스킵(근무취소)">'+esc(jg.user_name)+'</span>' : esc(jg.user_name)) : '&nbsp;') + '</td>';
+        html += '<td style="text-align:center;padding:' + tdPad + ';background:#fffde7;width:' + (isMobile ? '35px' : '50px') + ';">' + (jg && jg.deduction > 0 && !jg.skipped ? jg.deduction : '&nbsp;') + '</td>';
+        var jy = cats['주간연장'][i];
+        html += '<td style="text-align:center;padding:' + tdPad + ';">' + (jy ? (jy.skipped ? '<span style="text-decoration:line-through;color:#dc2626;" title="스킵(근무취소)">'+esc(jy.user_name)+'</span>' : esc(jy.user_name)) : '&nbsp;') + '</td>';
+        var yg = cats['야간기본'][i];
+        html += '<td style="text-align:center;padding:' + tdPad + ';">' + (yg ? (yg.skipped ? '<span style="text-decoration:line-through;color:#dc2626;" title="스킵(근무취소)">'+esc(yg.user_name)+'</span>' : esc(yg.user_name)) : '&nbsp;') + '</td>';
+        var yy = cats['야간연장'][i];
+        html += '<td style="text-align:center;padding:' + tdPad + ';">' + (yy ? (yy.skipped ? '<span style="text-decoration:line-through;color:#dc2626;" title="스킵(근무취소)">'+esc(yy.user_name)+'</span>' : esc(yy.user_name)) : '&nbsp;') + '</td>';
+        var hm = cats['기타'][i];
+        html += '<td style="text-align:center;padding:' + tdPad + ';">' + (hm ? (hm.skipped ? '<span style="text-decoration:line-through;color:#dc2626;" title="스킵(근무취소)">'+esc(hm.user_name)+'</span>' : esc(hm.user_name)) : '&nbsp;') + '</td>';
+        html += '<td style="text-align:center;padding:' + tdPad + ';background:#fff8e1;width:' + (isMobile ? '40px' : '60px') + ';">' + (hm && hm.etc_value && !hm.skipped ? esc(hm.etc_value) : '&nbsp;') + '</td>';
+        html += '</tr>';
+    }
+
+    // 소계 행
+    html += '<tr style="background:#f0f4ff;font-weight:700;text-align:center;">';
+    html += '<td>' + cats['주간기본'].length + '명</td>';
+    var dedTotal = 0; cats['주간기본'].forEach(function(e){ dedTotal += (e.deduction||0); });
+    html += '<td style="background:#fffde7;">' + (dedTotal > 0 ? dedTotal : '') + '</td>';
+    html += '<td>' + cats['주간연장'].length + '명</td>';
+    html += '<td>' + cats['야간기본'].length + '명</td>';
+    html += '<td>' + cats['야간연장'].length + '명</td>';
+    html += '<td>' + cats['기타'].length + '명</td>';
+    var etcCount = 0; cats['기타'].forEach(function(e){ if(e.etc_value) etcCount++; });
+    html += '<td style="background:#fffde7;">' + (etcCount > 0 ? etcCount + '명' : '') + '</td>';
+    html += '</tr>';
+    html += '</tbody></table>';
+    html += '</div>'; // overflow-x wrapper
+    return html;
+}
+
+// ═══ 보고서 상세 ═══
+var currentViewData = null;
+function viewReport(id) {
+    fetch('/api/wr_report/' + id).then(r=>r.json()).then(d => {
+        if (!d.ok) { alert(d.msg); return; }
+        currentViewData = d;
+        var rep = d.report;
+
+        function _renderView(origHtml) {
+            var html = '<div id="printArea">';
+            if (origHtml) {
+                html += origHtml;
+                html += '<hr style="border:2px dashed #94a3b8;margin:20px 0;">';
+            }
+            html += _buildReportTable(rep, d.entries, d.approval_log, {title: origHtml ? '(수정) 근 무 보 고 서' : '근 무 보 고 서'});
+            html += '</div>';
+
+            document.getElementById('viewBody').innerHTML = html;
+
+            // 푸터
+            var footer = '';
+            footer += '<button class="btn btn-outline-dark btn-sm" onclick="printReport()">🖨️ 인쇄</button> ';
+            footer += '<button class="btn btn-outline-danger btn-sm" onclick="exportPDF()">📄 PDF</button> ';
+            footer += '<button class="btn btn-outline-success btn-sm" onclick="exportExcel()">📊 엑셀</button> ';
+            footer += '<span style="flex:1;"></span>';
+            var canApprove = isAdmin;
+            if (!canApprove && userGroupSteps[rep.group_id]) canApprove = true;
+            if (canApprove && rep.status !== '결재') {
+                if (rep.status !== '반려') {
+                    footer += '<button class="btn btn-success btn-sm" onclick="approveReport('+rep.id+')">✅ 결재</button> ';
+                    footer += '<button class="btn btn-danger btn-sm" onclick="openRejectModal('+rep.id+')">❌ 반려</button> ';
+                }
+            }
+            if (hasWrPerm && rep.status !== '결재') {
+                footer += '<button class="btn btn-outline-primary btn-sm" onclick="editReport('+rep.id+')">✏️ 수정</button> ';
+                footer += '<button class="btn btn-outline-danger btn-sm" onclick="deleteReport('+rep.id+')">🗑️ 삭제</button> ';
+            }
+            if (isAdmin && rep.status === '결재') {
+                footer += '<button class="btn btn-outline-danger btn-sm" onclick="deleteReport('+rep.id+')">🗑️ 삭제</button> ';
+            }
+            if (hasWrPerm) {
+                footer += '<button class="btn btn-warning btn-sm" onclick="createRevisionReport('+rep.id+')">📋 (수정)근무보고서</button>';
+            }
+            document.getElementById('viewFooter').innerHTML = footer;
+            document.getElementById('viewFooter').style.display = 'flex';
+            document.getElementById('viewFooter').style.flexWrap = 'wrap';
+            document.getElementById('viewFooter').style.gap = '4px';
+            document.getElementById('viewFooter').style.alignItems = 'center';
+            viewModal.show();
+        }
+
+        // (수정)근무보고서이면 원본도 가져와서 위에 표시
+        if (rep.orig_report_id) {
+            fetch('/api/wr_report/' + rep.orig_report_id).then(r=>r.json()).then(od => {
+                if (od.ok) {
+                    var origHtml = _buildReportTable(od.report, od.entries, od.approval_log, {title: '근 무 보 고 서 (원본)', readOnly: true});
+                    _renderView(origHtml);
+                } else {
+                    _renderView(null);
+                }
+            });
+        } else {
+            _renderView(null);
+        }
+    });
+}
+
+// ═══ 인쇄 ═══
+function printReport() {
+    var area = document.getElementById('printArea');
+    var win = window.open('', '_blank');
+    win.document.write('<html><head><title>근무보고서</title><link rel="icon" type="image/gif" href="/static/LOGO.GIF"><link rel="apple-touch-icon" href="/static/LOGO.GIF"><link rel="manifest" href="/static/manifest.json"><meta name="theme-color" content="#1e40af">');
+    win.document.write('<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@700;900&display=swap" rel="stylesheet">');
+    win.document.write('<style>');
+    win.document.write('@page{size:A4 portrait;margin:10mm;}');
+    win.document.write('body{font-family:"Malgun Gothic","맑은 고딕",sans-serif;padding:0;margin:0;}');
+    win.document.write('table{width:100%;border-collapse:collapse;}');
+    win.document.write('th,td{border:1px solid #333;padding:6px 10px;font-size:12px;}');
+    win.document.write('th{background:#1e293b;color:#fff;font-weight:700;text-align:center;}');
+    win.document.write('td{text-align:center;}');
+    win.document.write('h4{text-align:left;font-size:20px;font-weight:800;margin-bottom:2px;letter-spacing:4px;}');
+    win.document.write('.badge{padding:2px 8px;border-radius:4px;font-size:11px;}');
+    win.document.write('.badge-결재{background:#10b981;color:#fff;} .badge-대기{background:#3b82f6;color:#fff;}');
+    win.document.write('.badge-반려{background:#ef4444;color:#fff;} .badge-작성완료{background:#f59e0b;color:#fff;} .badge-검토{background:#8b5cf6;color:#fff;}');
+    win.document.write('@media print{body{padding:0;}}');
+    win.document.write('</style></head><body>');
+    win.document.write(area.innerHTML);
+    win.document.write('</body></html>');
+    win.document.close();
+    win.onload = function(){ win.print(); };
+}
+
+// ═══ PDF 출력 (html2canvas + jsPDF) ═══
+function loadScript(src) {
+    return new Promise(function(resolve, reject) {
+        if (document.querySelector('script[src="'+src+'"]')) { resolve(); return; }
+        var s = document.createElement('script');
+        s.src = src; s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+function exportPDF() {
+    Promise.all([
+        loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
+        loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+    ]).then(function() {
+        var area = document.getElementById('printArea');
+        html2canvas(area, {scale:2, useCORS:true, backgroundColor:'#fff'}).then(function(canvas) {
+            var imgData = canvas.toDataURL('image/png');
+            var pdf = new jspdf.jsPDF('p', 'mm', 'a4');
+            var pdfW = pdf.internal.pageSize.getWidth() - 20;
+            var pdfH = (canvas.height * pdfW) / canvas.width;
+            pdf.addImage(imgData, 'PNG', 10, 10, pdfW, pdfH);
+            var rep = currentViewData.report;
+            pdf.save('근무보고서_' + rep.group_name + '_' + rep.disp_date + '.pdf');
+        });
+    });
+}
+
+// ═══ 엑셀 출력 ═══
+function exportExcel() {
+    if (!currentViewData) return;
+    var rep = currentViewData.report;
+    var entries = currentViewData.entries;
+    var cats = {};
+    categories.forEach(function(c){ cats[c] = []; });
+    entries.forEach(function(e){ if(cats[e.category]) cats[e.category].push(e); });
+    var maxRows = 0;
+    categories.forEach(function(c){ if(cats[c].length > maxRows) maxRows = cats[c].length; });
+
+    var tbl = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">';
+    tbl += '<head><meta charset="utf-8"><style>td,th{border:1px solid #333;padding:4px 8px;text-align:center;font-size:12px;} th{background:#1e293b;color:#fff;font-weight:bold;}</style></head>';
+    tbl += '<body><h3 style="text-align:center;">근무보고서 - ' + esc(rep.group_name) + ' (' + rep.disp_date + ')</h3>';
+    tbl += '<table><thead><tr><th>주간기본</th><th>공제</th><th>주간연장</th><th>야간기본</th><th>야간연장</th><th>기타</th><th>신청</th></tr></thead><tbody>';
+    for (var i = 0; i < maxRows; i++) {
+        tbl += '<tr>';
+        var jg = cats['주간기본'][i]; tbl += '<td>' + (jg ? esc(jg.user_name) : '') + '</td>';
+        tbl += '<td>' + (jg && jg.deduction > 0 ? jg.deduction : '') + '</td>';
+        var jy = cats['주간연장'][i]; tbl += '<td>' + (jy ? esc(jy.user_name) : '') + '</td>';
+        var yg = cats['야간기본'][i]; tbl += '<td>' + (yg ? esc(yg.user_name) : '') + '</td>';
+        var yy = cats['야간연장'][i]; tbl += '<td>' + (yy ? esc(yy.user_name) : '') + '</td>';
+        var hm = cats['기타'][i]; tbl += '<td>' + (hm ? esc(hm.user_name) : '') + '</td>';
+        tbl += '<td>' + (hm && hm.etc_value ? esc(hm.etc_value) : '') + '</td>';
+        tbl += '</tr>';
+    }
+    // 소계
+    tbl += '<tr style="font-weight:bold;background:#f0f4ff;">';
+    tbl += '<td>' + cats['주간기본'].length + '명</td>';
+    var dt = 0; cats['주간기본'].forEach(function(e){ dt += (e.deduction||0); });
+    tbl += '<td>' + (dt>0?dt:'') + '</td>';
+    tbl += '<td>' + cats['주간연장'].length + '명</td>';
+    tbl += '<td>' + cats['야간기본'].length + '명</td>';
+    tbl += '<td>' + cats['야간연장'].length + '명</td>';
+    tbl += '<td>' + cats['기타'].length + '명</td>';
+    var ec=0; cats['기타'].forEach(function(e){if(e.etc_value)ec++;}); tbl += '<td>' + (ec>0?ec+'명':'') + '</td>';
+    tbl += '</tr></tbody></table></body></html>';
+
+    var blob = new Blob(['\uFEFF' + tbl], {type: 'application/vnd.ms-excel;charset=utf-8'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '근무보고서_' + rep.group_name + '_' + rep.disp_date + '.xls';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function approveReport(id) {
+    if (!confirm('이 보고서를 결재하시겠습니까?')) return;
+    fetch('/process_wr_request', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id:id, status:'결재'})
+    }).then(r=>r.json()).then(d => {
+        if (d.ok) { viewModal.hide(); location.reload(); }
+        else alert(d.error || '오류');
+    });
+}
+function openRejectModal(id) {
+    document.getElementById('rejectReportId').value = id;
+    document.getElementById('rejectReason').value = '';
+    viewModal.hide();
+    rejectModal.show();
+}
+function submitReject() {
+    var id = document.getElementById('rejectReportId').value;
+    var reason = document.getElementById('rejectReason').value.trim();
+    if (!reason) { alert('반려 사유를 입력하세요.'); return; }
+    fetch('/process_wr_request', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id:parseInt(id), status:'반려', reject_reason:reason})
+    }).then(r=>r.json()).then(d => {
+        if (d.ok) { rejectModal.hide(); location.reload(); }
+        else alert(d.error || '오류');
+    });
+}
+function editReport(id) {
+    _loadReportToWrite(id, true);
+}
+function createRevisionReport(id) {
+    _loadReportToWrite(id, false);
+}
+function _loadReportToWrite(id, isEdit) {
+    fetch('/api/wr_report/' + id).then(r=>r.json()).then(d => {
+        if (!d.ok) { alert(d.msg); return; }
+        viewModal.hide();
+        var rep = d.report;
+        currentEditId = isEdit ? id : null;
+        document.getElementById('wrGroupId').value = rep.group_id;
+        var rd = rep.report_date;
+        document.getElementById('wrDate').value = rd.length===8 ? rd.slice(0,4)+'-'+rd.slice(4,6)+'-'+rd.slice(6,8) : rd;
+        fetch('/api/wr_group_members/' + rep.group_id).then(r2=>r2.json()).then(d2 => {
+            groupMembers = d2.members || [];
+            assignments = {};
+            categories.forEach(function(c){ assignments[c] = []; });
+            d.entries.forEach(function(e) {
+                if (assignments[e.category]) {
+                    assignments[e.category].push({
+                        user_id: e.user_id, user_name: e.user_name,
+                        deduction: e.deduction, etc_value: e.etc_value,
+                        skipped: e.skipped || 0
+                    });
+                }
+            });
+            document.getElementById('writeModalTitle').textContent = isEdit ? '✏️ 근무보고서 수정' : '📋 (수정)근무보고서 작성';
+            renderPool();
+            renderTable();
+            document.getElementById('wrMemo').value = rep.memo || '';
+            writeModal.show();
+        });
+    });
+}
+function deleteReport(id) {
+    if (!confirm('이 보고서를 삭제하시겠습니까?')) return;
+    fetch('/api/wr_report/delete', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id:id})
+    }).then(r=>r.json()).then(d => {
+        if (d.ok) { viewModal.hide(); location.reload(); }
+        else alert(d.msg || '삭제 실패');
+    });
+}
+
+function updateDeleteBtn() {
+    var btn = document.getElementById('btnDeleteSelected');
+    if (!btn) return;
+    var checked = document.querySelectorAll('.report-chk:checked');
+    var total = document.querySelectorAll('.report-chk');
+    btn.disabled = checked.length === 0;
+    btn.textContent = checked.length > 0 ? '🗑️ 선택 삭제 (' + checked.length + '건)' : '🗑️ 선택 삭제';
+    var chkAll = document.getElementById('chkAll');
+    if (chkAll) chkAll.checked = total.length > 0 && checked.length === total.length;
+}
+
+function toggleAllReports(checked) {
+    document.querySelectorAll('.report-chk').forEach(function(cb) { cb.checked = checked; });
+    updateDeleteBtn();
+}
+
+function deleteSelectedReports() {
+    var checked = document.querySelectorAll('.report-chk:checked');
+    if (checked.length === 0) { alert('삭제할 보고서를 선택하세요.'); return; }
+    var ids = [];
+    var hasApproved = false;
+    checked.forEach(function(cb) {
+        ids.push(parseInt(cb.value));
+        if (cb.dataset.status === '결재') hasApproved = true;
+    });
+    var msg = ids.length + '건의 보고서를 삭제하시겠습니까?';
+    if (hasApproved) msg += '\n⚠️ 결재 완료된 보고서가 포함되어 있습니다.';
+    if (!confirm(msg)) return;
+    var done = 0, fail = 0;
+    var total = ids.length;
+    ids.forEach(function(id) {
+        fetch('/api/wr_report/delete', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({id:id})
+        }).then(r=>r.json()).then(d => {
+            if (d.ok) done++; else fail++;
+            if (done + fail === total) {
+                var result = done + '건 삭제 완료';
+                if (fail > 0) result += ', ' + fail + '건 실패';
+                alert(result);
+                location.reload();
+            }
+        });
+    });
+}
+
+function esc(t) { var d=document.createElement('div'); d.appendChild(document.createTextNode(t||'')); return d.innerHTML; }
+</script>
+</body>
+</html>

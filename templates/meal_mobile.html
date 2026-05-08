@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>식수관리 (모바일)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        body { background: #f1f5f9; -webkit-tap-highlight-color: transparent; }
+        .m-header { position: sticky; top: 0; z-index: 100; background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #1e40af 100%); color: #fff; padding: 10px 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+        .m-header .title { font-weight: 800; font-size: 1.05rem; }
+        .m-month-nav { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 6px; }
+        .m-month-nav .btn-nav { background: rgba(255,255,255,0.15); border: none; color: #fff; border-radius: 8px; padding: 4px 14px; font-size: 0.85rem; font-weight: 600; }
+        .m-month-nav .btn-nav:active { background: rgba(255,255,255,0.3); }
+        .m-month-label { font-size: 1.1rem; font-weight: 700; min-width: 110px; text-align: center; }
+
+        /* 날짜 탭 스크롤 */
+        .day-tabs { display: flex; overflow-x: auto; gap: 4px; padding: 10px 8px 6px; background: #fff; border-bottom: 1px solid #e2e8f0; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .day-tabs::-webkit-scrollbar { display: none; }
+        .day-tab { flex: 0 0 auto; min-width: 44px; padding: 6px 4px 4px; border-radius: 10px; text-align: center; font-size: 0.78rem; font-weight: 600; color: #475569; background: #f8fafc; border: 2px solid transparent; cursor: pointer; transition: all 0.15s; }
+        .day-tab .day-num { font-size: 1rem; font-weight: 800; display: block; line-height: 1.2; }
+        .day-tab .day-dow { font-size: 0.65rem; color: #94a3b8; }
+        .day-tab.active { background: #2563eb; color: #fff; border-color: #2563eb; box-shadow: 0 2px 8px rgba(37,99,235,0.3); }
+        .day-tab.active .day-dow { color: rgba(255,255,255,0.8); }
+        .day-tab.is-sat { color: #2563eb; }
+        .day-tab.is-sat .day-dow { color: #60a5fa; }
+        .day-tab.is-sun, .day-tab.is-hol { color: #dc2626; }
+        .day-tab.is-sun .day-dow, .day-tab.is-hol .day-dow { color: #f87171; }
+        .day-tab.active.is-sat, .day-tab.active.is-sun, .day-tab.active.is-hol { color: #fff; }
+        .day-tab.active.is-sat .day-dow, .day-tab.active.is-sun .day-dow, .day-tab.active.is-hol .day-dow { color: rgba(255,255,255,0.8); }
+
+        .day-hol-name { text-align: center; font-size: 0.75rem; color: #dc2626; font-weight: 600; padding: 4px 0 0; }
+
+        /* 부서 카드 */
+        .cards-wrap { padding: 8px; }
+        .dept-card { background: #fff; border-radius: 14px; box-shadow: 0 1px 6px rgba(0,0,0,0.06); margin-bottom: 10px; overflow: hidden; }
+        .dept-card-header { padding: 10px 14px; font-weight: 800; font-size: 0.95rem; color: #1e293b; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 8px; }
+        .dept-badge { width: 6px; height: 22px; border-radius: 3px; }
+        .dept-badge.c1 { background: #2563eb; }
+        .dept-badge.c2 { background: #059669; }
+        .dept-badge.c3 { background: #d97706; }
+        .meal-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+        .meal-item { padding: 12px 8px; text-align: center; border-right: 1px solid #f1f5f9; position: relative; cursor: pointer; transition: background 0.15s; }
+        .meal-item:last-child { border-right: none; }
+        .meal-item:active { background: #fffbeb; }
+        .meal-type-label { font-size: 0.72rem; color: #94a3b8; font-weight: 600; margin-bottom: 2px; }
+        .meal-count { font-size: 1.4rem; font-weight: 800; color: #1e293b; min-height: 34px; line-height: 34px; }
+        .meal-count.empty { color: #cbd5e1; font-size: 1rem; }
+        .meal-count.is-text { font-size: 0.8rem; font-weight: 700; color: #2563eb; line-height: 1.2; padding-top: 4px; }
+        .skip-badge { display:inline-block; padding:3px 12px; background:#f59e0b; color:#fff; border-radius:12px; font-size:0.85rem; font-weight:700; line-height:1.2; }
+        .memo-dot { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; background: #f59e0b; border-radius: 50%; }
+
+        /* 합계 카드 */
+        .total-card { background: linear-gradient(135deg, #1e293b, #334155); border-radius: 14px; padding: 14px; margin-bottom: 10px; color: #fff; }
+        .total-card .total-title { font-size: 0.8rem; font-weight: 600; color: #94a3b8; margin-bottom: 8px; }
+        .total-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .total-item { text-align: center; }
+        .total-item .t-label { font-size: 0.7rem; color: #94a3b8; }
+        .total-item .t-val { font-size: 1.3rem; font-weight: 800; color: #fbbf24; }
+
+        /* 공지 */
+        .notice-section { padding: 0 8px 80px; }
+        .notice-card { background: #fff; border-radius: 14px; box-shadow: 0 1px 6px rgba(0,0,0,0.06); overflow: hidden; }
+        .notice-header { padding: 10px 14px; font-weight: 800; font-size: 0.9rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 6px; }
+        .notice-body { padding: 8px 12px; }
+        .notice-item-m { padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; }
+        .notice-item-m:last-child { border-bottom: none; }
+        .notice-meta { font-size: 0.72rem; color: #94a3b8; margin-top: 2px; }
+        .notice-input-wrap { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
+        .notice-input-wrap input { flex: 1; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 10px; font-size: 0.85rem; }
+        .notice-input-wrap button { flex: 0 0 auto; background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 6px 14px; font-weight: 700; font-size: 0.82rem; }
+
+        /* 하단 버튼 */
+        .bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #e2e8f0; padding: 8px 12px; display: flex; gap: 8px; z-index: 100; box-shadow: 0 -2px 8px rgba(0,0,0,0.06); }
+        .bottom-bar .btn-bottom { flex: 1; padding: 10px; border-radius: 10px; font-weight: 700; font-size: 0.85rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 4px; }
+        .btn-desktop { background: #f1f5f9; color: #475569; border: none; }
+        .btn-desktop:active { background: #e2e8f0; }
+    </style>
+</head>
+<body>
+{% set active_page = 'meal_management' %}
+{% include '_sidebar.html' %}
+
+<div class="m-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <span class="title">🍽️ 식수관리</span>
+    </div>
+    <div class="m-month-nav">
+        <button class="btn-nav" onclick="moveMonth(-1)">◀</button>
+        <span class="m-month-label">{{ year }}년 {{ mon }}월</span>
+        <button class="btn-nav" onclick="moveMonth(1)">▶</button>
+    </div>
+</div>
+
+<!-- 날짜 탭 -->
+<div class="day-tabs" id="dayTabs">
+    {% for di in days_info %}
+    <div class="day-tab {% if di.day == today_day %}active{% endif %} {% if di.is_holiday %}{% if di.dow == '일' %}is-sun{% elif di.hol %}is-hol{% else %}is-sat{% endif %}{% endif %}"
+         data-day="{{ di.day }}" data-dow="{{ di.dow }}" data-hol="{{ di.hol }}" onclick="selectDay(this, {{ di.day }})">
+        <span class="day-num">{{ di.day }}</span>
+        <span class="day-dow">{{ di.dow }}</span>
+    </div>
+    {% endfor %}
+</div>
+<div class="day-hol-name" id="holName"></div>
+
+<!-- 메인 컨텐츠 -->
+<div class="cards-wrap" id="cardsWrap">
+    {% set dept_colors = {'전기': 'c1', '전자': 'c2', '관리': 'c3'} %}
+    {% for dept in meal_depts %}
+    <div class="dept-card">
+        <div class="dept-card-header">
+            <span class="dept-badge {{ dept_colors.get(dept, 'c1') }}"></span>
+            {{ dept }}
+        </div>
+        <div class="meal-grid">
+            {% for mtype in meal_types %}
+            {% set type_icons = {'조식': '🌅', '중식': '🍱', '석식': '🌆', '야식': '🌙'} %}
+            <div class="meal-item" data-dept="{{ dept }}" data-type="{{ mtype }}"
+                 {% if can_edit %}onclick="editMeal(this)"{% endif %}>
+                <div class="meal-type-label">{{ type_icons.get(mtype, '') }} {{ mtype }}</div>
+                <div class="meal-count empty" data-dept="{{ dept }}" data-type="{{ mtype }}">-</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- 합계 -->
+    <div class="total-card">
+        <div class="total-title">📊 합계</div>
+        <div class="total-grid">
+            {% for mtype in meal_types %}
+            <div class="total-item">
+                <div class="t-label">{{ mtype }}</div>
+                <div class="t-val" id="total_{{ mtype }}">0</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- 공지 -->
+<div class="notice-section">
+    <div class="notice-card">
+        <div class="notice-header">📢 공지 <span class="badge bg-info text-dark ms-1" id="noticeBadge">{{ meal_notices|length }}</span></div>
+        {% if can_edit %}
+        <div class="notice-input-wrap">
+            <input type="text" id="noticeInput" placeholder="공지 입력...">
+            <button onclick="saveNotice()">등록</button>
+        </div>
+        {% endif %}
+        <div class="notice-body" id="noticeList">
+            {% for n in meal_notices %}
+            <div class="notice-item-m" data-id="{{ n.id }}">
+                <div>{{ n.content }}</div>
+                <div class="notice-meta">
+                    {{ n.writer }} · {{ n.time }}
+                    {% if can_edit %}<span style="color:#dc2626; margin-left:8px; cursor:pointer;" onclick="deleteNotice({{ n.id }}, this)">삭제</span>{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+            {% if not meal_notices %}
+            <p class="text-muted text-center small mb-0 py-3" id="noNoticeMsg">등록된 공지가 없습니다</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- 하단 바 -->
+<div class="bottom-bar">
+    <a href="/meal_management?month={{ month }}&view=pc" class="btn-bottom btn-desktop">📋 PC버전</a>
+</div>
+
+<!-- 입력 모달 -->
+<div class="modal fade" id="mealModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 320px;">
+        <div class="modal-content" style="border-radius: 16px; border: none; box-shadow: 0 8px 30px rgba(0,0,0,0.15);">
+            <div class="modal-header py-2 border-0" style="background: #f8fafc; border-radius: 16px 16px 0 0;">
+                <h6 class="modal-title fw-bold" id="mealModalTitle" style="font-size: 0.9rem;">식수 입력</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" style="font-size: 0.7rem;"></button>
+            </div>
+            <div class="modal-body px-3 py-3">
+                <div class="mb-3">
+                    <label class="form-label small mb-1 fw-bold" style="color: #64748b;">인원수</label>
+                    <input type="text" class="form-control" id="mealInput" placeholder="인원수 입력"
+                           style="border-radius: 10px; font-size: 1.1rem; font-weight: 700; text-align: center; padding: 10px;"
+                           inputmode="numeric">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1 fw-bold" style="color: #64748b;">메모</label>
+                    <input type="text" class="form-control" id="mealMemo" placeholder="메모 (선택사항)"
+                           style="border-radius: 10px; font-size: 0.9rem; padding: 8px 12px;">
+                </div>
+            </div>
+            <div class="modal-footer border-0 px-3 pb-3 pt-0" style="gap: 8px;">
+                <button class="btn btn-warning" onclick="skipMeal()" style="border-radius: 10px; font-weight: 700; font-size: 1.05rem; padding: 12px 20px;">스킵</button>
+                <div class="ms-auto d-flex flex-fill" style="gap: 8px;">
+                    <button class="btn btn-outline-danger flex-fill" onclick="deleteMeal()" style="border-radius: 10px; font-weight: 700;">삭제</button>
+                    <button class="btn btn-primary flex-fill" onclick="saveMeal()" style="border-radius: 10px; font-weight: 700;">저장</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const YEAR_MONTH = '{{ month }}';
+const MEAL_DEPTS = {{ meal_depts | tojson }};
+const MEAL_TYPES = {{ meal_types | tojson }};
+
+// 전체 데이터를 JS 객체로 전달
+const ALL_DATA = {};
+const ALL_MEMO = {};
+const ALL_TIME = {};
+const ALL_WRITER = {};
+{% for key, val in meal_data.items() %}
+ALL_DATA['{{ key[0] }}_{{ key[1] }}_{{ key[2] }}'] = '{{ val }}';
+{% endfor %}
+{% for key, val in meal_memo_data.items() %}
+ALL_MEMO['{{ key[0] }}_{{ key[1] }}_{{ key[2] }}'] = '{{ val }}';
+{% endfor %}
+{% for key, val in meal_time_data.items() %}
+ALL_TIME['{{ key[0] }}_{{ key[1] }}_{{ key[2] }}'] = '{{ val }}';
+{% endfor %}
+{% for key, val in meal_writer_data.items() %}
+ALL_WRITER['{{ key[0] }}_{{ key[1] }}_{{ key[2] }}'] = '{{ val }}';
+{% endfor %}
+
+let currentDay = {{ today_day }};
+let currentCell = null;
+let mealModalObj = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    mealModalObj = new bootstrap.Modal(document.getElementById('mealModal'));
+    renderDay(currentDay);
+    scrollToActiveTab();
+});
+
+function moveMonth(delta) {
+    var parts = YEAR_MONTH.split('-');
+    var y = parseInt(parts[0]), m = parseInt(parts[1]) + delta;
+    if (m < 1) { m = 12; y--; }
+    if (m > 12) { m = 1; y++; }
+    location.href = '/meal_mobile?month=' + y + '-' + String(m).padStart(2, '0');
+}
+
+function selectDay(el, day) {
+    document.querySelectorAll('.day-tab').forEach(function(t) { t.classList.remove('active'); });
+    el.classList.add('active');
+    currentDay = day;
+    renderDay(day);
+}
+
+function scrollToActiveTab() {
+    var active = document.querySelector('.day-tab.active');
+    if (active) {
+        var tabs = document.getElementById('dayTabs');
+        tabs.scrollLeft = active.offsetLeft - tabs.offsetWidth / 2 + active.offsetWidth / 2;
+    }
+}
+
+function renderDay(day) {
+    // 공휴일 표시
+    var activeTab = document.querySelector('.day-tab.active');
+    var holEl = document.getElementById('holName');
+    if (activeTab && activeTab.dataset.hol) {
+        holEl.textContent = activeTab.dataset.hol;
+        holEl.style.display = '';
+    } else {
+        holEl.style.display = 'none';
+    }
+
+    // 각 셀 업데이트
+    document.querySelectorAll('.meal-count').forEach(function(el) {
+        var dept = el.dataset.dept;
+        var mtype = el.dataset.type;
+        var key = dept + '_' + mtype + '_' + day;
+        var val = ALL_DATA[key] || '';
+        var memo = ALL_MEMO[key] || '';
+
+        el.className = 'meal-count';
+        if (!val) {
+            el.textContent = '-';
+            el.classList.add('empty');
+        } else if (val === '스킵') {
+            el.innerHTML = '<span class="skip-badge">스킵</span>';
+        } else if (isNaN(parseInt(val))) {
+            el.textContent = val;
+            el.classList.add('is-text');
+        } else {
+            el.textContent = val;
+        }
+
+        // 메모 점
+        var parent = el.closest('.meal-item');
+        var dot = parent.querySelector('.memo-dot');
+        if (memo) {
+            if (!dot) {
+                dot = document.createElement('span');
+                dot.className = 'memo-dot';
+                parent.appendChild(dot);
+            }
+        } else {
+            if (dot) dot.remove();
+        }
+
+        // meal-item 데이터 업데이트
+        parent.dataset.day = day;
+    });
+
+    calcTotals(day);
+}
+
+function calcTotals(day) {
+    MEAL_TYPES.forEach(function(mtype) {
+        var total = 0;
+        MEAL_DEPTS.forEach(function(dept) {
+            var val = ALL_DATA[dept + '_' + mtype + '_' + day] || '';
+            var n = parseInt(val);
+            if (!isNaN(n)) total += n;
+        });
+        document.getElementById('total_' + mtype).textContent = total || '-';
+    });
+}
+
+function editMeal(el) {
+    currentCell = el;
+    var dept = el.dataset.dept;
+    var mtype = el.dataset.type;
+    var day = currentDay;
+    var key = dept + '_' + mtype + '_' + day;
+
+    document.getElementById('mealModalTitle').textContent = dept + ' / ' + mtype + ' / ' + YEAR_MONTH.substring(5).replace(/^0/,'') + '월 ' + day + '일';
+    document.getElementById('mealInput').value = ALL_DATA[key] || '';
+    document.getElementById('mealMemo').value = ALL_MEMO[key] || '';
+    mealModalObj.show();
+    setTimeout(function() {
+        var inp = document.getElementById('mealInput');
+        inp.focus(); inp.select();
+    }, 300);
+}
+
+function saveMeal() {
+    if (!currentCell) return;
+    var val = document.getElementById('mealInput').value.trim();
+    var memo = document.getElementById('mealMemo').value.trim();
+    doSave(val, memo);
+}
+
+function deleteMeal() {
+    if (!currentCell) return;
+    doSave('', '');
+}
+
+function skipMeal() {
+    if (!currentCell) return;
+    var memo = document.getElementById('mealMemo').value.trim();
+    doSave('스킵', memo);
+}
+
+function doSave(val, memo) {
+    var dept = currentCell.dataset.dept;
+    var mtype = currentCell.dataset.type;
+    var day = currentDay;
+
+    fetch('/save_meal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            year_month: YEAR_MONTH,
+            dept: dept,
+            meal_type: mtype,
+            day: day,
+            count: val,
+            memo: memo
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.ok) {
+            var key = dept + '_' + mtype + '_' + day;
+            if (val) {
+                ALL_DATA[key] = val;
+            } else {
+                delete ALL_DATA[key];
+            }
+            if (memo) {
+                ALL_MEMO[key] = memo;
+                ALL_TIME[key] = d.time || '';
+                ALL_WRITER[key] = d.writer || '';
+            } else {
+                delete ALL_MEMO[key];
+                delete ALL_TIME[key];
+                delete ALL_WRITER[key];
+            }
+            renderDay(currentDay);
+            mealModalObj.hide();
+        } else {
+            alert('저장 실패: ' + (d.error || ''));
+        }
+    })
+    .catch(function(e) { alert('오류: ' + e); });
+}
+
+// 공지 기능
+function saveNotice() {
+    var inp = document.getElementById('noticeInput');
+    var content = inp.value.trim();
+    if (!content) return;
+    fetch('/save_meal_notice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year_month: YEAR_MONTH, content: content })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.ok) {
+            inp.value = '';
+            var noMsg = document.getElementById('noNoticeMsg');
+            if (noMsg) noMsg.remove();
+            var list = document.getElementById('noticeList');
+            var div = document.createElement('div');
+            div.className = 'notice-item-m';
+            div.dataset.id = d.id;
+            div.innerHTML = '<div>' + content + '</div><div class="notice-meta">' + (d.writer || '') + ' · ' + d.time
+                + ' <span style="color:#dc2626;margin-left:8px;cursor:pointer;" onclick="deleteNotice(' + d.id + ',this)">삭제</span></div>';
+            list.insertBefore(div, list.firstChild);
+            document.getElementById('noticeBadge').textContent = list.querySelectorAll('.notice-item-m').length;
+        } else {
+            alert('저장 실패: ' + (d.error || ''));
+        }
+    })
+    .catch(function(e) { alert('오류: ' + e); });
+}
+
+function deleteNotice(id, el) {
+    if (!confirm('공지를 삭제하시겠습니까?')) return;
+    fetch('/delete_meal_notice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.ok) {
+            var item = el.closest('.notice-item-m');
+            item.remove();
+            var list = document.getElementById('noticeList');
+            var cnt = list.querySelectorAll('.notice-item-m').length;
+            document.getElementById('noticeBadge').textContent = cnt;
+            if (cnt === 0) {
+                list.innerHTML = '<p class="text-muted text-center small mb-0 py-3" id="noNoticeMsg">등록된 공지가 없습니다</p>';
+            }
+        } else {
+            alert('삭제 실패: ' + (d.error || ''));
+        }
+    })
+    .catch(function(e) { alert('오류: ' + e); });
+}
+
+// 엔터키 처리
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && document.getElementById('mealModal').classList.contains('show')) {
+        e.preventDefault();
+        saveMeal();
+    }
+    if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'noticeInput') {
+        e.preventDefault();
+        saveNotice();
+    }
+});
+</script>
+</body>
+</html>

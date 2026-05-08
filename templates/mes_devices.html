@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MES 장치관리 — 태인관리시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+.mes-card { border-radius:10px; border:none; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+</style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main-content">
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h5 class="mb-0 fw-bold">⚙️ MES 장치 관리</h5>
+  <a href="/mes/realtime" class="btn btn-outline-secondary btn-sm">← 실시간</a>
+</div>
+
+{% if msg %}
+<div class="alert alert-success py-2 mb-3" style="font-size:0.85rem;">✅ {{ msg }}</div>
+{% endif %}
+
+<!-- 장치 등록 폼 -->
+<div class="card mes-card mb-3">
+  <div class="card-header py-2 fw-bold border-bottom" style="font-size:0.85rem;">➕ 장치 등록 / 수정</div>
+  <div class="card-body">
+    <form method="post" action="/mes/devices">
+      <input type="hidden" name="action" value="add">
+      <div class="row g-2">
+        <div class="col-12 col-md-3">
+          <label class="form-label small fw-bold">장치 ID <span class="text-danger">*</span></label>
+          <input type="text" name="device_id" class="form-control form-control-sm"
+                 placeholder="ESP32_LINE_A" required>
+          <div class="form-text" style="font-size:0.72rem;">ESP32에서 전송하는 device_id</div>
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label small fw-bold">장치명</label>
+          <input type="text" name="name" class="form-control form-control-sm"
+                 placeholder="A라인 카운터">
+        </div>
+        <div class="col-12 col-md-2">
+          <label class="form-label small fw-bold">라인명</label>
+          <input type="text" name="line_name" class="form-control form-control-sm"
+                 placeholder="A라인">
+        </div>
+        <div class="col-12 col-md-2">
+          <label class="form-label small fw-bold">일 목표 (개)</label>
+          <input type="number" name="target_day" class="form-control form-control-sm"
+                 placeholder="2000" value="2000" min="0">
+          <div class="form-text" style="font-size:0.72rem;">0이면 목표 미설정</div>
+        </div>
+        <div class="col-12 col-md-2 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary btn-sm w-100">저장</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ESP32 연결 안내 -->
+<div class="card mes-card mb-3">
+  <div class="card-header py-2 fw-bold border-bottom" style="font-size:0.85rem;">📡 ESP32 연결 방법</div>
+  <div class="card-body" style="font-size:0.82rem; color:#555; line-height:1.8;">
+    <p class="mb-2">ESP32에서 아래 엔드포인트로 POST 요청을 전송합니다:</p>
+    <pre class="bg-light p-2 rounded" style="font-size:0.78rem;">POST http://[서버IP]:5050/mes/count
+Content-Type: application/json
+
+{
+  "device_id": "ESP32_LINE_A",
+  "count": 1234,
+  "token": "{{ mes_token or '(MES_TOKEN 미설정)' }}"
+}</pre>
+    <p class="mb-1 mt-2">Arduino 예시 코드:</p>
+    <pre class="bg-light p-2 rounded" style="font-size:0.78rem;">HTTPClient http;
+http.begin("http://[서버IP]:5050/mes/count");
+http.addHeader("Content-Type", "application/json");
+String body = "{\"device_id\":\"ESP32_LINE_A\",\"count\":" + String(labelCount) + "}";
+int code = http.POST(body);
+http.end();</pre>
+    <div class="mt-2 p-2 bg-warning bg-opacity-10 rounded" style="font-size:0.78rem;">
+      토큰 설정: 서버 <code>.env</code>에 <code>MES_TOKEN=your_secret</code> 추가 후 재배포
+    </div>
+  </div>
+</div>
+
+<!-- 장치 목록 -->
+<div class="card mes-card mb-3">
+  <div class="card-header py-2 fw-bold border-bottom" style="font-size:0.85rem;">
+    📋 등록 장치 목록 ({{ devices | length }}대)
+  </div>
+  <div class="card-body p-0">
+    {% if devices %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;">
+        <thead class="table-light">
+          <tr>
+            <th class="px-3">장치 ID</th>
+            <th>장치명</th>
+            <th>라인</th>
+            <th class="text-end px-3">일 목표</th>
+            <th class="text-end px-3">총 수신</th>
+            <th class="text-center">마지막 수신</th>
+            <th class="text-center">상태</th>
+            <th class="text-center">관리</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for d in devices %}
+          <tr class="{{ '' if d.is_active else 'text-muted' }}">
+            <td class="px-3"><code style="font-size:0.78rem;">{{ d.device_id }}</code></td>
+            <td class="fw-bold">{{ d.name }}</td>
+            <td>{{ d.line_name }}</td>
+            <td class="text-end px-3">{{ "{:,}".format(d.target_day) if d.target_day else '-' }}</td>
+            <td class="text-end px-3">{{ "{:,}".format(d.total_records) }}</td>
+            <td class="text-center" style="font-size:0.78rem;">{{ d.last_seen }}</td>
+            <td class="text-center">
+              {% if d.is_active %}
+              <span class="badge bg-success" style="font-size:0.7rem;">활성</span>
+              {% else %}
+              <span class="badge bg-secondary" style="font-size:0.7rem;">비활성</span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              <div class="d-flex justify-content-center gap-1">
+                <form method="post" action="/mes/devices" class="d-inline">
+                  <input type="hidden" name="action" value="toggle">
+                  <input type="hidden" name="device_id" value="{{ d.device_id }}">
+                  <button type="submit" class="btn btn-outline-secondary btn-sm py-0 px-2"
+                          style="font-size:0.72rem;"
+                          title="{{ '비활성화' if d.is_active else '활성화' }}">
+                    {{ '⏸' if d.is_active else '▶' }}
+                  </button>
+                </form>
+                <form method="post" action="/mes/devices" class="d-inline"
+                      onsubmit="return confirm('{{ d.name }} 장치를 삭제하시겠습니까?');">
+                  <input type="hidden" name="action" value="delete">
+                  <input type="hidden" name="device_id" value="{{ d.device_id }}">
+                  <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2"
+                          style="font-size:0.72rem;">🗑</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">
+      등록된 장치가 없습니다.<br>
+      <span style="font-size:0.82rem;">ESP32에서 첫 POST가 오면 자동 등록됩니다.</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+</div><!-- /main-content -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

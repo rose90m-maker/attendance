@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>설문 편집</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        body{background:#f4f6f9;}
+        .editor-wrap{max-width:920px;margin:0 auto;}
+        .ed-card{background:#fff;border:1px solid #dde2e8;border-radius:4px;margin-bottom:14px;}
+        .ed-card-body{padding:18px 22px;}
+        .ed-section-title{font-size:0.88rem;font-weight:700;color:#4a90d9;margin-bottom:10px;text-transform:uppercase;letter-spacing:.03em;}
+        .q-card{border-left:4px solid transparent;transition:border-color .15s;}
+        .q-card.active{border-left-color:#4a90d9;}
+        .q-head{display:flex;gap:10px;align-items:center;padding:12px 18px;background:#f0f4f7;border-bottom:1px solid #dde2e8;}
+        .q-head .q-num{font-weight:700;color:#4a90d9;min-width:30px;}
+        .q-head select{max-width:160px;font-size:0.88rem;}
+        .q-body{padding:14px 18px 16px 18px;}
+        .q-title-input{font-size:1.02rem;font-weight:600;border:none;border-bottom:1px solid #e5e7eb;padding:6px 2px;outline:none;width:100%;background:transparent;transition:border-color .15s;}
+        .q-title-input:focus{border-bottom-color:#4a90d9;}
+        .q-desc-input{font-size:0.86rem;color:#6b7280;border:none;padding:4px 2px;outline:none;width:100%;margin-top:4px;background:transparent;}
+        .q-opt-row{display:flex;align-items:center;gap:8px;margin:6px 0;}
+        .q-opt-dot{font-size:0.9rem;color:#9ca3af;min-width:16px;text-align:center;}
+        .q-opt-input{flex:1;border:none;border-bottom:1px dashed #e5e7eb;font-size:0.9rem;padding:4px 2px;outline:none;background:transparent;}
+        .q-opt-input:focus{border-bottom-style:solid;border-bottom-color:#4a90d9;}
+        .q-opt-del{background:none;border:none;color:#9ca3af;font-size:1rem;cursor:pointer;padding:2px 6px;}
+        .q-opt-del:hover{color:#dc2626;}
+        .q-add-opt{font-size:0.82rem;color:#4a90d9;background:none;border:none;padding:4px 0;margin-top:4px;cursor:pointer;}
+        .q-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 18px;border-top:1px solid #eef1f4;background:#fafbfc;}
+        .q-reorder{display:flex;gap:4px;}
+        .q-reorder button{background:none;border:1px solid #dde2e8;border-radius:3px;padding:2px 8px;font-size:0.82rem;color:#6b7280;cursor:pointer;}
+        .q-reorder button:hover{background:#f0f4f7;color:#374151;}
+        .q-del-btn{background:none;border:1px solid #fecaca;color:#dc2626;border-radius:3px;padding:3px 10px;font-size:0.8rem;cursor:pointer;}
+        .q-del-btn:hover{background:#fee2e2;}
+        .status-badge{padding:3px 12px;border-radius:12px;font-size:0.78rem;font-weight:600;display:inline-block;}
+        .s-draft{background:#f3f4f6;color:#6b7280;}
+        .s-published{background:#dcfce7;color:#166534;}
+        .s-closed{background:#dbeafe;color:#1e40af;}
+        .save-indicator{font-size:0.78rem;color:#6b7280;margin-left:10px;transition:opacity .3s;}
+        .save-indicator.show{color:#10b981;}
+        .type-icon{display:inline-block;width:22px;text-align:center;margin-right:4px;}
+        .preview-box{background:#f9fafb;border:1px dashed #d1d5db;border-radius:4px;padding:10px 12px;color:#6b7280;font-size:0.86rem;}
+
+        /* 드래그 앤 드롭 */
+        .q-card.dragging{opacity:.4;}
+        .q-card.drag-over-top{border-top:3px solid #4a90d9;}
+        .q-card.drag-over-bottom{border-bottom:3px solid #4a90d9;}
+        .q-drag-handle{cursor:grab;color:#9ca3af;font-size:1rem;user-select:none;margin-right:6px;padding:0 4px;}
+        .q-drag-handle:hover{color:#4a90d9;}
+        .q-drag-handle:active{cursor:grabbing;}
+
+        /* 섹션 */
+        .sec-card{background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;margin-bottom:14px;padding:12px 18px;}
+        .sec-card .sec-title-in{border:none;font-size:1rem;font-weight:700;color:#92400e;background:transparent;outline:none;width:100%;padding:2px 0;border-bottom:1px dashed transparent;}
+        .sec-card .sec-title-in:focus{border-bottom-color:#f59e0b;}
+        .sec-card .sec-desc-in{border:none;font-size:0.85rem;color:#78350f;background:transparent;outline:none;width:100%;margin-top:2px;padding:2px 0;}
+        .sec-card .sec-hd{display:flex;align-items:center;gap:8px;}
+        .sec-card .sec-label{font-size:0.72rem;font-weight:700;color:#78350f;letter-spacing:.05em;padding:2px 8px;background:#fde68a;border-radius:10px;}
+        .sec-del-btn{background:none;border:none;color:#b45309;font-size:0.9rem;cursor:pointer;margin-left:auto;}
+        .sec-del-btn:hover{color:#dc2626;}
+
+        /* 조건부 설정 */
+        .q-branch-box{margin-top:10px;padding:10px 12px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:3px;display:none;}
+        .q-branch-box.show{display:block;}
+        .q-branch-btn{background:none;border:1px solid #dde2e8;color:#6b7280;font-size:0.78rem;padding:3px 10px;border-radius:3px;cursor:pointer;}
+        .q-branch-btn.active{background:#dbeafe;border-color:#3b82f6;color:#1e40af;}
+
+        /* 대상자 */
+        .tgt-chip{display:inline-flex;align-items:center;gap:4px;background:#dbeafe;color:#1e40af;border-radius:12px;padding:3px 10px;font-size:0.8rem;font-weight:600;margin:2px;}
+        .tgt-chip .x{cursor:pointer;opacity:.6;margin-left:2px;}
+        .tgt-chip .x:hover{opacity:1;color:#dc2626;}
+        .tgt-type-hd{font-size:0.8rem;color:#6b7280;font-weight:600;min-width:55px;display:inline-block;}
+    </style>
+</head>
+<body>
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-3">
+    <div class="editor-wrap">
+        <!-- 헤더 -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <a href="/surveys" class="text-decoration-none" style="font-size:0.85rem;color:#6b7280;">← 설문 목록</a>
+                <span id="saveInd" class="save-indicator"></span>
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+                <span id="statusBadge" class="status-badge {% if survey.status=='published' %}s-published{% elif survey.status=='closed' %}s-closed{% else %}s-draft{% endif %}">
+                    {% if survey.status=='published' %}진행중{% elif survey.status=='closed' %}마감{% elif survey.status=='archived' %}보관{% else %}초안{% endif %}
+                </span>
+                <a href="/surveys/{{ survey.id }}/preview" target="_blank" class="btn btn-sm btn-outline-secondary">미리보기</a>
+                {% if survey.status == 'draft' %}
+                <button class="btn btn-sm btn-success" onclick="openPublishModal()">발행</button>
+                {% elif survey.status == 'published' %}
+                <button class="btn btn-sm btn-outline-primary" onclick="publishSurvey('unpublish')">초안으로</button>
+                <button class="btn btn-sm btn-outline-warning" onclick="publishSurvey('close')">마감</button>
+                {% endif %}
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteSurvey()">삭제</button>
+            </div>
+        </div>
+
+        <!-- ① 설문 기본정보 -->
+        <div class="ed-card">
+            <div class="ed-card-body">
+                <div class="ed-section-title">기본 정보</div>
+                <input type="text" id="metaTitle" class="form-control form-control-lg mb-2" style="font-size:1.25rem;font-weight:700;" value="{{ survey.title }}" placeholder="설문 제목">
+                <textarea id="metaDesc" class="form-control" rows="2" placeholder="설명(선택)">{{ survey.description }}</textarea>
+                <div class="row g-2 mt-2">
+                    <div class="col-md-6">
+                        <label class="form-label mb-1" style="font-size:0.82rem;color:#6b7280;">시작일</label>
+                        <input type="datetime-local" id="metaStart" class="form-control form-control-sm" value="{{ survey.start_at }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label mb-1" style="font-size:0.82rem;color:#6b7280;">마감일</label>
+                        <input type="datetime-local" id="metaEnd" class="form-control form-control-sm" value="{{ survey.end_at }}">
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-3 mt-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="metaAnon" {% if survey.anonymous %}checked{% endif %}>
+                        <label class="form-check-label" for="metaAnon" style="font-size:0.88rem;">익명 응답</label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="metaAllowEdit" {% if survey.allow_edit %}checked{% endif %}>
+                        <label class="form-check-label" for="metaAllowEdit" style="font-size:0.88rem;">응답 후 수정 허용</label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="metaOnce" {% if survey.one_per_user %}checked{% endif %}>
+                        <label class="form-check-label" for="metaOnce" style="font-size:0.88rem;">1인 1회 응답</label>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 ms-auto">
+                        <label for="metaRemind" style="font-size:0.82rem;color:#6b7280;white-space:nowrap;">재알림(시간전)</label>
+                        <input type="number" id="metaRemind" class="form-control form-control-sm" style="width:80px;" min="0" max="168" value="{{ survey.remind_hours }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ①' 대상자 및 발송 -->
+        <div class="ed-card">
+            <div class="ed-card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="ed-section-title mb-0">📣 대상자 및 발송</div>
+                    <div>
+                        <span class="text-muted" style="font-size:0.82rem;">예상 수신자: <b id="targetCount" style="color:#1e40af;">0</b>명</span>
+                        <a href="#" onclick="openNotiHistory();return false;" class="ms-2" style="font-size:0.82rem;">📋 발송 이력</a>
+                    </div>
+                </div>
+                <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" id="tgtAll" onchange="onTgtAllChange()">
+                    <label class="form-check-label" for="tgtAll" style="font-weight:600;">전체 직원</label>
+                </div>
+                <div id="tgtDetailWrap">
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="tgt-type-hd">부서</label>
+                            <select class="form-select form-select-sm" id="tgtDeptSel" onchange="addTargetFromSelect('dept', this)">
+                                <option value="">+ 부서 추가</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="tgt-type-hd">직급</label>
+                            <select class="form-select form-select-sm" id="tgtPosSel" onchange="addTargetFromSelect('position', this)">
+                                <option value="">+ 직급 추가</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-12">
+                            <label class="tgt-type-hd">개별</label>
+                            <input type="text" class="form-control form-control-sm" id="tgtEmpSearch" placeholder="직원 이름 입력…" list="tgtEmpList" onchange="addTargetFromEmpSearch()">
+                            <datalist id="tgtEmpList"></datalist>
+                        </div>
+                    </div>
+                </div>
+                <div id="tgtChips" style="min-height:32px;padding:6px;border:1px dashed #dde2e8;border-radius:3px;background:#fafbfc;"></div>
+                <!-- 채널 옵션 (전체/세부 선택과 무관하게 항상 노출) -->
+                <div class="row g-2 mt-2 pt-2 align-items-center" style="border-top:1px solid #eef1f4;">
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="chkSendEmail" {% if survey.send_email %}checked{% endif %}>
+                            <label class="form-check-label" for="chkSendEmail">📧 e-mail 보내기</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="chkSendSms" {% if survey.send_sms %}checked{% endif %}>
+                            <label class="form-check-label" for="chkSendSms">📱 SMS 보내기</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ② 질문/섹션 리스트 -->
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="ed-section-title ms-1 mb-0">질문 · 섹션</div>
+            <button class="btn btn-sm btn-outline-secondary" onclick="addSection()">📑 섹션 추가</button>
+        </div>
+        <div id="questionsContainer"></div>
+
+        <!-- ③ 질문 추가 -->
+        <div class="ed-card" style="background:#f0f4f7;border-style:dashed;">
+            <div class="ed-card-body text-center py-3">
+                <div class="d-flex flex-wrap gap-2 justify-content-center">
+                    <button class="btn btn-sm btn-outline-primary" onclick="addQuestion('short')">📝 단답형</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="addQuestion('long')">📄 장문형</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="addQuestion('radio')">🔘 단일선택</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="addQuestion('checkbox')">☑ 복수선택</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="addQuestion('rating')">⭐ 평점(1-5)</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="addQuestion('select')">▼ 드롭다운</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="addQuestion('date')">📅 날짜</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="addQuestion('file')">📎 파일첨부</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-end mt-2 mb-5">
+            <a href="/surveys" class="btn btn-secondary btn-sm">← 목록으로</a>
+        </div>
+    </div>
+</div>
+
+<!-- 발행 모달 -->
+<div class="modal fade" id="publishModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">설문 발행</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:0.9rem;">이 설문을 발행하시겠습니까? 선택된 채널로 대상자에게 즉시 발송됩니다.</p>
+                <div class="mb-2"><strong id="pubTargetCnt">0</strong>명에게 발송</div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="chInternal" checked>
+                    <label class="form-check-label" for="chInternal">🔔 내부 알림 (기본)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="chTelegram">
+                    <label class="form-check-label" for="chTelegram">📨 텔레그램 (Chat ID 등록자만)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="chEmail">
+                    <label class="form-check-label" for="chEmail">📧 이메일 (명부에 이메일 등록자만)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="chSms">
+                    <label class="form-check-label" for="chSms">📱 SMS (명부에 휴대전화 등록자만)</label>
+                </div>
+            </div>
+            <div class="modal-footer py-1">
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button class="btn btn-success btn-sm" onclick="confirmPublish()">발행 및 발송</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 발송 이력 모달 -->
+<div class="modal fade" id="notiHistoryModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">📋 발송 이력</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" style="max-height:60vh;overflow-y:auto;">
+                <table class="table table-sm table-bordered" style="font-size:0.85rem;">
+                    <thead style="background:#f0f4f7;"><tr>
+                        <th style="width:120px;">발송시각</th>
+                        <th>수신자</th>
+                        <th style="width:90px;">채널</th>
+                        <th style="width:70px;">구분</th>
+                        <th style="width:80px;text-align:center;">응답</th>
+                    </tr></thead>
+                    <tbody id="notiHistoryBody"></tbody>
+                </table>
+            </div>
+            <div class="modal-footer py-1">
+                <button class="btn btn-outline-primary btn-sm" onclick="manualResend()" id="btnResend">미응답자 재알림 발송</button>
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+var SURVEY_ID = {{ survey.id }};
+var QUESTIONS = {{ questions|tojson }};
+var SECTIONS = {{ sections|tojson }};
+
+var QTYPE_LABELS = {
+    short:'단답형', long:'장문형', radio:'단일선택', checkbox:'복수선택',
+    rating:'평점(1-5)', select:'드롭다운', date:'날짜', file:'파일첨부'
+};
+var QTYPE_ICONS = {
+    short:'📝', long:'📄', radio:'🔘', checkbox:'☑',
+    rating:'⭐', select:'▼', date:'📅', file:'📎'
+};
+var BRANCH_SRC_TYPES = ['radio','select'];  // 조건부 소스로 사용 가능한 유형
+
+function showSaved() {
+    var el = document.getElementById('saveInd');
+    el.textContent = '✓ 저장됨';
+    el.classList.add('show');
+    clearTimeout(showSaved._t);
+    showSaved._t = setTimeout(function(){ el.classList.remove('show'); el.textContent=''; }, 1500);
+}
+
+function apiPost(url, body) {
+    return fetch(url, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body||{})
+    }).then(function(r){ return r.json(); });
+}
+
+// ───── 메타 자동저장 ─────
+function saveMeta() {
+    return apiPost('/api/survey/save_meta', {
+        id: SURVEY_ID,
+        title: document.getElementById('metaTitle').value,
+        description: document.getElementById('metaDesc').value,
+        start_at: document.getElementById('metaStart').value || null,
+        end_at: document.getElementById('metaEnd').value || null,
+        anonymous: document.getElementById('metaAnon').checked,
+        allow_edit: document.getElementById('metaAllowEdit').checked,
+        one_per_user: document.getElementById('metaOnce').checked,
+        remind_hours: parseInt(document.getElementById('metaRemind').value)||24,
+        send_email: document.getElementById('chkSendEmail').checked,
+        send_sms: document.getElementById('chkSendSms').checked,
+    }).then(function(j){ if (j.ok) showSaved(); });
+}
+['metaTitle','metaDesc','metaStart','metaEnd','metaRemind'].forEach(function(id){
+    document.getElementById(id).addEventListener('blur', saveMeta);
+});
+['metaAnon','metaAllowEdit','metaOnce','chkSendEmail','chkSendSms'].forEach(function(id){
+    document.getElementById(id).addEventListener('change', saveMeta);
+});
+
+// ───── 렌더링: 섹션 + 질문 ─────
+function renderQuestions() {
+    var c = document.getElementById('questionsContainer');
+    c.innerHTML = '';
+    if (QUESTIONS.length === 0 && SECTIONS.length === 0) {
+        c.innerHTML = '<div class="text-center text-muted py-4" style="background:#fff;border:1px solid #dde2e8;border-radius:4px;margin-bottom:14px;">질문이 없습니다. 아래 버튼으로 추가하세요.</div>';
+        return;
+    }
+    // 1) 섹션 없는 질문
+    var unsec = QUESTIONS.filter(function(q){ return !q.section_id; });
+    unsec.forEach(function(q){ c.appendChild(renderQCard(q)); });
+    // 2) 섹션별 질문
+    SECTIONS.forEach(function(sec){
+        c.appendChild(renderSecCard(sec));
+        var inSec = QUESTIONS.filter(function(q){ return q.section_id === sec.id; });
+        inSec.forEach(function(q){ c.appendChild(renderQCard(q)); });
+    });
+    // 질문 번호 재매김
+    var all = c.querySelectorAll('.q-card');
+    all.forEach(function(el, i){
+        var nEl = el.querySelector('.q-num');
+        if (nEl) nEl.textContent = 'Q' + (i+1);
+    });
+}
+
+function renderSecCard(sec) {
+    var el = document.createElement('div');
+    el.className = 'sec-card';
+    el.dataset.secId = sec.id;
+    el.innerHTML = [
+        '<div class="sec-hd">',
+            '<span class="sec-label">섹션</span>',
+            '<input type="text" class="sec-title-in" placeholder="섹션 제목" value="'+escapeHtml(sec.title)+'">',
+            '<button class="sec-del-btn" title="섹션 삭제">×</button>',
+        '</div>',
+        '<input type="text" class="sec-desc-in mt-1" placeholder="섹션 설명(선택)" value="'+escapeHtml(sec.description)+'">'
+    ].join('');
+    el.querySelector('.sec-title-in').addEventListener('blur', function(e){
+        sec.title = e.target.value;
+        apiPost('/api/survey/save_section', {id: sec.id, title: sec.title, description: sec.description})
+          .then(function(j){ if (j.ok) showSaved(); });
+    });
+    el.querySelector('.sec-desc-in').addEventListener('blur', function(e){
+        sec.description = e.target.value;
+        apiPost('/api/survey/save_section', {id: sec.id, title: sec.title, description: sec.description})
+          .then(function(j){ if (j.ok) showSaved(); });
+    });
+    el.querySelector('.sec-del-btn').addEventListener('click', function(){
+        if (!confirm('섹션을 삭제하시겠습니까? (소속 질문은 섹션 없음으로 이동)')) return;
+        apiPost('/api/survey/delete_section', {id: sec.id}).then(function(j){
+            if (j.ok) {
+                SECTIONS = SECTIONS.filter(function(s){ return s.id !== sec.id; });
+                QUESTIONS.forEach(function(q){ if (q.section_id === sec.id) q.section_id = null; });
+                renderQuestions();
+                showSaved();
+            }
+        });
+    });
+    return el;
+}
+
+function renderQCard(q) {
+    var el = document.createElement('div');
+    el.className = 'ed-card q-card';
+    el.dataset.qid = q.id;
+    el.draggable = true;
+    var hasBranch = !!q.branch_src_qid;
+    var sectionOpts = '<option value="">(섹션 없음)</option>' + SECTIONS.map(function(s){
+        return '<option value="'+s.id+'"'+(q.section_id===s.id?' selected':'')+'>'+escapeHtml(s.title||'섹션')+'</option>';
+    }).join('');
+    el.innerHTML = [
+        '<div class="q-head">',
+            '<span class="q-drag-handle" title="드래그하여 순서 변경">⋮⋮</span>',
+            '<span class="q-num">Q</span>',
+            '<select class="form-select form-select-sm q-type-sel" style="max-width:160px;">',
+                Object.keys(QTYPE_LABELS).map(function(t){
+                    return '<option value="'+t+'"'+(q.qtype===t?' selected':'')+'>'+QTYPE_ICONS[t]+' '+QTYPE_LABELS[t]+'</option>';
+                }).join(''),
+            '</select>',
+            (SECTIONS.length > 0 ? '<select class="form-select form-select-sm q-sec-sel" style="max-width:140px;">'+sectionOpts+'</select>' : ''),
+            '<div class="ms-auto form-check form-switch mb-0">',
+                '<input class="form-check-input q-req" type="checkbox" id="req_'+q.id+'"'+(q.required?' checked':'')+'>',
+                '<label class="form-check-label" for="req_'+q.id+'" style="font-size:0.82rem;">필수</label>',
+            '</div>',
+        '</div>',
+        '<div class="q-body">',
+            '<input type="text" class="q-title-input q-title" placeholder="질문을 입력하세요" value="'+escapeHtml(q.title)+'">',
+            '<input type="text" class="q-desc-input q-desc" placeholder="설명(선택)" value="'+escapeHtml(q.description||'')+'">',
+            '<div class="q-preview mt-3"></div>',
+            '<div class="q-branch-box'+(hasBranch?' show':'')+'" data-branch-box>',
+                '<div style="font-size:0.82rem;color:#1e40af;font-weight:600;margin-bottom:6px;">🔀 조건부 표시 — 다음 조건을 만족할 때만 이 질문을 보여줍니다</div>',
+                '<div class="d-flex gap-2 align-items-center flex-wrap">',
+                    '<select class="form-select form-select-sm q-branch-q" style="max-width:200px;"></select>',
+                    '<span style="font-size:0.82rem;color:#6b7280;">에서</span>',
+                    '<select class="form-select form-select-sm q-branch-v" style="max-width:180px;"></select>',
+                    '<span style="font-size:0.82rem;color:#6b7280;">선택 시</span>',
+                    '<button class="btn btn-sm btn-outline-secondary ms-auto" onclick="clearBranch('+q.id+')">해제</button>',
+                '</div>',
+            '</div>',
+        '</div>',
+        '<div class="q-foot">',
+            '<button class="q-branch-btn'+(hasBranch?' active':'')+'" onclick="toggleBranch('+q.id+')">🔀 조건부</button>',
+            '<button class="q-del-btn" onclick="deleteQuestion('+q.id+')">삭제</button>',
+        '</div>'
+    ].join('');
+
+    el.querySelector('.q-type-sel').addEventListener('change', function(e){
+        q.qtype = e.target.value;
+        saveQuestion(q).then(function(j){
+            if (j.ok && j.added_options) { q.options = j.added_options; }
+            if (j.ok && j.qtype_changed && ['short','long','rating','date','file'].indexOf(q.qtype) >= 0) {
+                q.options = [];
+            }
+            renderPreview(el, q);
+            populateBranchDropdowns(el, q);
+        });
+    });
+    var secSel = el.querySelector('.q-sec-sel');
+    if (secSel) secSel.addEventListener('change', function(e){
+        q.section_id = e.target.value ? parseInt(e.target.value) : null;
+        saveQuestion(q).then(function(j){ if (j.ok) renderQuestions(); });
+    });
+    el.querySelector('.q-title').addEventListener('blur', function(e){ q.title = e.target.value; saveQuestion(q); });
+    el.querySelector('.q-desc').addEventListener('blur', function(e){ q.description = e.target.value; saveQuestion(q); });
+    el.querySelector('.q-req').addEventListener('change', function(e){ q.required = e.target.checked; saveQuestion(q); });
+
+    // 드래그 이벤트
+    attachDragHandlers(el, q);
+
+    renderPreview(el, q);
+    populateBranchDropdowns(el, q);
+    return el;
+}
+
+// ───── 조건부 설정 ─────
+function populateBranchDropdowns(el, q) {
+    var qSel = el.querySelector('.q-branch-q');
+    var vSel = el.querySelector('.q-branch-v');
+    if (!qSel || !vSel) return;
+    // 현재 질문보다 앞에 있는 radio/select 질문만 소스 후보
+    var qIdx = QUESTIONS.findIndex(function(x){ return x.id === q.id; });
+    var candidates = QUESTIONS.slice(0, qIdx).filter(function(x){ return BRANCH_SRC_TYPES.indexOf(x.qtype) >= 0; });
+    qSel.innerHTML = '<option value="">(소스 질문 선택)</option>' + candidates.map(function(cq, i){
+        var label = 'Q' + (QUESTIONS.indexOf(cq)+1) + ': ' + (cq.title || '(제목 없음)').slice(0,30);
+        return '<option value="'+cq.id+'"'+(q.branch_src_qid===cq.id?' selected':'')+'>'+escapeHtml(label)+'</option>';
+    }).join('');
+    function refreshValues() {
+        var srcId = parseInt(qSel.value);
+        var src = QUESTIONS.find(function(x){ return x.id === srcId; });
+        vSel.innerHTML = '<option value="">(값 선택)</option>';
+        if (src && src.options) {
+            src.options.forEach(function(o){
+                var sel = (q.branch_src_value === o.label) ? ' selected' : '';
+                vSel.innerHTML += '<option value="'+escapeHtml(o.label)+'"'+sel+'>'+escapeHtml(o.label)+'</option>';
+            });
+        }
+    }
+    refreshValues();
+    qSel.onchange = function(){
+        refreshValues();
+        q.branch_src_qid = parseInt(qSel.value) || null;
+        q.branch_src_value = vSel.value || '';
+        saveQuestion(q);
+    };
+    vSel.onchange = function(){
+        q.branch_src_value = vSel.value;
+        saveQuestion(q);
+    };
+}
+
+function toggleBranch(qid) {
+    var el = document.querySelector('.q-card[data-qid="'+qid+'"]');
+    if (!el) return;
+    el.querySelector('[data-branch-box]').classList.toggle('show');
+    el.querySelector('.q-branch-btn').classList.toggle('active');
+}
+
+function clearBranch(qid) {
+    var q = QUESTIONS.find(function(x){ return x.id === qid; });
+    if (!q) return;
+    q.branch_src_qid = null;
+    q.branch_src_value = '';
+    var el = document.querySelector('.q-card[data-qid="'+qid+'"]');
+    if (el) {
+        el.querySelector('[data-branch-box]').classList.remove('show');
+        el.querySelector('.q-branch-btn').classList.remove('active');
+    }
+    saveQuestion(q);
+}
+
+// ───── 드래그 앤 드롭 ─────
+var DRAG_QID = null;
+
+function attachDragHandlers(el, q) {
+    el.addEventListener('dragstart', function(e){
+        DRAG_QID = q.id;
+        el.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragend', function(){
+        el.classList.remove('dragging');
+        document.querySelectorAll('.q-card').forEach(function(x){
+            x.classList.remove('drag-over-top','drag-over-bottom');
+        });
+    });
+    el.addEventListener('dragover', function(e){
+        e.preventDefault();
+        if (DRAG_QID == q.id) return;
+        var rect = el.getBoundingClientRect();
+        var mid = rect.top + rect.height/2;
+        el.classList.remove('drag-over-top','drag-over-bottom');
+        if (e.clientY < mid) el.classList.add('drag-over-top');
+        else el.classList.add('drag-over-bottom');
+    });
+    el.addEventListener('dragleave', function(){
+        el.classList.remove('drag-over-top','drag-over-bottom');
+    });
+    el.addEventListener('drop', function(e){
+        e.preventDefault();
+        var isTop = el.classList.contains('drag-over-top');
+        el.classList.remove('drag-over-top','drag-over-bottom');
+        if (!DRAG_QID || DRAG_QID === q.id) return;
+        var fromIdx = QUESTIONS.findIndex(function(x){ return x.id === DRAG_QID; });
+        var toIdx = QUESTIONS.findIndex(function(x){ return x.id === q.id; });
+        if (fromIdx < 0 || toIdx < 0) return;
+        var moved = QUESTIONS.splice(fromIdx, 1)[0];
+        // 대상 질문의 섹션으로 소속 변경
+        moved.section_id = q.section_id;
+        var newIdx = QUESTIONS.findIndex(function(x){ return x.id === q.id; });
+        QUESTIONS.splice(isTop ? newIdx : newIdx+1, 0, moved);
+        renderQuestions();
+        // 서버 저장: section_id + 순서
+        apiPost('/api/survey/save_question', {
+            id: moved.id, qtype: moved.qtype, title: moved.title,
+            description: moved.description, required: moved.required,
+            section_id: moved.section_id,
+            branch_src_qid: moved.branch_src_qid, branch_src_value: moved.branch_src_value
+        }).then(function(){
+            apiPost('/api/survey/reorder_questions', {ids: QUESTIONS.map(function(x){return x.id;})})
+              .then(function(j){ if (j.ok) showSaved(); });
+        });
+    });
+}
+
+function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+function renderPreview(el, q) {
+    var box = el.querySelector('.q-preview');
+    box.innerHTML = '';
+    if (q.qtype === 'short') {
+        box.innerHTML = '<div class="preview-box">[단답형 응답 입력창]</div>';
+    } else if (q.qtype === 'long') {
+        box.innerHTML = '<div class="preview-box" style="min-height:60px;">[장문형 응답 입력 영역]</div>';
+    } else if (q.qtype === 'radio' || q.qtype === 'checkbox') {
+        renderOptions(box, q, q.qtype);
+    } else if (q.qtype === 'select') {
+        renderOptions(box, q, 'select');
+    } else if (q.qtype === 'rating') {
+        box.innerHTML = '<div class="preview-box">⭐ 1 · 2 · 3 · 4 · 5</div>';
+    } else if (q.qtype === 'date') {
+        box.innerHTML = '<div class="preview-box">[날짜 선택]</div>';
+    } else if (q.qtype === 'file') {
+        box.innerHTML = '<div class="preview-box">[📎 파일 첨부]</div>';
+    }
+}
+
+function renderOptions(box, q, mode) {
+    (q.options||[]).forEach(function(opt){
+        var row = document.createElement('div');
+        row.className = 'q-opt-row';
+        row.dataset.oid = opt.id;
+        var dot = mode === 'radio' ? '○' : (mode === 'checkbox' ? '☐' : '▪');
+        row.innerHTML = '<span class="q-opt-dot">'+dot+'</span>'
+            + '<input type="text" class="q-opt-input" value="'+escapeHtml(opt.label)+'">'
+            + '<button class="q-opt-del" title="선택지 삭제">×</button>';
+        row.querySelector('.q-opt-input').addEventListener('blur', function(e){
+            var newLabel = e.target.value;
+            opt.label = newLabel;
+            apiPost('/api/survey/save_option', {id: opt.id, label: newLabel}).then(function(j){ if (j.ok) showSaved(); });
+        });
+        row.querySelector('.q-opt-del').addEventListener('click', function(){
+            apiPost('/api/survey/delete_option', {id: opt.id}).then(function(j){
+                if (j.ok) {
+                    q.options = q.options.filter(function(o){ return o.id !== opt.id; });
+                    renderPreview(box.parentElement.parentElement, q);
+                    showSaved();
+                }
+            });
+        });
+        box.appendChild(row);
+    });
+    var addBtn = document.createElement('button');
+    addBtn.className = 'q-add-opt';
+    addBtn.textContent = '＋ 선택지 추가';
+    addBtn.addEventListener('click', function(){
+        apiPost('/api/survey/add_option', {question_id: q.id, label: '선택지 '+((q.options||[]).length+1)}).then(function(j){
+            if (j.ok) {
+                q.options = q.options || [];
+                q.options.push({id: j.id, label: j.label, sort_order: j.sort_order});
+                renderPreview(box.parentElement.parentElement, q);
+                showSaved();
+            }
+        });
+    });
+    box.appendChild(addBtn);
+}
+
+// ───── 섹션 CRUD ─────
+function addSection() {
+    apiPost('/api/survey/add_section', {survey_id: SURVEY_ID, title: '섹션 ' + (SECTIONS.length+1)}).then(function(j){
+        if (j.ok) {
+            SECTIONS.push({id: j.id, title: j.title, description: '', sort_order: j.sort_order});
+            renderQuestions();
+            showSaved();
+        } else alert('섹션 추가 실패: ' + (j.error||''));
+    });
+}
+
+// ───── 질문 CRUD ─────
+function addQuestion(qtype) {
+    apiPost('/api/survey/add_question', {survey_id: SURVEY_ID, qtype: qtype}).then(function(j){
+        if (j.ok) {
+            // 마지막 섹션이 있으면 그 섹션에 자동 배치 (ergonomic)
+            var lastSec = SECTIONS.length > 0 ? SECTIONS[SECTIONS.length-1].id : null;
+            QUESTIONS.push({
+                id: j.id, qtype: qtype, title: '', description: '',
+                required: false, sort_order: j.sort_order,
+                section_id: lastSec,
+                branch_src_qid: null, branch_src_value: '',
+                options: j.options || []
+            });
+            // 섹션 배정 즉시 저장
+            if (lastSec) {
+                apiPost('/api/survey/save_question', {
+                    id: j.id, qtype: qtype, title: '', description: '',
+                    required: false, section_id: lastSec
+                });
+            }
+            renderQuestions();
+            showSaved();
+            setTimeout(function(){
+                var cards = document.querySelectorAll('.q-card');
+                var last = cards[cards.length-1];
+                if (last) { last.scrollIntoView({behavior:'smooth',block:'center'}); last.querySelector('.q-title').focus(); }
+            }, 100);
+        } else alert('질문 추가 실패: ' + (j.error||''));
+    });
+}
+
+function saveQuestion(q) {
+    return apiPost('/api/survey/save_question', {
+        id: q.id, qtype: q.qtype, title: q.title,
+        description: q.description, required: q.required,
+        section_id: q.section_id || null,
+        branch_src_qid: q.branch_src_qid || null,
+        branch_src_value: q.branch_src_value || ''
+    }).then(function(j){ if (j.ok) showSaved(); return j; });
+}
+
+function deleteQuestion(qid) {
+    if (!confirm('이 질문을 삭제하시겠습니까?')) return;
+    apiPost('/api/survey/delete_question', {id: qid}).then(function(j){
+        if (j.ok) {
+            QUESTIONS = QUESTIONS.filter(function(q){ return q.id !== qid; });
+            // 이 질문을 소스로 쓰는 다른 질문의 branch 조건 해제
+            QUESTIONS.forEach(function(qq){
+                if (qq.branch_src_qid === qid) { qq.branch_src_qid = null; qq.branch_src_value = ''; saveQuestion(qq); }
+            });
+            renderQuestions();
+            showSaved();
+        }
+    });
+}
+
+// ───── 발행/삭제 ─────
+function publishSurvey(action) {
+    var msg = {publish:'이 설문을 발행하시겠습니까?',
+               unpublish:'초안 상태로 되돌리시겠습니까?',
+               close:'이 설문을 마감하시겠습니까?'}[action];
+    if (!confirm(msg)) return;
+    apiPost('/api/survey/publish/' + SURVEY_ID, {action: action, channels: []}).then(function(j){
+        if (j.ok) location.reload();
+        else alert('실패: ' + (j.error||''));
+    });
+}
+
+function openPublishModal() {
+    document.getElementById('pubTargetCnt').textContent = TARGET_COUNT;
+    if (TARGET_COUNT === 0) {
+        alert('대상자가 지정되지 않았습니다. 먼저 대상자 카드에서 부서·직급·개별을 선택해 주세요.');
+        return;
+    }
+    // 대상자 카드 체크박스 값으로 사전 선택
+    document.getElementById('chEmail').checked = document.getElementById('chkSendEmail').checked;
+    document.getElementById('chSms').checked = document.getElementById('chkSendSms').checked;
+    new bootstrap.Modal(document.getElementById('publishModal')).show();
+}
+
+function confirmPublish() {
+    var channels = [];
+    if (document.getElementById('chInternal').checked) channels.push('internal');
+    if (document.getElementById('chTelegram').checked) channels.push('telegram');
+    if (document.getElementById('chEmail').checked) channels.push('email');
+    if (document.getElementById('chSms').checked) channels.push('sms');
+    apiPost('/api/survey/publish/' + SURVEY_ID, {action: 'publish', channels: channels}).then(function(j){
+        if (j.ok) {
+            var s = j.sent || {};
+            var msg = '발행 완료!\n내부 ' + (s.internal||0) + '건 · 텔레그램 ' + (s.telegram||0) + '건 · 이메일 ' + (s.email||0) + '건 · SMS ' + (s.sms||0) + '건 발송';
+            if (s.sms_error) msg += '\n⚠️ SMS 오류: ' + s.sms_error;
+            alert(msg);
+            location.reload();
+        } else alert('실패: ' + (j.error||''));
+    });
+}
+
+function deleteSurvey() {
+    if (!confirm('이 설문을 완전히 삭제하시겠습니까? (모든 응답 데이터도 함께 삭제됩니다)')) return;
+    apiPost('/api/survey/delete/' + SURVEY_ID).then(function(j){
+        if (j.ok) location.href = '/surveys';
+        else alert('삭제 실패: ' + (j.error||''));
+    });
+}
+
+// ═══════════ 대상자 관리 ═══════════
+var TARGETS = [];         // 현재 설정된 대상 rows [{type,value}]
+var TARGET_COUNT = 0;
+var TARGET_OPTS = {companies:[], depts:[], positions:[], employees:[]};
+var EMP_BY_NAME = {};     // name → e_id map
+
+function loadTargetOptions() {
+    return fetch('/api/survey/target_options').then(function(r){return r.json();}).then(function(j){
+        if (!j.ok) return;
+        TARGET_OPTS = j;
+        fillSelect('tgtDeptSel', j.depts, '+ 부서 추가');
+        fillSelect('tgtPosSel', j.positions, '+ 직급 추가');
+        // 직원 datalist
+        var dl = document.getElementById('tgtEmpList');
+        dl.innerHTML = '';
+        j.employees.forEach(function(e){
+            EMP_BY_NAME[e.name] = e.e_id;
+            var opt = document.createElement('option');
+            opt.value = e.name + (e.dept ? ' ('+e.dept+')' : '');
+            opt.dataset.eid = e.e_id;
+            dl.appendChild(opt);
+        });
+    });
+}
+
+function fillSelect(id, items, placeholder) {
+    var s = document.getElementById(id);
+    s.innerHTML = '<option value="">'+placeholder+'</option>';
+    items.forEach(function(v){ s.innerHTML += '<option value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</option>'; });
+}
+
+function loadTargets() {
+    return fetch('/api/survey/targets/' + SURVEY_ID).then(function(r){return r.json();}).then(function(j){
+        if (!j.ok) return;
+        TARGETS = j.targets || [];
+        TARGET_COUNT = j.target_count || 0;
+        var hasAll = TARGETS.some(function(t){ return t.type === 'all'; });
+        document.getElementById('tgtAll').checked = hasAll;
+        document.getElementById('tgtDetailWrap').style.display = hasAll ? 'none' : '';
+        renderTgtChips();
+        updateTgtCount();
+    });
+}
+
+function updateTgtCount() {
+    document.getElementById('targetCount').textContent = TARGET_COUNT;
+}
+
+function saveTargets() {
+    return apiPost('/api/survey/save_targets', {survey_id: SURVEY_ID, targets: TARGETS}).then(function(j){
+        if (j.ok) { TARGET_COUNT = j.target_count; updateTgtCount(); showSaved(); }
+    });
+}
+
+function onTgtAllChange() {
+    var on = document.getElementById('tgtAll').checked;
+    document.getElementById('tgtDetailWrap').style.display = on ? 'none' : '';
+    if (on) {
+        TARGETS = [{type:'all', value:null}];
+    } else {
+        TARGETS = [];
+    }
+    renderTgtChips();
+    saveTargets();
+}
+
+function addTargetFromSelect(type, sel) {
+    var v = sel.value;
+    sel.value = '';
+    if (!v) return;
+    if (TARGETS.some(function(t){ return t.type===type && t.value===v; })) return;
+    TARGETS.push({type:type, value:v});
+    renderTgtChips();
+    saveTargets();
+}
+
+function addTargetFromEmpSearch() {
+    var inp = document.getElementById('tgtEmpSearch');
+    var name = inp.value.split(' (')[0].trim();
+    inp.value = '';
+    if (!name) return;
+    var eid = EMP_BY_NAME[name];
+    if (!eid) { alert('해당 직원을 찾을 수 없습니다: ' + name); return; }
+    var val = String(eid);
+    if (TARGETS.some(function(t){ return t.type==='user' && t.value===val; })) return;
+    TARGETS.push({type:'user', value:val});
+    renderTgtChips();
+    saveTargets();
+}
+
+function renderTgtChips() {
+    var box = document.getElementById('tgtChips');
+    if (TARGETS.length === 0) {
+        box.innerHTML = '<span class="text-muted" style="font-size:0.82rem;padding:4px;">대상자가 설정되지 않았습니다</span>';
+        return;
+    }
+    box.innerHTML = '';
+    var labels = {all:'전체', dept:'부서', position:'직급', user:'개별'};
+    // ─ 칩 영역 ─
+    var chipWrap = document.createElement('div');
+    TARGETS.forEach(function(t, i){
+        var display = t.value;
+        if (t.type === 'user') {
+            var emp = TARGET_OPTS.employees.find(function(e){ return String(e.e_id) === String(t.value); });
+            display = emp ? emp.name : t.value;
+        } else if (t.type === 'all') {
+            display = '전체';
+        }
+        var chip = document.createElement('span');
+        chip.className = 'tgt-chip';
+        chip.innerHTML = '<b>'+labels[t.type]+'</b>: '+escapeHtml(display)+' <span class="x" data-idx="'+i+'">×</span>';
+        chipWrap.appendChild(chip);
+    });
+    box.appendChild(chipWrap);
+
+    // ─ 명단 표시 (부서/직급/전체) ─
+    var namesWrap = document.createElement('div');
+    namesWrap.style.cssText = 'margin-top:8px;padding-top:8px;border-top:1px dashed #e5e7eb;font-size:0.78rem;color:#4b5563;';
+    var rendered = 0;
+    TARGETS.forEach(function(t){
+        var matched = [];
+        if (t.type === 'dept') {
+            matched = TARGET_OPTS.employees.filter(function(e){ return e.dept === t.value; });
+        } else if (t.type === 'position') {
+            matched = TARGET_OPTS.employees.filter(function(e){ return e.position === t.value; });
+        } else if (t.type === 'all') {
+            matched = TARGET_OPTS.employees;
+        } else {
+            return; // user 타입은 칩에 이미 이름이 있으므로 생략
+        }
+        if (matched.length === 0) return;
+        var names = matched.map(function(e){ return e.name; }).join(', ');
+        var row = document.createElement('div');
+        row.style.cssText = 'margin-bottom:3px;line-height:1.5;';
+        var header = (t.type === 'all') ? '👥 전체' :
+                     (t.type === 'dept' ? '📦 '+escapeHtml(t.value) : '👔 '+escapeHtml(t.value));
+        row.innerHTML = '<span style="font-weight:600;color:#1e40af;">'+header+'</span> '
+                      + '<span style="color:#6b7280;">('+matched.length+'명)</span> — '
+                      + '<span>'+escapeHtml(names)+'</span>';
+        namesWrap.appendChild(row);
+        rendered++;
+    });
+    if (rendered > 0) box.appendChild(namesWrap);
+
+    box.querySelectorAll('.x').forEach(function(el){
+        el.addEventListener('click', function(){
+            var idx = parseInt(this.dataset.idx);
+            var wasAll = TARGETS[idx] && TARGETS[idx].type === 'all';
+            TARGETS.splice(idx, 1);
+            if (wasAll) document.getElementById('tgtAll').checked = false;
+            document.getElementById('tgtDetailWrap').style.display = '';
+            renderTgtChips();
+            saveTargets();
+        });
+    });
+}
+
+// ═══════════ 발송 이력 ═══════════
+function openNotiHistory() {
+    new bootstrap.Modal(document.getElementById('notiHistoryModal')).show();
+    fetch('/api/survey/notifications/' + SURVEY_ID).then(function(r){return r.json();}).then(function(j){
+        var tb = document.getElementById('notiHistoryBody');
+        tb.innerHTML = '';
+        if (!j.ok || j.items.length === 0) {
+            tb.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">발송 이력이 없습니다</td></tr>';
+            return;
+        }
+        j.items.forEach(function(it){
+            var chBadge = {internal:'🔔 내부', telegram:'📨 TG', email:'📧 Email', sms:'📱 SMS'}[it.channel] || it.channel;
+            var kBadge = it.kind === 'reminder' ? '<span class="badge bg-warning text-dark">재알림</span>' : '<span class="badge bg-primary">초기</span>';
+            var resp = it.responded ? '<span class="text-success fw-bold">✓</span>' : '<span class="text-muted">-</span>';
+            tb.innerHTML += '<tr><td>'+it.sent_at+'</td><td>'+escapeHtml(it.user_name)+'</td><td>'+chBadge+'</td><td>'+kBadge+'</td><td style="text-align:center;">'+resp+'</td></tr>';
+        });
+    });
+}
+
+function manualResend() {
+    if (!confirm('미응답자에게 재알림을 발송하시겠습니까?\n(이미 같은 채널로 재알림을 받은 사용자는 제외됩니다)')) return;
+    // 대상자 카드 체크박스로 채널 결정 (내부/TG는 기본 포함)
+    var channels = ['internal','telegram'];
+    if (document.getElementById('chkSendEmail').checked) channels.push('email');
+    if (document.getElementById('chkSendSms').checked) channels.push('sms');
+    apiPost('/api/survey/send/' + SURVEY_ID, {channels: channels, kind:'reminder'}).then(function(j){
+        if (j.ok) {
+            var s = j.sent || {};
+            alert('발송 완료!\n내부 '+(s.internal||0)+'건 · TG '+(s.telegram||0)+'건 · 이메일 '+(s.email||0)+'건 · SMS '+(s.sms||0)+'건');
+            openNotiHistory();
+        } else alert('실패: '+(j.error||''));
+    });
+}
+
+// 초기 로드
+renderQuestions();
+loadTargetOptions().then(loadTargets);
+</script>
+</body>
+</html>

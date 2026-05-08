@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>설문 미리보기 — {{ survey.title }}</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body{background:#f4f6f9;}
+        .wrap{max-width:760px;margin:0 auto;}
+        .preview-banner{background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:4px;padding:10px 16px;font-size:0.88rem;font-weight:600;margin-bottom:14px;}
+        .sv-head{background:#fff;border:1px solid #dde2e8;border-radius:4px;padding:22px 26px;margin-bottom:14px;}
+        .sv-head h3{font-size:1.5rem;font-weight:800;margin-bottom:8px;color:#111827;}
+        .sv-head .sv-meta{font-size:0.82rem;color:#6b7280;}
+        .sv-head .sv-desc{color:#374151;font-size:0.95rem;margin-top:10px;line-height:1.5;white-space:pre-wrap;}
+        .sec-wrap{margin-bottom:16px;}
+        .sec-title{background:#fef3c7;border-left:4px solid #f59e0b;padding:10px 16px;border-radius:3px;margin-bottom:8px;}
+        .sec-title .s-label{font-size:0.72rem;color:#78350f;font-weight:700;letter-spacing:.05em;}
+        .sec-title h5{font-size:1.1rem;font-weight:700;color:#92400e;margin:2px 0 0 0;}
+        .sec-title .s-desc{font-size:0.86rem;color:#78350f;margin-top:2px;}
+        .q-tile{background:#fff;border:1px solid #dde2e8;border-radius:4px;padding:16px 20px;margin-bottom:10px;transition:border-color .15s;}
+        .q-tile.hidden{display:none;}
+        .q-tile .q-t{font-size:0.98rem;font-weight:600;color:#111827;margin-bottom:4px;}
+        .q-tile .q-t .req{color:#dc2626;margin-left:4px;}
+        .q-tile .q-d{font-size:0.84rem;color:#6b7280;margin-bottom:10px;}
+        .q-tile .q-input{margin-top:4px;}
+        .rating-scale{display:flex;gap:8px;}
+        .rating-scale label{cursor:pointer;flex:1;text-align:center;padding:8px;border:1px solid #dde2e8;border-radius:3px;font-weight:600;color:#374151;background:#fff;transition:all .12s;}
+        .rating-scale label:hover{border-color:#4a90d9;background:#e8f1fa;}
+        .rating-scale input[type=radio]{display:none;}
+        .rating-scale input[type=radio]:checked + label{background:#4a90d9;color:#fff;border-color:#4a90d9;}
+        .opt-row{padding:4px 0;}
+        .opt-row label{cursor:pointer;font-size:0.92rem;}
+    </style>
+</head>
+<body>
+<div class="container-fluid mt-3">
+    <div class="wrap">
+        {% if preview_mode %}
+        <div class="preview-banner d-flex justify-content-between align-items-center">
+            <span>👁 미리보기 모드 — 실제 응답자가 보는 화면입니다 (응답 저장 안 됨)</span>
+            <a href="/surveys/{{ survey.id }}/edit" class="btn btn-sm btn-outline-dark" style="font-size:0.78rem;">← 에디터로</a>
+        </div>
+        {% endif %}
+
+        <div class="sv-head">
+            <h3>{{ survey.title }}</h3>
+            <div class="sv-meta">
+                {% if survey.anonymous %}<span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:0.72rem;">익명</span>{% endif %}
+                {% if survey.start_at %}시작: {{ survey.start_at }} · {% endif %}
+                {% if survey.end_at %}<span style="color:#dc2626;font-weight:600;">마감: {{ survey.end_at }}</span>{% endif %}
+            </div>
+            {% if survey.description %}<div class="sv-desc">{{ survey.description }}</div>{% endif %}
+        </div>
+
+        <form id="previewForm" onsubmit="return false;">
+        {# 섹션 없는 질문 #}
+        {% set unsec_qs = questions|selectattr('section_id','none')|list %}
+        {% if unsec_qs %}
+        <div class="sec-wrap">
+            {% for q in unsec_qs %}
+            {% include '_survey_q_render.html' %}
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {# 섹션별 질문 #}
+        {% for sec in sections %}
+        <div class="sec-wrap">
+            <div class="sec-title">
+                <div class="s-label">섹션</div>
+                <h5>{{ sec.title or '섹션' }}</h5>
+                {% if sec.description %}<div class="s-desc">{{ sec.description }}</div>{% endif %}
+            </div>
+            {% for q in questions if q.section_id == sec.id %}
+            {% include '_survey_q_render.html' %}
+            {% endfor %}
+        </div>
+        {% endfor %}
+        </form>
+
+        <div class="text-end mt-3 mb-5">
+            {% if preview_mode %}
+            <button class="btn btn-secondary" disabled>제출 (미리보기에서는 비활성화)</button>
+            {% else %}
+            <button id="submitBtn" class="btn btn-primary" onclick="submitSurvey()">
+                {{ '수정 제출' if response_id else '제출하기' }}
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+var QUESTIONS_META = {{ questions|tojson }};
+var SURVEY_ID = {{ survey.id }};
+
+function updateBranches() {
+    QUESTIONS_META.forEach(function(q){
+        if (!q.branch_src_qid) return;
+        var tile = document.querySelector('[data-qid="' + q.id + '"]');
+        if (!tile) return;
+        var src = QUESTIONS_META.find(function(x){ return x.id === q.branch_src_qid; });
+        if (!src) return;
+        var srcVal = null;
+        var srcTile = document.querySelector('[data-qid="' + q.branch_src_qid + '"]');
+        if (!srcTile) return;
+        if (src.qtype === 'radio') {
+            var chk = srcTile.querySelector('input[type="radio"]:checked');
+            srcVal = chk ? chk.value : null;
+        } else if (src.qtype === 'select') {
+            var sel = srcTile.querySelector('select');
+            srcVal = sel ? sel.value : null;
+        }
+        var shouldShow = srcVal === q.branch_src_value;
+        tile.classList.toggle('hidden', !shouldShow);
+    });
+}
+
+document.querySelectorAll('#previewForm input, #previewForm select').forEach(function(el){
+    el.addEventListener('change', updateBranches);
+});
+
+updateBranches();
+
+// 기존 답변 pre-fill
+QUESTIONS_META.forEach(function(q) {
+    if (!q._existing) return;
+    var tile = document.querySelector('[data-qid="' + q.id + '"]');
+    if (!tile) return;
+    var ex = q._existing;
+    if (q.qtype === 'radio' || q.qtype === 'rating') {
+        var oids = ex.option_ids;
+        if (oids && oids.length) {
+            var inp = tile.querySelector('input[value="' + oids[0] + '"]');
+            if (inp) inp.checked = true;
+        }
+    } else if (q.qtype === 'checkbox') {
+        (ex.option_ids || []).forEach(function(oid){
+            var inp = tile.querySelector('input[value="' + oid + '"]');
+            if (inp) inp.checked = true;
+        });
+    } else if (q.qtype === 'select') {
+        var sel = tile.querySelector('select');
+        if (sel && ex.option_ids && ex.option_ids.length) sel.value = ex.option_ids[0];
+    } else {
+        var ta = tile.querySelector('input[type="text"],textarea,input[type="date"],input[type="number"]');
+        if (ta && ex.value_text) ta.value = ex.value_text;
+    }
+});
+
+function collectAnswers() {
+    var answers = {};
+    QUESTIONS_META.forEach(function(q) {
+        var tile = document.querySelector('[data-qid="' + q.id + '"]');
+        if (!tile || tile.classList.contains('hidden')) return;
+        var ans = {option_ids: [], value_text: '', value_number: null};
+        if (q.qtype === 'radio' || q.qtype === 'rating') {
+            var chk = tile.querySelector('input[type="radio"]:checked');
+            if (chk) ans.option_ids = [parseInt(chk.value)];
+        } else if (q.qtype === 'checkbox') {
+            tile.querySelectorAll('input[type="checkbox"]:checked').forEach(function(c){
+                ans.option_ids.push(parseInt(c.value));
+            });
+        } else if (q.qtype === 'select') {
+            var sel = tile.querySelector('select');
+            if (sel && sel.value) ans.option_ids = [parseInt(sel.value)];
+        } else if (q.qtype === 'number') {
+            var inp = tile.querySelector('input[type="number"]');
+            if (inp) { ans.value_text = inp.value; ans.value_number = parseFloat(inp.value) || null; }
+        } else {
+            var ta2 = tile.querySelector('input[type="text"],textarea,input[type="date"]');
+            if (ta2) ans.value_text = ta2.value;
+        }
+        if (q.required) {
+            var empty = ans.option_ids.length === 0 && !ans.value_text;
+            if (empty) { tile.style.border = '2px solid #dc2626'; throw 'required:' + q.id; }
+        }
+        tile.style.border = '';
+        answers[q.id] = ans;
+    });
+    return answers;
+}
+
+function submitSurvey() {
+    var answers;
+    try { answers = collectAnswers(); }
+    catch(e) {
+        if (String(e).startsWith('required:')) { alert('필수 항목을 입력해주세요.'); return; }
+        throw e;
+    }
+    var btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = '제출 중...';
+    fetch('/api/survey/respond/' + SURVEY_ID, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({answers: answers})
+    }).then(function(r){ return r.json(); }).then(function(d){
+        if (d.ok) {
+            alert('응답이 저장되었습니다. 감사합니다!');
+            window.location.href = '/my/surveys';
+        } else {
+            alert('오류: ' + (d.error || '제출 실패'));
+            btn.disabled = false; btn.textContent = '제출하기';
+        }
+    }).catch(function(){
+        alert('네트워크 오류가 발생했습니다.');
+        btn.disabled = false; btn.textContent = '제출하기';
+    });
+}
+</script>
+</body>
+</html>

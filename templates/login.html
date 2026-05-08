@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>로그인 - 태인관리시스템</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        @media (max-width: 767.98px) {
+            .login-bg { padding: 20px 16px; align-items: flex-start; padding-top: 15vh; }
+            .login-card { max-width: 100%; }
+            .login-card .card-body { padding: 20px 16px !important; }
+            .login-card img { height: 48px !important; }
+            .login-card h4 { font-size: 1.1rem; }
+            .login-card .form-control-lg { font-size: 0.95rem; padding: 8px 12px; }
+            .login-card .input-group-text { padding: 8px 10px; }
+            .login-card .btn-lg { font-size: 1rem; padding: 10px; }
+        }
+    </style>
+</head>
+<body class="login-bg">
+<div class="login-card">
+    <div class="card">
+        <div class="card-body p-4 p-md-5">
+            <div class="text-center mb-3">
+                <img src="/static/LOGO.GIF" alt="logo" style="height:64px;">
+            </div>
+            <h4 class="text-center fw-bold mb-1">태인관리시스템</h4>
+            <p class="text-center text-muted small mb-4">Attendance Management System</p>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show py-2" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+            <form method="POST" action="/login">
+                <div class="mb-3">
+                    <label class="form-label">아이디</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><span style="font-size:1rem">👤</span></span>
+                        <input type="text" name="login_id" class="form-control form-control-lg" placeholder="사번을 입력하세요" autocomplete="username" required>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label">비밀번호</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><span style="font-size:1rem">🔒</span></span>
+                        <input type="password" name="password" class="form-control form-control-lg" placeholder="비밀번호" autocomplete="current-password" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg w-100 py-2">로그인</button>
+            </form>
+            <div class="text-center mt-4">
+                <small class="text-muted">
+                    최초 로그인 시 아이디·비밀번호 모두 <strong class="text-primary">본인 사번</strong>
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

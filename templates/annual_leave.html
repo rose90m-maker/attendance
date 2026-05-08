@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>연차 관리</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        .cal-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.82rem; }
+        .cal-table th { background: linear-gradient(135deg, #1e40af, #2563eb); color: #fff; text-align: center; padding: 6px 2px; font-size: 0.78rem; font-weight: 500; }
+        .cal-table td { border: 1px solid #e2e8f0; text-align: center; vertical-align: top; padding: 4px; height: 100px; position: relative; transition: background 0.15s; }
+        .cal-table td:hover:not(.empty) { background: #f0f9ff !important; }
+        .cal-table td.empty { background: #f8fafc; border-color: #f1f5f9; }
+        .cal-table td.sat { background: #eff6ff; }
+        .cal-table td.sun, .cal-table td.hol { background: #fef2f2; }
+        .day-num { font-weight: 600; font-size: 0.78rem; margin-bottom: 1px; }
+        .day-num.sat-num { color: #2563eb; }
+        .day-num.sun-num, .day-num.hol-num { color: #dc2626; }
+        .hol-label { font-size: 0.6rem; color: #dc2626; display: block; line-height: 1; margin-bottom: 1px; }
+        .badge-yc { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; font-size: 0.65rem; padding: 2px 6px; border-radius: 10px; cursor: default; display: inline-block; margin: 1px; box-shadow: 0 1px 3px rgba(37,99,235,0.3); }
+        .badge-bc { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; font-size: 0.65rem; padding: 2px 6px; border-radius: 10px; cursor: default; display: inline-block; margin: 1px; box-shadow: 0 1px 3px rgba(217,119,6,0.3); }
+        .badge-add { border: 1.5px dashed #94a3b8; color: #94a3b8; font-size: 0.7rem; padding: 0px 6px; border-radius: 10px; cursor: pointer; display: inline-block; margin: 1px; transition: all 0.2s; }
+        .badge-add:hover { border-color: var(--c-primary); color: var(--c-primary); background: var(--c-primary-light); }
+        .badge-del { cursor: pointer; transition: opacity 0.2s; }
+        .badge-del:hover { opacity: 0.6; text-decoration: line-through; }
+        .badge-pending { border: 1.5px dashed #6c757d; background: #f8f9fa; color: #6c757d; font-size: 0.65rem; padding: 2px 6px; border-radius: 10px; display: inline-block; margin: 1px; }
+        .badge-pending-del { cursor: pointer; }
+        .badge-pending-del:hover { opacity: 0.6; text-decoration: line-through; }
+        .badge-step1 { background: linear-gradient(135deg, #0dcaf0, #0aa2c0); color: #fff; font-size: 0.65rem; padding: 2px 6px; border-radius: 10px; display: inline-block; margin: 1px; }
+        .badge-step2 { background: linear-gradient(135deg, #6f42c1, #5a32a3); color: #fff; font-size: 0.65rem; padding: 2px 6px; border-radius: 10px; display: inline-block; margin: 1px; }
+        .badge-rejected { background: #f8d7da; color: #842029; font-size: 0.65rem; padding: 2px 6px; border-radius: 10px; display: inline-block; margin: 1px; text-decoration: line-through; }
+        .emp-section { background: var(--c-card); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: 18px; margin-bottom: 18px; }
+        .emp-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .emp-name { font-size: 1.1rem; font-weight: 700; color: var(--c-dark); }
+        .emp-dept { font-size: 0.85rem; color: var(--c-muted); margin-left: 6px; }
+        .stat-badge { font-size: 0.8rem; padding: 4px 12px; border-radius: 16px; font-weight: 500; }
+        .total-editable { cursor: pointer; border-bottom: 1.5px dashed var(--c-primary); }
+        .total-editable:hover { background: var(--c-primary-light); }
+        .summary-card { border-left: 4px solid var(--c-primary); }
+        .cal-table td.sel-date { background: #dbeafe !important; outline: 2px solid #2563eb; outline-offset: -2px; }
+        .sel-bar { position: fixed; bottom: 0; left: 0; right: 0; background: linear-gradient(135deg, #1e40af, #2563eb); color: #fff; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 1100; box-shadow: 0 -4px 12px rgba(0,0,0,0.15); transition: transform 0.3s; gap: 10px; }
+        .sel-bar.hidden { transform: translateY(100%); }
+        .sel-dates-list { font-size: 0.82rem; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        @media (max-width: 767.98px) { .sel-dates-list { max-width: 45%; font-size: 0.72rem; } }
+        .remain-ok { color: var(--c-success); font-weight: 600; }
+        .remain-warn { color: var(--c-danger); font-weight: 600; }
+        @media (max-width: 767.98px) {
+            .cal-table { font-size: 0.65rem; }
+            .cal-table th { font-size: 0.65rem; padding: 4px 1px; }
+            .cal-table td { height: 62px; padding: 2px; }
+            .badge-yc, .badge-bc { font-size: 0.52rem; padding: 0px 2px; }
+            .badge-add { font-size: 0.6rem; padding: 0px 4px; }
+            .day-num { font-size: 0.68rem; }
+            .hol-label { font-size: 0.5rem; }
+            .emp-section { padding: 8px; margin-bottom: 10px; }
+            .emp-header { flex-direction: column; align-items: flex-start; }
+            .summary-card .card-body { padding: 8px; font-size: 0.82rem; }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'annual_leave' %}
+{% include '_sidebar.html' %}
+{% set can_edit = can_edit if can_edit is defined else (session.get('role') == 'admin') %}
+
+<div class="container-fluid px-3 mt-4">
+    {% if can_edit %}
+    <div class="filter-bar">
+        <form method="get" id="filterForm">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label">📅 월 선택</label>
+                <input type="month" name="month" id="monthInput" class="form-control form-control-sm" value="{{ sel_month }}" onchange="this.form.submit()">
+            </div>
+            <div class="col-auto">
+                <label class="form-label">🏢 부서</label>
+                <select name="dept" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">전체</option>
+                    {% for d in dept_list %}
+                    <option value="{{ d }}" {% if d == sel_dept %}selected{% endif %}>{{ d }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label">🔍 검색</label>
+                <input type="text" name="search" class="form-control form-control-sm" value="{{ search }}" placeholder="이름/사번">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-primary btn-sm">조회</button>
+            </div>
+            <div class="col-auto">
+                <a href="/annual_leave?month={{ sel_month }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+            </div>
+        </div>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="page-title">
+            <span class="title-icon">🌴</span>
+            <span>{{ year }}년 연차 관리</span>
+        </div>
+        <span class="badge bg-secondary">{{ total_emp }}명</span>
+    </div>
+
+    {% if employees|length == 0 %}
+    <div class="alert alert-info">조회된 직원이 없습니다.</div>
+    {% endif %}
+
+    {% if employees|length > 0 and can_edit %}
+    <!-- 페이지네이션 컨트롤 -->
+    <div class="d-flex justify-content-between align-items-center mt-2 mb-3 flex-wrap gap-2" id="paginationWrap">
+        <div class="d-flex align-items-center gap-2">
+            <label class="form-label mb-0 small fw-bold" style="white-space:nowrap;">페이지당</label>
+            <select id="pageSize" class="form-select form-select-sm" style="width:75px;" onchange="goPage(1)">
+                <option value="20" selected>20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="0">전체</option>
+            </select>
+        </div>
+        <div id="pageInfo" class="small text-muted fw-bold"></div>
+        <div id="pageButtons"></div>
+    </div>
+
+    {% if can_edit %}
+    <div class="emp-section summary-card">
+        <h6 class="mb-3 fw-bold">📊 {{ year }}년 연차 현황 요약</h6>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;" id="summaryTable1">
+                <thead class="table-primary">
+                    <tr>
+                        <th style="width:36px;">#</th>
+                        <th>이름</th>
+                        <th>부서</th>
+                        <th class="text-center">{{ year - 1 }}<br>차감연차</th>
+                        <th class="text-center">{{ year }}<br>발생연차</th>
+                        <th class="text-center">{{ year }}<br>사용가능연차</th>
+                        <th class="text-center">{{ year }}<br>사용연차</th>
+                        <th class="text-center">{{ year }}<br>잔여연차</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in employees %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td><a href="javascript:void(0)" onclick="toggleCal({{ emp.id }})" style="text-decoration:none; cursor:pointer;">{{ emp.name }}</a></td>
+                        <td>{{ emp.dept }}</td>
+                        <td class="text-center">{{ emp.deduct_prev }}</td>
+                        <td class="text-center">{{ emp.generated }}</td>
+                        <td class="text-center fw-bold">{{ emp.total }}</td>
+                        <td class="text-center text-primary fw-bold">{{ emp.used }}</td>
+                        <td class="text-center {% if emp.remain >= 0 %}remain-ok{% else %}remain-warn{% endif %}">{{ emp.remain }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% endif %}
+
+    <div class="emp-section summary-card mt-3">
+        <h6 class="mb-3 fw-bold">📅 {{ year }}년 월별 사용연차 현황</h6>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;" id="summaryTable2">
+                <thead>
+                    <tr style="background: linear-gradient(135deg, #1e40af, #2563eb); color: #fff;">
+                        <th style="width:36px;">#</th>
+                        <th>이름</th>
+                        <th>부서</th>
+                        {% for m in range(1, 13) %}
+                        <th class="text-center">{{ m }}월</th>
+                        {% endfor %}
+                        <th class="text-center" style="background:rgba(255,255,255,0.15);">합계</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in employees %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td><a href="javascript:void(0)" onclick="toggleCal({{ emp.id }})" style="text-decoration:none; cursor:pointer;">{{ emp.name }}</a></td>
+                        <td>{{ emp.dept }}</td>
+                        {% set ns2 = namespace(msum=0) %}
+                        {% for m in range(12) %}
+                        {% set mv = emp.months[m] %}
+                        {% set ns2.msum = ns2.msum + mv %}
+                        <td class="text-center {% if mv > 0 %}text-primary fw-bold{% else %}text-muted{% endif %}">
+                            {{ mv if mv > 0 else '-' }}
+                        </td>
+                        {% endfor %}
+                        <td class="text-center fw-bold" style="background:#f0f9ff;">{{ ns2.msum }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% for emp in employees %}
+    <div class="emp-section" id="emp-{{ emp.id }}" style="{% if not search and can_edit and emp.id != user_eid %}display:none;{% endif %}">
+        <div class="emp-header">
+            <div>
+                <span class="emp-name">{{ emp.name }}</span>
+                <span class="emp-dept">{{ emp.dept }}</span>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <span class="stat-badge bg-primary bg-opacity-10 text-primary">
+                    사용가능:
+                    {% if can_edit %}
+                    <span class="total-editable" data-eid="{{ emp.id }}" data-field="total" data-val="{{ emp.total }}">{{ emp.total }}</span>일
+                    {% else %}
+                    {{ emp.total }}일
+                    {% endif %}
+                </span>
+                <span class="stat-badge bg-warning bg-opacity-25 text-dark">사용: {{ emp.used }}일</span>
+                <span class="stat-badge {% if emp.remain >= 0 %}bg-success bg-opacity-10 text-success{% else %}bg-danger bg-opacity-10 text-danger{% endif %}">
+                    잔여: {{ emp.remain }}일
+                </span>
+            </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm px-2" onclick="moveMonth(-1, {{ emp.id }})">◀ 이전달</button>
+            <span class="fw-bold" style="font-size:0.95rem;">📅 {{ year }}년 {{ month }}월</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm px-2" onclick="moveMonth(1, {{ emp.id }})">다음달 ▶</button>
+        </div>
+        <table class="cal-table">
+            <thead>
+                <tr>
+                    <th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th style="color:#a8c7ff;">토</th><th style="color:#ffb3b3;">일</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set ns = namespace(cell=0) %}
+                <tr>
+                {% for blank in range(first_wd) %}
+                    <td class="empty"></td>
+                    {% set ns.cell = ns.cell + 1 %}
+                {% endfor %}
+                {% for i in range(day_info|length) %}
+                    {% set di = day_info[i] %}
+                    {% set dl = emp.days[i] %}
+                    <td class="{% if di.is_sun %}sun{% elif di.is_sat %}sat{% elif di.is_holiday %}hol{% endif %}"
+                        {% if emp.id == user_eid and is_lp_member and not di.is_sun and not di.is_sat and not di.is_holiday %}
+                        data-ds="{{ di.ds }}" data-day="{{ di.day }}" data-has-leave="{{ dl|length }}" onclick="toggleDateSel(this)"
+                        {% elif not can_edit and emp.id == user_eid and not di.is_sun and not di.is_sat and not di.is_holiday %}
+                        data-ds="{{ di.ds }}" data-day="{{ di.day }}" data-has-leave="{{ dl|length }}" onclick="toggleDateSel(this)"
+                        {% endif %}>
+                        <div class="day-num {% if di.is_sun %}sun-num{% elif di.is_sat %}sat-num{% elif di.is_holiday %}hol-num{% endif %}">{{ di.day }}</div>
+                        {% if di.hol_name %}<span class="hol-label">{{ di.hol_name }}</span>{% endif %}
+                        {% set ns_approved = namespace(count=0) %}
+                        {% for item in dl %}
+                            {% set lt = item[0] %}
+                            {% set st = item[1] %}
+                            {% if st == '승인' %}
+                                {% set ns_approved.count = ns_approved.count + 1 %}
+                                {% if lt == '연차' %}
+                                <span class="badge-yc {% if can_edit %}badge-del{% endif %}" {% if can_edit %}onclick="delLeave({{ emp.id }},'{{ di.ds }}','연차',this)"{% endif %}>연차</span>
+                                {% elif lt == '반차' %}
+                                <span class="badge-bc {% if can_edit %}badge-del{% endif %}" {% if can_edit %}onclick="delLeave({{ emp.id }},'{{ di.ds }}','반차',this)"{% endif %}>반차</span>
+                                {% endif %}
+                            {% elif st == '대기' %}
+                                <span class="badge-pending {% if can_edit %}badge-del{% elif emp.id == user_eid %}badge-pending-del{% endif %}"
+                                    {% if can_edit %}onclick="delLeave({{ emp.id }},'{{ di.ds }}','{{ lt }}',this)"{% elif emp.id == user_eid %}onclick="cancelRequest('{{ di.ds }}','{{ lt }}',this)"{% endif %}>
+                                    {{ lt }}(대기)
+                                </span>
+                            {% elif st == '1차승인' %}
+                                <span class="badge-step1">{{ lt }}(1차)</span>
+                            {% elif st == '2차승인' %}
+                                <span class="badge-step2">{{ lt }}(2차)</span>
+                            {% elif st == '반려' %}
+                                <span class="badge-rejected">{{ lt }}(반려)</span>
+                            {% endif %}
+                        {% endfor %}
+                        {% if can_edit and not di.is_sun and not di.is_sat and not di.is_holiday and ns_approved.count == 0 %}
+                        <span class="badge-add" onclick="event.stopPropagation(); addLeave({{ emp.id }},'{{ di.ds }}','{{ emp.name }}',{{ di.day }})">+</span>
+                        {% elif not can_edit and emp.id == user_eid and not di.is_sun and not di.is_sat and not di.is_holiday and dl|length == 0 %}
+                        <span class="badge-add" onclick="event.stopPropagation(); toggleDateSel(this.closest('td'))">+</span>
+                        {% endif %}
+                    </td>
+                    {% set ns.cell = ns.cell + 1 %}
+                    {% if ns.cell % 7 == 0 and not loop.last %}
+                </tr><tr>
+                    {% endif %}
+                {% endfor %}
+                {% set remain_cells = 7 - (ns.cell % 7) %}
+                {% if remain_cells < 7 %}
+                    {% for blank in range(remain_cells) %}
+                    <td class="empty"></td>
+                    {% endfor %}
+                {% endif %}
+                </tr>
+            </tbody>
+        </table>
+        <div class="mt-3 p-3" style="background:#f8fafc; border-radius:10px; font-size:0.82rem;">
+
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <table class="table table-sm table-bordered mb-0 text-center" style="font-size:0.8rem;">
+                        <thead class="table-light">
+                            <tr><th>{{ year - 1 }}년 차감연차</th><th>{{ year }}년 발생연차</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr class="fw-bold"><td>{{ emp.deduct_prev }}</td><td>{{ emp.generated }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-8">
+                    <table class="table table-sm table-bordered mb-0 text-center" style="font-size:0.8rem;">
+                        <thead class="table-light">
+                            <tr>
+                                {% for m in range(1, 13) %}<th>{{ m }}월</th>{% endfor %}
+                                <th style="background:#e8f0fe;">합계</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="fw-bold">
+                                {% set ns3 = namespace(msum=0) %}
+                                {% for m in range(12) %}
+                                {% set mv = emp.months[m] %}
+                                {% set ns3.msum = ns3.msum + mv %}
+                                <td class="{% if mv > 0 %}text-primary{% else %}text-muted{% endif %}">{{ mv if mv > 0 else '-' }}</td>
+                                {% endfor %}
+                                <td class="text-primary" style="background:#e8f0fe;">{{ ns3.msum }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+</div>
+
+<div class="modal fade" id="leaveModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content" style="border-radius: var(--radius-md); overflow: hidden;">
+            <div class="modal-header py-2" style="background: linear-gradient(135deg, #1e40af, #2563eb); color: #fff;">
+                <h6 class="modal-title" id="leaveModalTitle">연차 등록</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center py-4">
+                <p class="mb-3 text-muted" id="leaveModalDesc"></p>
+                <div class="d-grid gap-2">
+                    <button class="btn btn-primary" onclick="submitLeave('연차')">🔵 연차 (1일)</button>
+                    <button class="btn btn-warning text-white" onclick="submitLeave('반차')">🟡 반차 (0.5일)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 복수 날짜 선택 바 -->
+<div class="sel-bar hidden" id="selBar">
+    <div class="d-flex align-items-center flex-wrap gap-2" style="flex:1;">
+        <strong>📅 <span id="selCount">0</span>일 선택</strong>
+        <span class="sel-dates-list" id="selDatesList"></span>
+        <div class="btn-group btn-group-sm ms-2" role="group">
+            <input type="radio" class="btn-check" name="selType" id="selTypeYC" value="연차" checked>
+            <label class="btn btn-light btn-sm" for="selTypeYC">🔵연차</label>
+            <input type="radio" class="btn-check" name="selType" id="selTypeBC" value="반차">
+            <label class="btn btn-light btn-sm" for="selTypeBC">🟡반차</label>
+        </div>
+        <input type="text" id="selReason" class="form-control form-control-sm" placeholder="사유 (선택)" maxlength="200" style="width:160px; font-size:0.8rem;">
+    </div>
+    <div class="d-flex gap-1">
+        <button class="btn btn-sm btn-light" onclick="clearSelDates()">✖ 초기화</button>
+        <button class="btn btn-sm btn-warning text-white fw-bold" onclick="submitSelDates()">📋 신청</button>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let _leaveEid = 0, _leaveDate = '', _leaveModal = null;
+let _selectedDates = [];
+// 수정보고서: 기존 날짜 자동 선택
+var _amendDates = {{ amend_dates | tojson }};
+var _amendType = {{ amend_type | tojson }};
+var _amendReason = {{ amend_reason | tojson }};
+var _isAmendMode = _amendDates.length > 0;
+if (_isAmendMode) {
+    document.addEventListener('DOMContentLoaded', function() {
+        _amendDates.forEach(function(ds) {
+            var td = document.querySelector('td[data-ds="' + ds + '"]');
+            if (td) {
+                _selectedDates.push(ds);
+                td.classList.add('sel-date');
+            }
+        });
+        _selectedDates.sort();
+        updateSelBar();
+        // 사유 자동 입력
+        if (_amendReason) {
+            var reasonEl = document.getElementById('selReason');
+            if (reasonEl) reasonEl.value = _amendReason;
+        }
+        // 연차/반차 타입 자동 선택
+        var typeRadio = document.querySelector('input[name="selType"][value="' + _amendType + '"]');
+        if (typeRadio) typeRadio.checked = true;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    _leaveModal = new bootstrap.Modal(document.getElementById('leaveModal'));
+
+    document.querySelectorAll('.total-editable').forEach(el => {
+        el.addEventListener('click', function() {
+            const cur = this.dataset.val;
+            const nv = prompt('총 연차 일수를 입력하세요:', cur);
+            if (nv === null || nv.trim() === '') return;
+            const numVal = parseFloat(nv);
+            if (isNaN(numVal) || numVal < 0) { alert('올바른 숫자를 입력하세요.'); return; }
+            const eid = this.dataset.eid;
+            fetch('/save_annual_leave', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({e_id: parseInt(eid), year: {{ year }}, field: 'total', value: numVal})
+            })
+            .then(r => r.json())
+            .then(d => { if (d.ok) location.reload(); else alert(d.error || '저장 실패'); })
+            .catch(() => alert('서버 오류'));
+        });
+    });
+});
+
+function addLeave(eid, ds, name, day) {
+    _leaveEid = eid;
+    _leaveDate = ds;
+    document.getElementById('leaveModalTitle').textContent = name + ' - 연차 등록';
+    document.getElementById('leaveModalDesc').textContent = '{{ month }}월 ' + day + '일에 등록할 유형을 선택하세요.';
+    _leaveModal.show();
+}
+
+function submitLeave(type) {
+    fetch('/save_leave_record', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({e_id: _leaveEid, date: _leaveDate, type: type, action: 'add'})
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.ok) { _leaveModal.hide(); location.reload(); }
+        else alert(d.error || '등록 실패');
+    })
+    .catch(() => alert('서버 오류'));
+}
+
+function toggleCal(eid) {
+    const el = document.getElementById('emp-' + eid);
+    if (!el) return;
+    if (el.style.display === 'none') {
+        el.style.display = '';
+        el.scrollIntoView({behavior: 'smooth', block: 'center'});
+    } else {
+        el.style.display = 'none';
+    }
+}
+
+function delLeave(eid, ds, type, el) {
+    if (!confirm(type + '을(를) 삭제하시겠습니까?')) return;
+    fetch('/save_leave_record', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({e_id: eid, date: ds, type: type, action: 'delete'})
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.ok) location.reload();
+        else alert(d.error || '삭제 실패');
+    })
+    .catch(() => alert('서버 오류'));
+}
+
+function submitSelDates() {
+    if (_selectedDates.length === 0) { alert('날짜를 선택해 주세요.'); return; }
+    var type = document.querySelector('input[name="selType"]:checked').value;
+    var reason = document.getElementById('selReason').value.trim();
+    if (!confirm(_selectedDates.length + '건 ' + type + ' 신청하시겠습니까?')) return;
+    fetch('/api/leave_plan', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({dates: _selectedDates, type: type, reason: reason, amend_from: new URLSearchParams(location.search).get('amend') || null})
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.ok) {
+            clearSelDates();
+            if (confirm(d.count + '건의 연차사용계획서가 생성되었습니다.\n계획서를 확인하시겠습니까?')) {
+                location.href = '/leave_plan_view/' + d.plan_id;
+            } else {
+                location.reload();
+            }
+        } else alert(d.error || '신청 실패');
+    })
+    .catch(() => alert('서버 오류'));
+}
+
+function cancelRequest(ds, type, el) {
+    if (!confirm(type + ' 신청을 취소하시겠습니까?')) return;
+    fetch('/cancel_leave_request', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({date: ds, type: type})
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.ok) location.reload();
+        else alert(d.error || '취소 실패');
+    })
+    .catch(() => alert('서버 오류'));
+}
+
+// ═══ 복수 날짜 선택 ═══
+function toggleDateSel(td) {
+    var ds = td.dataset.ds;
+    if (!ds) return;
+    if (!_isAmendMode && parseInt(td.dataset.hasLeave) > 0) return; // 수정보고서 모드가 아니면 기존 연차 선택 불가
+    var idx = _selectedDates.indexOf(ds);
+    if (idx >= 0) {
+        _selectedDates.splice(idx, 1);
+        td.classList.remove('sel-date');
+    } else {
+        _selectedDates.push(ds);
+        td.classList.add('sel-date');
+    }
+    _selectedDates.sort();
+    updateSelBar();
+}
+
+function updateSelBar() {
+    var bar = document.getElementById('selBar');
+    if (_selectedDates.length === 0) {
+        bar.classList.add('hidden');
+        return;
+    }
+    bar.classList.remove('hidden');
+    document.getElementById('selCount').textContent = _selectedDates.length;
+    var labels = _selectedDates.map(function(ds) {
+        return ds.substring(4,6) + '/' + ds.substring(6,8);
+    });
+    document.getElementById('selDatesList').textContent = labels.join(', ');
+}
+
+function clearSelDates() {
+    _selectedDates = [];
+    document.querySelectorAll('.sel-date').forEach(function(td) { td.classList.remove('sel-date'); });
+    updateSelBar();
+}
+
+
+
+// 요약 테이블 페이지네이션
+var sumRows1 = Array.from(document.querySelectorAll('#summaryTable1 tbody tr'));
+var sumRows2 = Array.from(document.querySelectorAll('#summaryTable2 tbody tr'));
+var curPage = 1;
+
+function goPage(p) {
+    var sel = document.getElementById('pageSize');
+    if (!sel) return;
+    var size = parseInt(sel.value);
+    var total = sumRows1.length;
+    if (!total) return;
+
+    if (size === 0) {
+        sumRows1.forEach(function(r){ r.style.display = ''; });
+        sumRows2.forEach(function(r){ r.style.display = ''; });
+        document.getElementById('pageInfo').textContent = '전체 ' + total + '명';
+        document.getElementById('pageButtons').innerHTML = '';
+        curPage = 1;
+        return;
+    }
+
+    var pages = Math.ceil(total / size);
+    if (p < 1) p = 1;
+    if (p > pages) p = pages;
+    curPage = p;
+
+    sumRows1.forEach(function(r, i){
+        r.style.display = (i >= (p-1)*size && i < p*size) ? '' : 'none';
+    });
+    sumRows2.forEach(function(r, i){
+        r.style.display = (i >= (p-1)*size && i < p*size) ? '' : 'none';
+    });
+
+    var from = (p-1)*size + 1;
+    var to = Math.min(p*size, total);
+    document.getElementById('pageInfo').textContent = from + '-' + to + ' / ' + total + '명';
+
+    var html = '';
+    var startP = Math.max(1, p - 3);
+    var endP = Math.min(pages, p + 3);
+    html += '<button class="btn btn-sm ' + (p<=1?'btn-outline-secondary disabled':'btn-outline-primary') + '" onclick="goPage(' + (p-1) + ')">◀</button> ';
+    for (var i = startP; i <= endP; i++) {
+        html += '<button class="btn btn-sm ' + (i===p?'btn-primary':'btn-outline-primary') + '" onclick="goPage(' + i + ')" style="min-width:32px;">' + i + '</button> ';
+    }
+    html += '<button class="btn btn-sm ' + (p>=pages?'btn-outline-secondary disabled':'btn-outline-primary') + '" onclick="goPage(' + (p+1) + ')">▶</button>';
+    document.getElementById('pageButtons').innerHTML = html;
+}
+if (sumRows1.length) goPage(1);
+
+function moveMonth(delta, empId) {
+    var input = document.getElementById('monthInput');
+    var parts = input.value.split('-');
+    var y = parseInt(parts[0]), m = parseInt(parts[1]) + delta;
+    if (m < 1) { m = 12; y--; }
+    if (m > 12) { m = 1; y++; }
+    input.value = y + '-' + String(m).padStart(2, '0');
+    var form = document.getElementById('filterForm');
+    var hi = document.createElement('input');
+    hi.type = 'hidden'; hi.name = 'open_emp'; hi.value = empId;
+    form.appendChild(hi);
+    form.submit();
+}
+
+// 페이지 로드 시 open_emp 파라미터가 있으면 해당 직원 달력 자동 오픈
+(function() {
+    var params = new URLSearchParams(window.location.search);
+    var oe = params.get('open_emp');
+    if (oe) {
+        var el = document.getElementById('emp-' + oe);
+        if (el) {
+            el.style.display = '';
+            setTimeout(function() { el.scrollIntoView({behavior: 'smooth', block: 'center'}); }, 100);
+        }
+    }
+})();
+</script>
+</body>
+</html>

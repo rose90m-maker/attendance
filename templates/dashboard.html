@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>태인관리시스템</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+    <style>
+        :root {
+            --erp-bg:#f4f6f9; --erp-card-bg:#ffffff; --erp-border:#dde2e8;
+            --erp-border-soft:#eef1f4; --erp-head-bg:#f0f4f7;
+            --erp-blue:#4a90d9; --erp-blue-deep:#2c5a8c; --erp-blue-light:#e8f1fa;
+            --erp-text:#374151; --erp-text-dark:#111827; --erp-muted:#6b7280;
+            --erp-orange:#f5a623; --erp-green:#4caf50; --erp-red:#e74c3c; --erp-purple:#7e57c2;
+        }
+        body { background:var(--erp-bg); color:var(--erp-text); font-size:13px; }
+
+        /* ── 100vh 그리드 레이아웃 ── */
+        .dash-viewport {
+            height: calc(100vh - var(--navbar-h));
+            display: grid;
+            grid-template-rows: 1fr;
+            gap: 10px;
+            padding: 10px 16px;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        /* ── 6셀 통합 그리드 (메인+하단 열 정렬) ── */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 3fr 2fr;
+            gap: 10px;
+            min-height: 0;
+        }
+
+        /* ── Row 1: KPI 카드 ── */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        .kpi-card {
+            display: flex; align-items: center; gap: 14px;
+            padding: 0 20px;
+            border-radius: 6px; text-decoration: none;
+            transition: transform .15s, box-shadow .15s;
+            cursor: pointer; overflow: hidden;
+            position: relative;
+        }
+        .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+        .kpi-card .kpi-icon { font-size: 2rem; opacity: .85; flex-shrink: 0; }
+        .kpi-card .kpi-text { display: flex; flex-direction: column; }
+        .kpi-card .kpi-value { font-size: 1.9rem; font-weight: 800; line-height: 1; letter-spacing: -.03em; }
+        .kpi-card .kpi-label { font-size: 0.75rem; font-weight: 600; margin-top: 2px; opacity: .85; }
+        .kpi-blue  { background: linear-gradient(135deg,#2563eb,#1d4ed8); color:#fff; }
+        .kpi-orange{ background: linear-gradient(135deg,#f59e0b,#d97706); color:#fff; }
+        .kpi-red   { background: linear-gradient(135deg,#ef4444,#dc2626); color:#fff; }
+        .kpi-green { background: linear-gradient(135deg,#22c55e,#16a34a); color:#fff; }
+        .kpi-purple{ background: linear-gradient(135deg,#8b5cf6,#7c3aed); color:#fff; }
+
+        /* ── Row 2: 메인 3열 ── */
+        .main-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            min-height: 0;
+        }
+
+        /* ── 공통 패널 카드 ── */
+        .panel-card {
+            background: #fff; border: 1px solid var(--erp-border);
+            border-radius: 6px; display: flex; flex-direction: column;
+            overflow: hidden; min-height: 0;
+        }
+        .panel-header {
+            padding: 10px 14px; border-bottom: 1px solid var(--erp-border);
+            background: var(--erp-head-bg); font-weight: 700; font-size: 0.88rem;
+            color: var(--erp-text-dark); flex-shrink: 0;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .panel-body {
+            flex: 1; overflow-y: auto; min-height: 0;
+            padding: 10px 14px;
+        }
+        .panel-body::-webkit-scrollbar { width: 4px; }
+        .panel-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+
+        /* ── Row 3: 하단 ── */
+        .bottom-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 10px;
+            min-height: 0;
+        }
+
+        /* ── 바로가기 ── */
+        .quick-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px 8px; }
+        .quick-link {
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            padding: 10px 4px; border-radius: 4px; text-decoration: none;
+            color: var(--erp-text-dark); background: var(--erp-card-bg);
+            border: 1px solid var(--erp-border); font-size: 0.76rem; font-weight: 600;
+            transition: all .12s; white-space: nowrap;
+        }
+        .quick-link:hover { border-color: var(--erp-blue); color: var(--erp-blue); background: var(--erp-blue-light); }
+        .quick-link .ql-icon { font-size: 1.25rem; }
+
+        /* ── 공지사항 ── */
+        .notice-item {
+            padding: 8px 10px; border-bottom: 1px solid var(--erp-border-soft);
+            cursor: pointer; transition: background .12s;
+        }
+        .notice-item:last-child { border-bottom: none; }
+        .notice-item:hover { background: #f8fafc; }
+        .notice-pin { color: var(--erp-red); margin-right: 3px; }
+        .notice-title { font-weight: 600; font-size: 0.85rem; color: var(--erp-text-dark); }
+        .notice-meta { font-size: 0.73rem; color: var(--erp-muted); margin-top: 2px; }
+        .notice-content {
+            display: none; font-size: 0.82rem; color: #1f2937; margin-top: 6px;
+            padding: 8px 10px; background: var(--erp-head-bg); border-radius: 3px;
+            white-space: pre-wrap; border-left: 3px solid var(--erp-blue); line-height: 1.5;
+        }
+
+        /* ── 생일자 ── */
+        .bday-item {
+            padding: 6px 10px; font-size: 0.82rem;
+            border-bottom: 1px solid var(--erp-border-soft);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .bday-item:last-child { border-bottom: none; }
+        .bday-today { background: #fff7e6; border-left: 3px solid var(--erp-orange); padding-left: 7px; }
+        .bday-week  { background: #f0f9ff; border-left: 3px solid var(--erp-blue);   padding-left: 7px; }
+
+        /* ── 주간 캘린더 ── */
+        .week-grid {
+            display: grid; grid-template-columns: repeat(7, 1fr);
+            gap: 4px; height: 100%;
+        }
+        .week-day {
+            display: flex; flex-direction: column;
+            border: 1px solid var(--erp-border); border-radius: 4px;
+            overflow: hidden; min-height: 0;
+        }
+        .week-day-header {
+            text-align: center; padding: 5px 2px;
+            background: var(--erp-head-bg); border-bottom: 1px solid var(--erp-border);
+            flex-shrink: 0;
+        }
+        .week-day-name { font-size: 0.7rem; font-weight: 700; color: var(--erp-muted); }
+        .week-day-num  { font-size: 1rem; font-weight: 800; color: var(--erp-text-dark); line-height: 1.2; }
+        .week-day-num.sun { color: var(--erp-red); }
+        .week-day-num.sat { color: var(--erp-blue); }
+        .week-day.today .week-day-header { background: var(--erp-blue-light); border-color: var(--erp-blue); }
+        .week-day.today .week-day-num { color: var(--erp-blue-deep); }
+        .week-day-events { flex: 1; overflow-y: auto; padding: 4px 3px; min-height: 0; }
+        .week-day-events::-webkit-scrollbar { width: 2px; }
+        .week-event {
+            font-size: 0.62rem; padding: 2px 4px; margin-bottom: 2px;
+            border-radius: 2px; color: #fff; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis;
+            font-weight: 600; display: block;
+        }
+
+        /* ── 출근현황 (하단 바 차트) ── */
+        .dept-bar-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 4px 0; font-size: 0.78rem;
+        }
+        .dept-bar-name { width: 70px; flex-shrink: 0; color: var(--erp-text-dark); font-weight: 500; text-align: right; }
+        .dept-bar-track { flex: 1; background: var(--erp-border-soft); border-radius: 3px; height: 16px; overflow: hidden; }
+        .dept-bar-fill  { height: 100%; background: var(--erp-blue); border-radius: 3px; transition: width .4s; min-width: 2px; }
+        .dept-bar-count { width: 28px; flex-shrink: 0; font-weight: 700; color: var(--erp-blue-deep); font-size: 0.8rem; }
+
+        /* ── 근무일정 뱃지 ── */
+        .sched-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 5px 0; border-bottom: 1px solid var(--erp-border-soft); font-size: 0.8rem;
+        }
+        .sched-row:last-child { border-bottom: none; }
+
+        /* ── 근무보고서 현황 pills ── */
+        .stat-pill {
+            display: inline-flex; align-items: center; gap: 3px;
+            background: var(--erp-head-bg); border: 1px solid var(--erp-border);
+            border-radius: 3px; padding: 3px 8px;
+            font-size: 0.76rem; font-weight: 600; color: var(--erp-text-dark);
+            margin: 2px;
+        }
+        .stat-pill strong { color: var(--erp-blue-deep); font-weight: 800; }
+
+        /* ── 모달 ── */
+        .modal-content { border-radius: 4px; border: 1px solid var(--erp-border); box-shadow: 0 4px 24px rgba(0,0,0,.15); }
+
+        /* ── 반응형 ── */
+        @media (max-width: 1279px) {
+            .kpi-card .kpi-value { font-size: 1.6rem; }
+            .kpi-card { gap: 10px; padding: 0 14px; }
+        }
+        @media (max-width: 1023px) {
+            .content-grid { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 767.98px) {
+            .dash-viewport { height: auto; overflow: visible; grid-template-rows: auto 1fr; }
+            .content-grid { grid-template-columns: 1fr; grid-template-rows: none; }
+            .kpi-row { grid-template-columns: repeat(2, 1fr); }
+            .quick-grid { grid-template-columns: repeat(5, 1fr); }
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+{% set active_page = 'dashboard' %}
+{% set is_admin = session.get('role') == 'admin' %}
+{% include '_sidebar.html' %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div style="position:fixed;top:calc(var(--navbar-h)+8px);left:230px;right:10px;z-index:9000;">
+{% for category, message in messages %}
+<div class="alert alert-{{ category }} alert-dismissible fade show mb-1" role="alert">
+    {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+
+<div class="dash-viewport">
+
+    <!-- ════════ 6셀 통합 그리드 ════════ -->
+    <div class="content-grid">
+    <!-- 메인 3열 -->
+
+        <!-- ── 좌측: 바로가기 + 식수 + 출근현황 (2행 통합) ── -->
+        <div style="grid-row:span 2;display:flex;flex-direction:column;gap:10px;min-height:0;">
+            <div class="panel-card" style="flex:3;min-height:0;">
+                <div class="panel-header">
+                    <span>⚡ 바로가기</span>
+                </div>
+                <div class="panel-body" style="padding:10px 12px;">
+                    <div class="quick-grid mb-3">
+                        <a href="/attendance"  class="quick-link"><span class="ql-icon">📝</span>근태기록</a>
+                        <a href="/weekly52"    class="quick-link"><span class="ql-icon">⏱</span>주52시간</a>
+                        <a href="/work_schedule" class="quick-link"><span class="ql-icon">📊</span>근무표</a>
+                        <a href="/annual_leave" class="quick-link"><span class="ql-icon">🌴</span>연차관리</a>
+                        <a href="/work_report" class="quick-link"><span class="ql-icon">📋</span>근무보고서</a>
+                        <a href="/welfare" class="quick-link"><span class="ql-icon">🎁</span>복지혜택</a>
+                        <a href="/meal_management" class="quick-link"><span class="ql-icon">🍽️</span>식수관리</a>
+                        <a href="/leave_approval" class="quick-link"><span class="ql-icon">✅</span>연차사용계획</a>
+                        <a href="/tbm/sign" class="quick-link"><span class="ql-icon">🛠️</span>TBM 서명</a>
+                        <a href="/power_dashboard" class="quick-link"><span class="ql-icon">⚡</span>전력현황</a>
+                    </div>
+
+                    {% if wr_summary %}
+                    <div style="font-size:0.78rem;font-weight:700;color:var(--erp-muted);margin:8px 0 6px;padding-left:8px;border-left:3px solid var(--erp-blue);">
+                        📊 근무보고서 현황 <small style="color:var(--erp-muted);font-weight:400;">({{ today.strftime('%m').lstrip('0') }}월)</small>
+                        <a href="/work_report" style="float:right;font-size:0.7rem;color:var(--erp-blue);text-decoration:none;">상세 →</a>
+                    </div>
+                    <div class="d-flex flex-wrap">
+                        <span class="stat-pill">전체 <strong>{{ wr_summary.total }}건</strong></span>
+                        {% if wr_summary.status.get('대기',0)>0 %}<span class="stat-pill" style="background:rgba(245,158,11,.1);">대기 <strong style="color:#d97706;">{{ wr_summary.status.get('대기',0) }}</strong></span>{% endif %}
+                        {% if wr_summary.status.get('작성완료',0)>0 %}<span class="stat-pill" style="background:rgba(59,130,246,.1);">작성완료 <strong style="color:#2563eb;">{{ wr_summary.status.get('작성완료',0) }}</strong></span>{% endif %}
+                        {% if wr_summary.status.get('검토',0)>0 %}<span class="stat-pill" style="background:rgba(139,92,246,.1);">검토 <strong style="color:#7c3aed;">{{ wr_summary.status.get('검토',0) }}</strong></span>{% endif %}
+                        {% if wr_summary.status.get('결재',0)>0 %}<span class="stat-pill" style="background:rgba(34,197,94,.1);">결재 <strong style="color:#16a34a;">{{ wr_summary.status.get('결재',0) }}</strong></span>{% endif %}
+                        {% if wr_summary.status.get('반려',0)>0 %}<span class="stat-pill" style="background:rgba(239,68,68,.1);">반려 <strong style="color:#dc2626;">{{ wr_summary.status.get('반려',0) }}</strong></span>{% endif %}
+                    </div>
+                    <hr style="margin:8px 0;border-color:var(--erp-border-soft);">
+                    {% endif %}
+
+                    {% if my_schedule %}
+                    <div style="font-size:0.78rem;font-weight:700;color:var(--erp-muted);margin:4px 0 6px;padding-left:8px;border-left:3px solid var(--erp-purple);">
+                        📋 나의 근무일정 <small style="font-weight:400;">({{ today.strftime('%m').lstrip('0') }}월)</small>
+                        <button onclick="openMyScheduleModal()" style="float:right;background:none;border:none;font-size:0.7rem;color:var(--erp-blue);cursor:pointer;padding:0;">전체보기 →</button>
+                    </div>
+                    {% macro cat_badge(c) %}{% if c == '주간기본' %}<span class="badge" style="background:#6366f1;font-size:0.68rem;">☀️ 주간기본</span>{% elif c == '주간연장' %}<span class="badge" style="background:#3b82f6;font-size:0.68rem;">☀️⏰ 연장</span>{% elif c == '야간기본' %}<span class="badge" style="background:#8b5cf6;font-size:0.68rem;">🌙 야간기본</span>{% elif c == '야간연장' %}<span class="badge" style="background:#7c3aed;font-size:0.68rem;">🌙⏰ 연장</span>{% elif c == '연차' %}<span class="badge" style="background:#f59e0b;font-size:0.68rem;">🏖️ 연차</span>{% elif c == '무급' %}<span class="badge" style="background:#f59e0b;font-size:0.68rem;">🚫 무급</span>{% elif c == '공제' %}<span class="badge" style="background:#ef4444;font-size:0.68rem;">➖ 공제</span>{% elif c == '스킵' %}<span class="badge" style="background:#dc2626;font-size:0.68rem;">⛔ 스킵</span>{% else %}<span class="badge bg-secondary" style="font-size:0.68rem;">{{ c }}</span>{% endif %}{% endmacro %}
+                    {% for s in my_schedule %}
+                    <div class="sched-row">
+                        <span style="color:var(--erp-muted);">{{ s.date }}</span>
+                        <span>
+                            {% if s.orig_cat and s.is_revision %}{{ cat_badge(s.orig_cat) }} <span style="font-size:0.7rem;color:var(--erp-muted);">→</span> {{ cat_badge(s.cat) }} <span class="badge bg-success" style="font-size:0.6rem;">확정</span>
+                            {% else %}{{ cat_badge(s.cat) }}{% endif %}
+                        </span>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+
+                    {% if not my_schedule and not wr_summary %}
+                    <div class="text-muted text-center py-4" style="font-size:0.82rem;">표시할 정보가 없습니다.</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="panel-card" style="flex:3;min-height:0;">
+                <div class="panel-header">
+                    <span>🍽️ 식수현황 (7일)</span>
+                    <a href="/meal_management" style="font-size:0.72rem;color:var(--erp-blue);text-decoration:none;">상세 →</a>
+                </div>
+                <div class="panel-body" style="padding:4px 8px;">
+                    {% if meal_week %}
+                    <table style="width:100%;border-collapse:collapse;font-size:0.72rem;text-align:center;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--erp-border-soft);">
+                                <th style="padding:2px 4px;font-weight:600;color:var(--erp-muted);text-align:left;"></th>
+                                {% for d in meal_week %}
+                                <th style="padding:2px 3px;font-weight:600;{{ 'color:#dc2626;' if d.is_holiday else ('color:var(--erp-blue);font-weight:800;' if d.is_today else 'color:var(--erp-muted);') }}">{{ d.dow }}<br><span style="font-size:0.65rem;">{{ d.date }}</span></th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for mt in ['조식','중식','석식','야식'] %}
+                            {% set ns = namespace(has_data=false) %}
+                            {% for d in meal_week %}{% if mt in d.meals %}{% set ns.has_data = true %}{% endif %}{% endfor %}
+                            {% if ns.has_data %}
+                            <tr style="border-bottom:1px solid var(--erp-border-soft);">
+                                <td style="padding:2px 4px;font-weight:600;color:var(--erp-muted);text-align:left;white-space:nowrap;">{{ mt }}</td>
+                                {% for d in meal_week %}
+                                <td style="padding:2px 3px;{{ 'background:rgba(37,99,235,.06);font-weight:700;' if d.is_today else '' }}">
+                                    {% if mt in d.meals %}
+                                    {% set dept_counts = d.meals[mt] %}
+                                    {% set total = [] %}
+                                    {% for dept, cnt in dept_counts.items() %}{% if cnt != '스킵' and cnt|int > 0 %}{% if total.append(cnt|int) %}{% endif %}{% endif %}{% endfor %}
+                                    {% if total %}{{ total|sum }}{% else %}<span style="color:#94a3b8;">-</span>{% endif %}
+                                    {% else %}<span style="color:#e2e8f0;">-</span>{% endif %}
+                                </td>
+                                {% endfor %}
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="text-muted text-center py-2" style="font-size:0.78rem;">식수 데이터 없음</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="panel-card" style="flex:4;min-height:0;">
+                <div class="panel-header">
+                    <span>👥 부서별 출근현황</span>
+                    <span class="badge" style="background:rgba(34,197,94,.12);color:#16a34a;font-size:0.75rem;">{{ att_summary.checked_in }}명 출근</span>
+                </div>
+                <div style="padding:2px 14px 0;font-size:0.72rem;color:var(--erp-muted);">* 임원, 서울사무소 제외</div>
+                <div class="panel-body" style="padding:8px 14px;">
+                    {% if att_summary.depts %}
+                    {% set max_count = att_summary.depts.values()|map(attribute='in')|max %}
+                    {% for dept, info in att_summary.depts.items() %}
+                    <div class="dept-bar-row">
+                        <div class="dept-bar-name">{{ dept }}</div>
+                        <div class="dept-bar-track">
+                            <div class="dept-bar-fill" style="width:{{ ((info['in'] / max_count) * 100)|int if max_count > 0 else 0 }}%"></div>
+                        </div>
+                        <div class="dept-bar-count">{{ info['in'] }}</div>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="text-muted text-center py-2" style="font-size:0.82rem;">출근 데이터 없음</div>
+                    {% endif %}
+
+                    {% if leave_today %}
+                    <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--erp-border-soft);">
+                        <span style="font-size:0.75rem;font-weight:700;color:var(--erp-muted);">🏖️ 휴가자</span>
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                        {% for lv in leave_today %}
+                        <span style="background:#fff7e6;border:1px solid #ffdca8;border-radius:3px;padding:2px 7px;font-size:0.76rem;">
+                            <strong>{{ lv.name }}</strong> <span style="color:var(--erp-muted);font-size:0.7rem;">{{ lv.type }}</span>
+                        </span>
+                        {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if etc_today %}
+                    <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--erp-border-soft);">
+                        <span style="font-size:0.75rem;font-weight:700;color:var(--erp-muted);">📋 기타</span>
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                        {% for et in etc_today %}
+                        <span style="background:#f0f4ff;border:1px solid #c7d7f5;border-radius:3px;padding:2px 7px;font-size:0.76rem;">
+                            <strong>{{ et.name }}</strong> <span style="color:var(--erp-muted);font-size:0.7rem;">{{ et.type }}</span>
+                        </span>
+                        {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 중앙: 달력 40% + MES 20% + 생일자 40% ── -->
+        <div style="grid-row:span 2;display:flex;flex-direction:column;gap:10px;min-height:0;">
+            <!-- 달력 -->
+            <div class="panel-card" style="flex:11;min-height:0;">
+                <div class="panel-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" style="padding:2px 8px;font-size:0.72rem;" onclick="calPrev()">◀</button>
+                        <span id="calTitle" style="font-size:0.85rem;font-weight:700;min-width:100px;text-align:center;"></span>
+                        <button class="btn btn-sm btn-outline-secondary" style="padding:2px 8px;font-size:0.72rem;" onclick="calNext()">▶</button>
+                    </div>
+                    {% if can_schedule %}
+                    <button class="btn btn-sm btn-outline-primary" style="font-size:0.72rem;padding:2px 8px;" onclick="openEventModal()">✏️ 작성</button>
+                    {% endif %}
+                </div>
+                <div class="panel-body" style="padding:6px;overflow-x:auto;">
+                    <table class="cal-table" id="calTable">
+                        <thead><tr><th>일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th>토</th></tr></thead>
+                        <tbody id="calBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- MES 생산현황 -->
+            <div class="panel-card" style="flex:3;min-height:0;">
+                <div class="panel-header">
+                    <span>🏭 MES 생산현황 · 온도</span>
+                    <a href="/mes/realtime" style="font-size:0.72rem;color:var(--erp-blue);text-decoration:none;">상세 →</a>
+                </div>
+                <div class="panel-body" style="padding:6px 10px;overflow-y:auto;" id="mesDashBody">
+                    <div class="text-muted text-center py-2" style="font-size:0.78rem;">로딩중...</div>
+                </div>
+            </div>
+            <!-- 생일자 -->
+            <div class="panel-card" style="flex:6;min-height:0;">
+                <div class="panel-header">
+                    <span>🎂 {{ today.strftime('%m').lstrip('0') }}월 생일자</span>
+                    <span class="badge" style="background:rgba(239,68,68,.1);color:#dc2626;font-size:0.72rem;">{{ birthdays|length }}명</span>
+                </div>
+                <div class="panel-body" style="padding:4px 8px;">
+                    {% if birthdays %}
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
+                    {% for b in birthdays %}
+                    <div class="bday-item {{ 'bday-today' if b.is_today else '' }}" style="min-width:0;">
+                        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{% if b.is_today %}🎉 {% endif %}<strong>{{ b.name }}</strong> <small style="color:var(--erp-muted);">{{ b.dept }}</small></span>
+                        <span style="color:var(--erp-muted);font-size:0.75rem;white-space:nowrap;">{{ b.day }}일{% if b.is_today %} <span class="badge bg-danger" style="font-size:0.6rem;">오늘</span>{% endif %}</span>
+                    </div>
+                    {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-muted text-center py-3" style="font-size:0.82rem;">{{ today.strftime('%m').lstrip('0') }}월 생일자가 없습니다.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 우측: 공지사항 + 배차정보 + 전력 ── -->
+        <div style="grid-row:span 2;display:flex;flex-direction:column;gap:10px;min-height:0;">
+            <div class="panel-card" style="flex:1;min-height:0;">
+                <div class="panel-header">
+                    <span>📢 공지사항</span>
+                    {% if can_notice %}
+                    <button class="btn btn-sm btn-outline-primary" style="font-size:0.72rem;padding:2px 8px;" onclick="openNoticeModal()">✏️ 작성</button>
+                    {% endif %}
+                </div>
+                <div class="panel-body" style="padding:0;" id="noticeList">
+                    {% if notices %}
+                    {% for n in notices %}
+                    <div class="notice-item" onclick="toggleContent(this)">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                {% if n.is_pinned %}<span class="notice-pin">📌</span>{% endif %}
+                                <span class="notice-title">{{ n.title }}</span>
+                            </div>
+                            {% if can_notice %}
+                            <div class="d-flex gap-1" onclick="event.stopPropagation()">
+                                <button class="btn btn-outline-primary btn-sm py-0 px-1" style="font-size:0.65rem;" onclick="editNotice({{ n.id }},'{{ n.title|e }}',`{{ n.content|e }}`,{{ n.is_pinned }})">수정</button>
+                                <button class="btn btn-outline-danger btn-sm py-0 px-1" style="font-size:0.65rem;" onclick="delNotice({{ n.id }})">삭제</button>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="notice-meta">{{ n.created_by }} · {{ n.created_at.strftime('%Y-%m-%d') if n.created_at else '' }}</div>
+                        {% if n.content %}<div class="notice-content">{{ n.content }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="text-muted text-center py-4" style="font-size:0.82rem;">등록된 공지사항이 없습니다.</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="panel-card" style="flex:0 0 auto;max-height:30%;">
+                <div class="panel-header">
+                    <span>🚌 배차정보</span>
+                    <a href="/bus_dispatch" style="font-size:0.72rem;color:var(--erp-blue);text-decoration:none;">상세 →</a>
+                </div>
+                <div class="panel-body" style="padding:8px 12px;font-size:0.78rem;" id="busPanelBody">
+                    <div class="text-muted text-center py-2" style="font-size:0.78rem;">로딩중...</div>
+                </div>
+            </div>
+            <!-- 전력 현황 -->
+            <div class="panel-card" style="flex:0 0 auto;">
+                {% if power_info %}
+                <div class="panel-header">
+                    <span>⚡ 전력 현황</span>
+                    <a href="/power_dashboard" style="font-size:0.72rem;color:var(--erp-blue);text-decoration:none;">상세 →</a>
+                </div>
+                <div class="panel-body" style="padding:10px 14px;display:flex;flex-direction:column;gap:8px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <div style="background:#f0f9ff;border-radius:6px;padding:10px;text-align:center;">
+                            <div style="font-size:0.68rem;color:#64748b;">당월 누적</div>
+                            <div style="font-size:1.3rem;font-weight:800;color:#0284c7;">{{ "{:,.1f}".format(power_info.rt_kwh) }}</div>
+                            <div style="font-size:0.7rem;color:#64748b;">kWh</div>
+                        </div>
+                        <div style="background:#fefce8;border-radius:6px;padding:10px;text-align:center;">
+                            <div style="font-size:0.68rem;color:#64748b;">실시간 요금</div>
+                            <div style="font-size:1.3rem;font-weight:800;color:#ca8a04;">{{ "{:,}".format(power_info.rt_bill) }}</div>
+                            <div style="font-size:0.7rem;color:#64748b;">원</div>
+                        </div>
+                    </div>
+                    <div style="background:#f8fafc;border-radius:4px;padding:6px 10px;display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-size:0.75rem;color:#475569;">오늘 사용량</span>
+                        <span style="font-size:0.9rem;font-weight:700;color:#1e293b;">{{ "{:,.1f}".format(power_info.today_kwh) }} kWh</span>
+                    </div>
+                    <div style="flex:1;min-height:0;position:relative;"><canvas id="chartPowerHourly"></canvas></div>
+                </div>
+                {% else %}
+                <div class="panel-header"><span>📌 빠른 메모</span></div>
+                <div class="panel-body">
+                    <div class="text-muted text-center py-3" style="font-size:0.82rem;">전력 데이터 없음</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════ 일정 등록/수정 모달 ════ -->
+<div class="modal fade" id="eventModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title" id="eventModalTitle">일정 작성</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-2">
+                <input type="hidden" id="eventId">
+                <div class="mb-2"><label class="form-label fw-bold" style="font-size:0.85rem;">시작일</label><input type="date" class="form-control form-control-sm" id="eventDate"></div>
+                <div class="mb-2"><label class="form-label fw-bold" style="font-size:0.85rem;">종료일 <small style="color:var(--erp-muted);font-weight:400;">(기간 일정시)</small></label><input type="date" class="form-control form-control-sm" id="eventDateEnd"></div>
+                <div class="mb-2"><label class="form-label fw-bold" style="font-size:0.85rem;">제목</label><input type="text" class="form-control form-control-sm" id="eventTitle" maxlength="100" placeholder="일정 제목"></div>
+                <div class="mb-2"><label class="form-label fw-bold" style="font-size:0.85rem;">색상</label>
+                    <select class="form-select form-select-sm" id="eventColor">
+                        <option value="#0d6efd">🔵 파랑</option><option value="#198754">🟢 초록</option>
+                        <option value="#dc3545">🔴 빨강</option><option value="#6f42c1">🟣 보라</option>
+                        <option value="#fd7e14">🟠 주황</option><option value="#20c997">🩵 청록</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer py-1">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="saveEvent()">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════ 일정 상세 모달 ════ -->
+<div class="modal fade" id="dayModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title" id="dayModalTitle"></h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-2" id="dayModalBody" style="max-height:300px;overflow-y:auto;"></div>
+            <div class="modal-footer py-1">
+                <button type="button" class="btn btn-sm btn-warning" onclick="openEventModalForDate()">➕ 일정 추가</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if can_notice %}
+<div class="modal fade" id="noticeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="noticeModalTitle">공지사항 작성</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="noticeId">
+                <div class="mb-3"><label class="form-label fw-bold">제목</label><input type="text" class="form-control" id="noticeTitle" maxlength="200"></div>
+                <div class="mb-3"><label class="form-label fw-bold">내용</label><textarea class="form-control" id="noticeContent" rows="5"></textarea></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="noticePinned"><label class="form-check-label" for="noticePinned">📌 상단 고정</label></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="saveNotice()">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 나의 근무일정 전체보기 모달 -->
+<div class="modal fade" id="myScheduleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">📋 나의 근무일정</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-2">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <select id="msMonthSel" class="form-select form-select-sm" style="width:auto;font-size:0.82rem;" onchange="filterMySchedule()"></select>
+                    <span id="msCnt" class="badge bg-primary" style="font-size:0.78rem;">0건</span>
+                </div>
+                <div id="msBody" style="max-height:400px;overflow-y:auto;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* 월간 달력 (모달용) */
+    .cal-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+    .cal-table th { text-align:center; font-size:0.78rem; font-weight:700; padding:8px 2px; color:var(--erp-text); background:var(--erp-head-bg); border:1px solid var(--erp-border); }
+    .cal-table th:first-child { color:var(--erp-red); }
+    .cal-table th:last-child  { color:var(--erp-blue); }
+    .cal-table td { vertical-align:top; height:75px; padding:4px 5px; font-size:0.8rem; cursor:pointer; border:1px solid var(--erp-border); background:#fff; transition:background .12s; }
+    .cal-table td:hover { background:#f8fafc; }
+    .cal-table td.today { background:var(--erp-blue-light); border-color:var(--erp-blue); }
+    .cal-table td.other-month { background:#fafbfc; color:#c7c7cc; }
+    .cal-day-num { font-weight:700; font-size:0.86rem; margin-bottom:2px; color:var(--erp-text-dark); }
+    .cal-day-num.sun { color:var(--erp-red); }
+    .cal-day-num.sat { color:var(--erp-blue); }
+    .cal-event { font-size:0.65rem; padding:2px 4px; margin-bottom:1px; border-radius:2px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; font-weight:600; text-align:center; }
+    .cal-more  { font-size:0.65rem; color:var(--erp-blue); cursor:pointer; font-weight:700; }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+/* ── 공지사항 ── */
+function toggleContent(el){
+    const c=el.querySelector('.notice-content');
+    if(c) c.style.display=c.style.display==='block'?'none':'block';
+}
+{% if can_notice %}
+function openNoticeModal(){
+    document.getElementById('noticeId').value='';
+    document.getElementById('noticeTitle').value='';
+    document.getElementById('noticeContent').value='';
+    document.getElementById('noticePinned').checked=false;
+    document.getElementById('noticeModalTitle').textContent='공지사항 작성';
+    new bootstrap.Modal(document.getElementById('noticeModal')).show();
+}
+function editNotice(id,title,content,pinned){
+    document.getElementById('noticeId').value=id;
+    document.getElementById('noticeTitle').value=title;
+    document.getElementById('noticeContent').value=content;
+    document.getElementById('noticePinned').checked=!!pinned;
+    document.getElementById('noticeModalTitle').textContent='공지사항 수정';
+    new bootstrap.Modal(document.getElementById('noticeModal')).show();
+}
+function saveNotice(){
+    const fd=new FormData();
+    fd.append('id',document.getElementById('noticeId').value);
+    fd.append('title',document.getElementById('noticeTitle').value);
+    fd.append('content',document.getElementById('noticeContent').value);
+    if(document.getElementById('noticePinned').checked) fd.append('is_pinned','1');
+    fetch('/save_notice',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.ok)location.reload();else alert(d.msg);});
+}
+function delNotice(id){
+    if(!confirm('삭제하시겠습니까?'))return;
+    const fd=new FormData();fd.append('id',id);
+    fetch('/delete_notice',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.ok)location.reload();});
+}
+{% endif %}
+
+/* ── 월간 캘린더 ── */
+let calYear, calMonth, calEvents=[], selectedDate='';
+const _todayStr=(()=>{const t=new Date();return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');})();
+
+function goTodayCalendar(){ const t=new Date(); calYear=t.getFullYear(); calMonth=t.getMonth()+1; loadCalendar(); }
+(function(){ const t=new Date(); calYear=t.getFullYear(); calMonth=t.getMonth()+1; loadCalendar(); })();
+
+function calPrev(){ calMonth--; if(calMonth<1){calMonth=12;calYear--;} loadCalendar(); }
+function calNext(){ calMonth++; if(calMonth>12){calMonth=1;calYear++;} loadCalendar(); }
+
+function loadCalendar(){
+    document.getElementById('calTitle').textContent=calYear+'년 '+calMonth+'월';
+    fetch('/api/schedule_events?year='+calYear+'&month='+calMonth)
+    .then(r=>r.json()).then(d=>{ if(d.ok){ calEvents=d.events; renderCal(); } });
+}
+
+function renderCal(){
+    const first=new Date(calYear,calMonth-1,1);
+    const lastDay=new Date(calYear,calMonth,0).getDate();
+    const startDow=first.getDay();
+    const prevLastDay=new Date(calYear,calMonth-1,0).getDate();
+    let html='',day=1,nextDay=1;
+    const total=Math.ceil((startDow+lastDay)/7)*7;
+    for(let i=0;i<total;i++){
+        if(i%7===0) html+='<tr>';
+        if(i<startDow){
+            html+=`<td class="other-month"><div class="cal-day-num">${prevLastDay-startDow+i+1}</div></td>`;
+        } else if(day>lastDay){
+            html+=`<td class="other-month"><div class="cal-day-num">${nextDay++}</div></td>`;
+        } else {
+            const ds=calYear+'-'+String(calMonth).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+            const dow=i%7;
+            let cls='cal-day-num'+(dow===0?' sun':dow===6?' sat':'');
+            const isHol=calEvents.some(e=>e.date===ds&&e.type==='holiday');
+            if(isHol) cls='cal-day-num sun';
+            const isToday=ds===_todayStr;
+            const dayEvs=calEvents.filter(e=>e.date===ds);
+            let evHtml=dayEvs.slice(0,2).map(ev=>`<div class="cal-event" style="background:${ev.color}" title="${ev.title}" onclick="event.stopPropagation();showDay('${ds}')">${ev.title}</div>`).join('');
+            if(dayEvs.length>2) evHtml+=`<div class="cal-more" onclick="event.stopPropagation();showDay('${ds}')">+${dayEvs.length-2}건</div>`;
+            html+=`<td class="${isToday?'today':''}" onclick="showDay('${ds}')"><div class="${cls}">${day}</div>${evHtml}</td>`;
+            day++;
+        }
+        if(i%7===6) html+='</tr>';
+    }
+    document.getElementById('calBody').innerHTML=html;
+}
+
+function showDay(dateStr){
+    selectedDate=dateStr;
+    const uniq=calEvents.filter(e=>e.date===dateStr);
+    document.getElementById('dayModalTitle').textContent=dateStr+' 일정';
+    let html='';
+    if(!uniq.length){
+        html='<div class="text-muted text-center py-3">등록된 일정이 없습니다.</div>';
+    } else {
+        uniq.forEach(ev=>{
+            html+=`<div class="d-flex justify-content-between align-items-center py-1 border-bottom" style="font-size:0.88rem;">
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${ev.color};margin-right:6px;"></span>${ev.title}</span>`;
+            if(ev.type==='custom'){
+                {% if can_schedule %}html+=`<button class="btn btn-outline-danger btn-sm py-0 px-1" style="font-size:0.7rem;" onclick="delEvent(${ev.id})">삭제</button>`;{% endif %}
+            } else if(ev.type==='holiday'){
+                html+='<span class="badge bg-danger" style="font-size:0.65rem;">공휴일</span>';
+            } else if(ev.type==='work_report'){
+                html+='<span class="badge bg-primary" style="font-size:0.65rem;">조편성</span>';
+            } else if(ev.type==='work_report_revision'){
+                html+='<span class="badge bg-success" style="font-size:0.65rem;">확정</span>';
+            }
+            html+='</div>';
+        });
+    }
+    document.getElementById('dayModalBody').innerHTML=html;
+    new bootstrap.Modal(document.getElementById('dayModal')).show();
+}
+
+function openEventModal(dateStr){
+    document.getElementById('eventId').value='';
+    document.getElementById('eventTitle').value='';
+    document.getElementById('eventColor').value='#0d6efd';
+    document.getElementById('eventDate').value=dateStr||_todayStr;
+    document.getElementById('eventDateEnd').value='';
+    document.getElementById('eventModalTitle').textContent='일정 작성';
+    new bootstrap.Modal(document.getElementById('eventModal')).show();
+}
+function openEventModalForDate(){
+    bootstrap.Modal.getInstance(document.getElementById('dayModal')).hide();
+    setTimeout(()=>openEventModal(selectedDate),300);
+}
+function saveEvent(){
+    const fd=new FormData();
+    fd.append('id',document.getElementById('eventId').value);
+    fd.append('title',document.getElementById('eventTitle').value);
+    fd.append('event_date',document.getElementById('eventDate').value);
+    fd.append('event_date_end',document.getElementById('eventDateEnd').value);
+    fd.append('color',document.getElementById('eventColor').value);
+    fetch('/save_schedule_event',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
+        if(d.ok){ bootstrap.Modal.getInstance(document.getElementById('eventModal')).hide(); loadCalendar(); }
+        else alert(d.msg);
+    });
+}
+function delEvent(id){
+    if(!confirm('삭제하시겠습니까?'))return;
+    const fd=new FormData();fd.append('id',id);
+    fetch('/delete_schedule_event',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
+        if(d.ok){ bootstrap.Modal.getInstance(document.getElementById('dayModal')).hide(); loadCalendar(); }
+    });
+}
+
+/* ── 나의 근무일정 모달 ── */
+const _catBadge={
+    '주간기본':'<span class="badge" style="background:#6366f1;font-size:0.72rem;">☀️ 주간기본</span>',
+    '주간연장':'<span class="badge" style="background:#3b82f6;font-size:0.72rem;">☀️⏰ 주간연장</span>',
+    '야간기본':'<span class="badge" style="background:#8b5cf6;font-size:0.72rem;">🌙 야간기본</span>',
+    '야간연장':'<span class="badge" style="background:#7c3aed;font-size:0.72rem;">🌙⏰ 야간연장</span>',
+    '연차':'<span class="badge" style="background:#f59e0b;font-size:0.72rem;">🏖️ 연차</span>',
+    '무급':'<span class="badge" style="background:#f59e0b;font-size:0.72rem;">🚫 무급</span>',
+    '공제':'<span class="badge" style="background:#ef4444;font-size:0.72rem;">➖ 공제</span>',
+    '스킵':'<span class="badge" style="background:#dc2626;font-size:0.72rem;">⛔ 스킵</span>'
+};
+function openMyScheduleModal(){
+    const sel=document.getElementById('msMonthSel');
+    fetch('/api/my_schedule').then(r=>r.json()).then(d=>{
+        if(!d.ok)return;
+        sel.innerHTML='<option value="">전체</option>';
+        d.months.forEach(m=>{const[y,mm]=m.split('-');sel.innerHTML+=`<option value="${y}${mm}">${y}년 ${parseInt(mm)}월</option>`;});
+        window._mySchedAll=d.items;
+        renderMyScheduleList(d.items);
+        new bootstrap.Modal(document.getElementById('myScheduleModal')).show();
+    });
+}
+function filterMySchedule(){
+    const mon=document.getElementById('msMonthSel').value;
+    if(!mon){renderMyScheduleList(window._mySchedAll);return;}
+    const prefix=mon.substring(0,4)+'-'+mon.substring(4,6);
+    renderMyScheduleList(window._mySchedAll.filter(i=>i.date.startsWith(prefix)));
+}
+function renderMyScheduleList(items){
+    const body=document.getElementById('msBody');
+    if(!items.length){body.innerHTML='<div class="text-muted text-center py-4">결재된 근무일정이 없습니다.</div>';document.getElementById('msCnt').textContent='0건';return;}
+    document.getElementById('msCnt').textContent=items.length+'건';
+    let html='';
+    items.forEach(s=>{
+        const badge=_catBadge[s.cat]||`<span class="badge bg-secondary" style="font-size:0.72rem;">${s.cat}</span>`;
+        let content='';
+        if(s.orig_cat&&s.is_revision){const ob=_catBadge[s.orig_cat]||`<span class="badge bg-secondary">${s.orig_cat}</span>`;content=`${ob} <span style="font-size:0.78rem;color:gray;">→</span> ${badge} <span class="badge bg-success" style="font-size:0.65rem;">확정</span>`;}
+        else content=badge;
+        html+=`<div class="d-flex justify-content-between align-items-center py-1 border-bottom" style="font-size:0.85rem;"><span class="text-muted" style="font-size:0.8rem;">${s.date}</span><span>${content}</span></div>`;
+    });
+    body.innerHTML=html;
+}
+
+// 배차정보 로드
+(function(){
+    const today='{{ today.strftime("%Y-%m-%d") }}';
+    const panel=document.getElementById('busPanelBody');
+    fetch('/api/bus_dispatch_query?date='+today+'&shift=전체')
+    .then(r=>r.json()).then(d=>{
+        if(!d.ok){panel.innerHTML='<div class="text-muted text-center py-2" style="font-size:0.78rem;">배차 데이터 없음</div>';return;}
+        let html='';
+        const shifts=d.shifts||[];
+        shifts.forEach(s=>{
+            const label=s.shift==='주간'?'☀️ 주간':'🌙 야간';
+            const total=s.bus1.length+s.bus2.length+s.unassigned.length;
+            if(total===0)return;
+            html+=`<div style="margin-bottom:6px;">`;
+            html+=`<div style="font-weight:700;font-size:0.75rem;color:#475569;margin-bottom:3px;">${label} <span style="font-weight:400;color:#94a3b8;">${total}명</span></div>`;
+            if(s.bus1.length) html+=`<div style="margin-bottom:2px;"><span style="color:#2563eb;font-weight:600;font-size:0.72rem;">1호차</span> <span style="color:#334155;font-size:0.75rem;">${s.bus1.join(', ')}</span></div>`;
+            if(s.bus2.length) html+=`<div style="margin-bottom:2px;"><span style="color:#16a34a;font-weight:600;font-size:0.72rem;">2호차</span> <span style="color:#334155;font-size:0.75rem;">${s.bus2.join(', ')}</span></div>`;
+            if(s.unassigned.length) html+=`<div style="margin-bottom:2px;"><span style="color:#d97706;font-weight:600;font-size:0.72rem;">미배정</span> <span style="color:#334155;font-size:0.75rem;">${s.unassigned.join(', ')}</span></div>`;
+            html+=`</div>`;
+        });
+        if(!html) html='<div class="text-muted text-center py-2" style="font-size:0.78rem;">오늘 배차 데이터 없음</div>';
+        panel.innerHTML=html;
+    }).catch(()=>{panel.innerHTML='<div class="text-muted text-center py-2" style="font-size:0.78rem;">배차 조회 불가</div>';});
+})();
+
+// MES 생산현황 + 온도 로드
+(function(){
+    const panel=document.getElementById('mesDashBody');
+    function loadMes(){
+        Promise.all([
+            fetch('/mes/api/status').then(r=>r.json()).catch(()=>({ok:false})),
+            fetch('/mes/api/env').then(r=>r.json()).catch(()=>({ok:false}))
+        ]).then(([prod, env])=>{
+            let html='';
+            // 온도/습도
+            if(env.ok && env.latest){
+                const t=env.latest.temperature, h=env.latest.humidity;
+                const tColor=t>=30?'#dc2626':t>=25?'#f59e0b':'#2563eb';
+                html+=`<div style="display:flex;gap:8px;margin-bottom:6px;padding:4px 6px;background:#f8fafc;border-radius:6px;align-items:center;">
+                    <span style="font-size:0.7rem;color:#64748b;">🌡️ 온도</span>
+                    <span style="font-size:1rem;font-weight:800;color:${tColor};">${t}°C</span>
+                    <span style="font-size:0.7rem;color:#64748b;margin-left:6px;">💧 습도</span>
+                    <span style="font-size:1rem;font-weight:800;color:#0284c7;">${h}%</span>
+                    <span style="font-size:0.65rem;color:#94a3b8;margin-left:auto;">${env.latest.age}</span>
+                </div>`;
+            }
+            // 생산현황
+            if(prod.ok && prod.devices && prod.devices.length>0){
+                html+='<table style="width:100%;border-collapse:collapse;font-size:0.73rem;">';
+                html+='<thead><tr style="border-bottom:1px solid #e2e8f0;">'
+                    +'<th style="padding:2px 4px;color:#94a3b8;font-weight:600;text-align:left;">라인</th>'
+                    +'<th style="padding:2px 4px;color:#94a3b8;font-weight:600;text-align:right;">오늘</th>'
+                    +'<th style="padding:2px 4px;color:#94a3b8;font-weight:600;text-align:right;">목표</th>'
+                    +'<th style="padding:2px 4px;color:#94a3b8;font-weight:600;text-align:left;width:80px;">달성률</th>'
+                    +'</tr></thead><tbody>';
+                prod.devices.forEach(dev=>{
+                    const pct=dev.pct||0;
+                    const barColor=pct>=100?'#16a34a':pct>=70?'#2563eb':'#f59e0b';
+                    html+=`<tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:3px 4px;font-weight:600;">${dev.title||dev.line_name||dev.name}</td>
+                        <td style="padding:3px 4px;text-align:right;font-weight:700;">${dev.today_total.toLocaleString()}</td>
+                        <td style="padding:3px 4px;text-align:right;color:#94a3b8;">${dev.target?dev.target.toLocaleString():'-'}</td>
+                        <td style="padding:3px 4px;">
+                            <div style="display:flex;align-items:center;gap:4px;">
+                                <div style="flex:1;height:6px;background:#e2e8f0;border-radius:3px;">
+                                    <div style="width:${Math.min(pct,100)}%;height:100%;background:${barColor};border-radius:3px;"></div>
+                                </div>
+                                <span style="font-size:0.68rem;color:${barColor};font-weight:700;min-width:32px;">${pct}%</span>
+                            </div>
+                        </td>
+                    </tr>`;
+                });
+                html+='</tbody></table>';
+                html+=`<div style="text-align:right;font-size:0.65rem;color:#94a3b8;margin-top:2px;">갱신 ${prod.ts}</div>`;
+            } else if(!html){
+                html='<div class="text-muted text-center py-2" style="font-size:0.78rem;">데이터 없음</div>';
+            }
+            panel.innerHTML=html;
+        });
+    }
+    loadMes();
+    setInterval(loadMes, 30000);
+})();
+
+{% if power_info %}
+(function(){
+    const labels=Array.from({length:24},(_,i)=>i%3===0?String(i).padStart(2,'0')+'시':'');
+    const data={{ power_info.hourly_kwh|tojson }};
+    new Chart(document.getElementById('chartPowerHourly'),{
+        type:'bar',data:{labels,datasets:[{data,backgroundColor:'#0ea5e955',borderColor:'#0284c7',borderWidth:1,borderRadius:3}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y+' kWh'}}},
+            scales:{x:{ticks:{font:{size:8},color:'#94a3b8'},grid:{display:false}},y:{beginAtZero:true,ticks:{font:{size:8},color:'#94a3b8',maxTicksLimit:4},grid:{color:'#f1f5f9'}}}}
+    });
+})();
+{% endif %}
+</script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>발송이력 — 태인관리시스템</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+.log-table { font-size:0.82rem; }
+.log-table th { background:#f1f5f9; position:sticky; top:0; z-index:2; }
+.log-content { max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+.log-content:hover { color:#3b82f6; text-decoration:underline; }
+.shift-day { background:#dbeafe; color:#1d4ed8; padding:1px 8px; border-radius:8px; font-size:0.75rem; }
+.shift-night { background:#fef3c7; color:#92400e; padding:1px 8px; border-radius:8px; font-size:0.75rem; }
+</style>
+</head>
+<body>
+{% set active_page = 'bus_sms_log' %}
+{% include '_sidebar.html' %}
+
+<main class="main-content">
+<div class="container-fluid py-3">
+    <h5 class="mb-3">💬 배차 발송 이력</h5>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height:75vh;">
+            <table class="table table-hover log-table mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:40px">#</th>
+                        <th style="width:100px">날짜</th>
+                        <th style="width:60px">구분</th>
+                        <th>1호차</th>
+                        <th>2호차</th>
+                        <th style="width:80px">작성자</th>
+                        <th style="width:130px">작성일시</th>
+                        <th style="width:60px">상세</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ log.dispatch_date[:4] }}-{{ log.dispatch_date[4:6] }}-{{ log.dispatch_date[6:] }}</td>
+                    <td><span class="{% if log.shift_type == '주간' %}shift-day{% else %}shift-night{% endif %}">{{ log.shift_type }}</span></td>
+                    <td class="text-truncate" style="max-width:200px">{{ log.bus1_names or '-' }}</td>
+                    <td class="text-truncate" style="max-width:200px">{{ log.bus2_names or '-' }}</td>
+                    <td>{{ log.created_by }}</td>
+                    <td>{{ log.created_at }}</td>
+                    <td><button class="btn btn-outline-primary btn-sm py-0 px-2" style="font-size:0.7rem" onclick="showDetail({{ loop.index0 }})">보기</button></td>
+                </tr>
+                {% endfor %}
+                {% if not logs %}
+                <tr><td colspan="8" class="text-center text-muted py-4">이력이 없습니다.</td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+</div>
+</main>
+
+<!-- 상세 모달 -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+<div class="modal-dialog modal-dialog-centered">
+<div class="modal-content">
+    <div class="modal-header py-2">
+        <h6 class="modal-title" id="detailTitle">발송 내용</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+        <pre id="detailContent" style="white-space:pre-wrap; font-size:0.85rem; background:#f8fafc; padding:12px; border-radius:8px; border:1px solid #e2e8f0;"></pre>
+    </div>
+    <div class="modal-footer py-1">
+        <button class="btn btn-outline-success btn-sm" onclick="copyDetail()">📋 복사</button>
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">닫기</button>
+    </div>
+</div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+var detailModalObj;
+var LOGS = [
+    {% for log in logs %}
+    {date:"{{ log.dispatch_date }}", shift:"{{ log.shift_type }}", content:{{ log.content|tojson }}, by:"{{ log.created_by }}", at:"{{ log.created_at }}"},
+    {% endfor %}
+];
+
+document.addEventListener('DOMContentLoaded', function() {
+    detailModalObj = new bootstrap.Modal(document.getElementById('detailModal'));
+});
+
+function showDetail(idx) {
+    var log = LOGS[idx];
+    document.getElementById('detailTitle').textContent = log.date.slice(0,4)+'-'+log.date.slice(4,6)+'-'+log.date.slice(6)+' '+log.shift+' 배차';
+    document.getElementById('detailContent').textContent = log.content || '(내용 없음)';
+    detailModalObj.show();
+}
+
+function copyDetail() {
+    var text = document.getElementById('detailContent').textContent;
+    navigator.clipboard.writeText(text).then(function() {
+        alert('복사되었습니다.');
+    });
+}
+</script>
+</body>
+</html>

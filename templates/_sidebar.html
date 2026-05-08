@@ -1,0 +1,354 @@
+{# _sidebar.html — 공통 상단바 + 사이드바 (각 페이지에서 active_page 변수 set 후 include) #}
+{% set is_admin = session.get('role') == 'admin' %}
+<!-- DEBUG: role={{ session.get('role') }}, is_admin={{ is_admin }} -->
+
+<nav class="navbar navbar-dark navbar-custom">
+    <div class="container-fluid d-flex align-items-center">
+        <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+        <a href="/" class="navbar-brand"><img src="/static/LOGO.GIF" class="brand-logo" alt="logo" style="height:33px;">태인관리시스템</a>
+        <!-- 히어로 (중앙) -->
+        <div class="flex-grow-1 d-none d-md-flex justify-content-center align-items-center gap-4">
+            <div class="text-white">
+                <span style="font-weight:600;">{{ session.get('user_name', '') }}님, 안녕하세요 👋</span>
+                <span style="opacity:0.7;font-size:0.75rem;margin-left:8px;">{{ today_date_str }}</span>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <div class="header-stat">
+                    <span class="hs-value" id="hStat1">--</span>
+                    <span class="hs-label">출근</span>
+                </div>
+                <div class="header-stat">
+                    <span class="hs-value" id="hStat2">--</span>
+                    <span class="hs-label">휴가</span>
+                </div>
+                <div class="header-stat">
+                    <span class="hs-value" id="hStat3">--</span>
+                    <span class="hs-label">보고서</span>
+                </div>
+                <div class="header-stat">
+                    <span class="hs-value" id="hStat4">--</span>
+                    <span class="hs-label">🎂</span>
+                </div>
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <div class="dropdown" id="notiDropdown">
+                <button class="btn btn-outline-light btn-sm position-relative" style="font-size:0.72rem; padding:3px 8px;" onclick="toggleNoti()">
+                    🔔<span id="notiBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:0.55rem; display:none;">0</span>
+                </button>
+                <div id="notiPanel" class="dropdown-menu p-0" style="width:320px; max-height:380px; overflow-y:auto; display:none; position:absolute; right:0; top:100%; z-index:9999;">
+                    <div class="d-flex justify-content-between align-items-center px-3 py-2" style="background:#f8f9fa; border-bottom:1px solid #dee2e6;">
+                        <span class="fw-bold" style="font-size:0.85rem;">🔔 알림</span>
+                        <button class="btn btn-link btn-sm p-0" style="font-size:0.75rem; text-decoration:none;" onclick="readAllNoti()">모두 읽음</button>
+                    </div>
+                    <div id="notiList" style="font-size:0.82rem;"></div>
+                </div>
+            </div>
+            <span class="nav-user">👤 {{ session.get('user_name','') }}{% if is_admin %} <span class="badge bg-warning text-dark">관리자</span>{% endif %}</span>
+            <a href="/change_password" class="btn btn-outline-light btn-sm" style="font-size:0.72rem; padding:3px 8px;">🔑</a>
+            <a href="/logout" class="btn btn-outline-light btn-sm" style="font-size:0.72rem; padding:3px 8px;">로그아웃</a>
+        </div>
+    </div>
+</nav>
+
+<div id="notiOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.3); z-index:9999;" onclick="toggleNoti()"></div>
+<div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+<style>
+/* ── 사이드바 카테고리 토글 ── */
+.sidebar .nav-group-toggle {
+    display:flex; align-items:center; justify-content:space-between;
+    width:100%; background:transparent; border:none;
+    padding:11px 18px; margin:0;
+    font-size:0.78rem; font-weight:600; color:rgba(255,255,255,0.72);
+    cursor:pointer; transition:background .15s, color .15s;
+    text-align:left;
+}
+.sidebar .nav-group-toggle:hover { background:rgba(255,255,255,0.05); color:#fff; }
+.sidebar .nav-group-toggle .ng-icon { font-size:0.95rem; width:22px; text-align:center; flex-shrink:0; margin-right:10px; }
+.sidebar .nav-group-toggle .ng-label { flex:1; }
+.sidebar .nav-group-toggle .ng-arrow {
+    font-size:0.65rem; color:rgba(255,255,255,0.4);
+    transition:transform .25s;
+    display:inline-block; width:12px; text-align:center;
+}
+.sidebar .nav-group-toggle.open .ng-arrow { transform:rotate(90deg); color:rgba(255,255,255,0.7); }
+.sidebar .nav-group-toggle.has-active { color:#fff; }
+.sidebar .nav-group-toggle.has-active .ng-arrow { color:#58a6ff; }
+
+.sidebar .nav-group-items {
+    overflow:hidden; max-height:0;
+    transition:max-height .3s ease;
+    background:rgba(0,0,0,0.15);
+}
+.sidebar .nav-group-items.open { max-height:600px; }
+.sidebar .nav-group-items .side-link { padding-left:48px; font-size:0.8rem; }
+
+.sidebar .side-group-divider { height:4px; }
+</style>
+
+<aside class="sidebar" id="sidebar">
+    <!-- 대시보드: 단일 항목이라 그룹 없음 -->
+    <a href="/" class="side-link{% if active_page == 'dashboard' %} active{% endif %}"><span class="sl-icon">🏠</span>대시보드</a>
+
+    <div class="side-group-divider"></div>
+
+    <!-- 근태관리 -->
+    <button class="nav-group-toggle" data-group="grp-attendance">
+        <span class="ng-icon">🕒</span><span class="ng-label">근태관리</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-attendance">
+        <a href="/attendance" class="side-link{% if active_page == 'attendance' %} active{% endif %}"><span class="sl-icon">📝</span>근태기록</a>
+        <a href="/weekly52" class="side-link{% if active_page == 'weekly52' %} active{% endif %}"><span class="sl-icon">⏱</span>주52시간</a>
+        <a href="/work_schedule" class="side-link{% if active_page == 'work_schedule' %} active{% endif %}"><span class="sl-icon">📊</span>근무표</a>
+        {% if is_admin or 'schedule' in session.get('permissions','') %}
+        <a href="/schedule_record" class="side-link{% if active_page == 'schedule_record' %} active{% endif %}"><span class="sl-icon">📑</span>근무표기록관리</a>
+        {% endif %}
+    </div>
+
+    <!-- 인사관리 -->
+    <button class="nav-group-toggle" data-group="grp-hr">
+        <span class="ng-icon">👥</span><span class="ng-label">인사관리</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-hr">
+        <a href="/welfare" class="side-link{% if active_page == 'welfare' %} active{% endif %}"><span class="sl-icon">🎁</span>복지혜택</a>
+        <a href="/annual_leave" class="side-link{% if active_page == 'annual_leave' %} active{% endif %}"><span class="sl-icon">🌴</span>연차관리</a>
+        {% if is_admin or 'leave' in session.get('permissions','') or is_lp_member %}
+        <a href="/leave_approval" class="side-link{% if active_page == 'leave_approval' %} active{% endif %}"><span class="sl-icon">✅</span>연차사용계획</a>
+        {% endif %}
+        {% if is_admin or 'meal' in session.get('permissions','') %}
+        <a href="/meal_management" class="side-link{% if active_page == 'meal_management' %} active{% endif %}"><span class="sl-icon">🍽️</span>식수관리</a>
+        {% endif %}
+        {% if is_admin or 'work_report' in session.get('permissions','') or 'schedule' in session.get('permissions','') or session.get('is_wr_member') %}
+        <a href="/work_report" class="side-link{% if active_page == 'work_report' %} active{% endif %}"><span class="sl-icon">📋</span>근무보고서</a>
+        {% endif %}
+        {% if is_admin %}
+        <a href="/document_management" class="side-link{% if active_page == 'document_management' %} active{% endif %}"><span class="sl-icon">📄</span>공문서관리</a>
+        {% endif %}
+    </div>
+
+    {% if is_admin or 'bus' in session.get('permissions','') %}
+    <!-- 배차관리 -->
+    <button class="nav-group-toggle" data-group="grp-bus">
+        <span class="ng-icon">🚌</span><span class="ng-label">배차관리</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-bus">
+        <a href="/bus_members" class="side-link{% if active_page == 'bus_members' %} active{% endif %}"><span class="sl-icon">🚌</span>탑승자 명단</a>
+        <a href="/bus_dispatch" class="side-link{% if active_page == 'bus_dispatch' %} active{% endif %}"><span class="sl-icon">📋</span>배차조회</a>
+        <a href="/bus_sms_log" class="side-link{% if active_page == 'bus_sms_log' %} active{% endif %}"><span class="sl-icon">💬</span>발송이력</a>
+    </div>
+    {% endif %}
+
+    <!-- MES관리 -->
+    <button class="nav-group-toggle" data-group="grp-mes">
+        <span class="ng-icon">🏭</span><span class="ng-label">MES관리</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-mes">
+        <a href="/mes/realtime" class="side-link{% if active_page == 'mes_realtime' %} active{% endif %}"><span class="sl-icon">🏭</span>실시간 카운트</a>
+        <a href="/pacemaker"    class="side-link{% if active_page == 'pacemaker'    %} active{% endif %}"><span class="sl-icon">🎯</span>페이스메이커</a>
+        <a href="/mes/report"   class="side-link{% if active_page == 'mes_report'   %} active{% endif %}"><span class="sl-icon">📊</span>생산 리포트</a>
+        <a href="/mes/env/dashboard" class="side-link{% if active_page == 'mes_env' %} active{% endif %}"><span class="sl-icon">🌡️</span>온습도 현황</a>
+        {% if is_admin %}
+        <a href="/mes/devices"  class="side-link{% if active_page == 'mes_devices'  %} active{% endif %}"><span class="sl-icon">⚙️</span>장치 관리</a>
+        {% endif %}
+    </div>
+
+    <!-- 에너지 -->
+    <button class="nav-group-toggle" data-group="grp-energy">
+        <span class="ng-icon">⚡</span><span class="ng-label">에너지</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-energy">
+        <a href="/power_dashboard" class="side-link{% if active_page == 'power_dashboard' %} active{% endif %}"><span class="sl-icon">⚡</span>전력사용현황</a>
+        <a href="/power_history"   class="side-link{% if active_page == 'power_history'   %} active{% endif %}"><span class="sl-icon">📊</span>기간별 조회</a>
+        <a href="/power_alerts"    class="side-link{% if active_page == 'power_alerts'    %} active{% endif %}"><span class="sl-icon">🔔</span>경보 이력</a>
+        {% if is_admin %}
+        <a href="/power_settings"  class="side-link{% if active_page == 'power_settings'  %} active{% endif %}"><span class="sl-icon">⚙️</span>전력 설정</a>
+        {% endif %}
+    </div>
+
+    <!-- 전산관리 -->
+    <button class="nav-group-toggle" data-group="grp-it">
+        <span class="ng-icon">🖥</span><span class="ng-label">전산관리</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-it">
+        <a href="/it/request" class="side-link{% if active_page == 'it_request' %} active{% endif %}"><span class="sl-icon">📝</span>요청하기</a>
+        {% if is_admin %}
+        <a href="/it/manage"  class="side-link{% if active_page == 'it_manage'  %} active{% endif %}"><span class="sl-icon">🔧</span>요청 관리</a>
+        {% endif %}
+    </div>
+
+    <!-- TBM -->
+    <button class="nav-group-toggle" data-group="grp-tbm">
+        <span class="ng-icon">🛡</span><span class="ng-label">TBM</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-tbm">
+        <a href="/tbm/sign" class="side-link{% if active_page == 'tbm_sign' %} active{% endif %}"><span class="sl-icon">✍️</span>서명 참여</a>
+        <a href="/tbm/sign/history" class="side-link{% if active_page == 'tbm_history' %} active{% endif %}"><span class="sl-icon">📋</span>내 이력</a>
+        {% if is_admin %}
+        <a href="/tbm/admin" class="side-link{% if active_page == 'tbm_admin' %} active{% endif %}"><span class="sl-icon">⚙️</span>TBM 관리</a>
+        <a href="/tbm/admin/templates" class="side-link{% if active_page == 'tbm_tmpl' %} active{% endif %}"><span class="sl-icon">📑</span>템플릿 관리</a>
+        {% endif %}
+    </div>
+
+    <!-- 설문관리 -->
+    <button class="nav-group-toggle" data-group="grp-survey">
+        <span class="ng-icon">📝</span><span class="ng-label">설문관리</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-survey">
+        <a href="/my/surveys" class="side-link{% if active_page == 'survey_my' %} active{% endif %}"><span class="sl-icon">📋</span>내 설문</a>
+        {% if is_admin %}
+        <a href="/surveys" class="side-link{% if active_page == 'survey_admin' %} active{% endif %}"><span class="sl-icon">⚙️</span>설문 관리</a>
+        {% endif %}
+    </div>
+
+    {% if is_admin %}
+    <!-- ESG 경영 (관리자 전용) -->
+    <button class="nav-group-toggle" data-group="grp-esg">
+        <span class="ng-icon">🌱</span><span class="ng-label">ESG 경영</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-esg">
+        <a href="/esg/environment" class="side-link{% if active_page == 'esg_environment' %} active{% endif %}"><span class="sl-icon">🌍</span>환경 (E)</a>
+        <a href="/esg/social"      class="side-link{% if active_page == 'esg_social'      %} active{% endif %}"><span class="sl-icon">🤝</span>사회 (S)</a>
+        <a href="/esg/governance"  class="side-link{% if active_page == 'esg_governance'  %} active{% endif %}"><span class="sl-icon">🏛</span>지배구조 (G)</a>
+    </div>
+
+    <!-- 시스템 -->
+    <button class="nav-group-toggle" data-group="grp-system">
+        <span class="ng-icon">🛠</span><span class="ng-label">시스템</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-system">
+        <a href="/roster" class="side-link{% if active_page == 'roster' %} active{% endif %}"><span class="sl-icon">📂</span>명부관리</a>
+        <a href="/log_management" class="side-link{% if active_page == 'log_management' %} active{% endif %}"><span class="sl-icon">📋</span>로그관리</a>
+        <a href="/fire_management" class="side-link{% if active_page == 'fire_management' %} active{% endif %}"><span class="sl-icon">🚨</span>소방관리</a>
+        <a href="/user_management" class="side-link{% if active_page == 'user_management' %} active{% endif %}"><span class="sl-icon">⚙️</span>계정관리</a>
+        <a href="/perm_groups" class="side-link{% if active_page == 'perm_groups' %} active{% endif %}"><span class="sl-icon">🔐</span>권한그룹관리</a>
+        <a href="/dev_history" class="side-link{% if active_page == 'dev_history' %} active{% endif %}"><span class="sl-icon">📜</span>개발이력</a>
+    </div>
+    {% endif %}
+</aside>
+
+<script>
+function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('show');
+    document.querySelector('.sidebar-overlay').classList.toggle('show');
+}
+/* 알림 */
+function toggleNoti() {
+    var p = document.getElementById('notiPanel');
+    var ov = document.getElementById('notiOverlay');
+    if (p.style.display === 'none') {
+        if (window.innerWidth < 768) {
+            p.style.cssText = 'display:block; position:fixed; left:10%; right:10%; top:55px; max-height:70vh; overflow-y:auto; z-index:10000; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+            ov.style.display = 'block';
+        } else {
+            p.style.display = 'block';
+        }
+        loadNoti();
+    } else {
+        p.style.display = 'none';
+        ov.style.display = 'none';
+    }
+}
+function loadNoti() {
+    fetch('/api/notifications').then(r=>r.json()).then(d=>{
+        var b = document.getElementById('notiBadge');
+        if (d.unread > 0) { b.textContent = d.unread; b.style.display = ''; } else { b.style.display = 'none'; }
+        var html = '';
+        if (d.items.length === 0) { html = '<div class="text-center text-muted py-3" style="font-size:0.82rem;">알림이 없습니다</div>'; }
+        d.items.forEach(function(n) {
+            var bg = n.is_read ? '' : 'background:#f0f9ff;';
+            html += '<a href="' + (n.link||'#') + '" class="d-block px-3 py-2 text-decoration-none text-dark" style="border-bottom:1px solid #f1f5f9;'+bg+'" onclick="markRead('+n.id+')">';
+            html += '<div>' + n.message + '</div>';
+            html += '<div class="text-muted" style="font-size:0.7rem;">' + n.created_at + '</div></a>';
+        });
+        document.getElementById('notiList').innerHTML = html;
+    });
+}
+function markRead(id) {
+    fetch('/api/notifications/read', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:id})})
+    .then(()=>checkNotiCount());
+}
+function readAllNoti() {
+    fetch('/api/notifications/read', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:'all'})})
+    .then(()=>{ loadNoti(); checkNotiCount(); });
+}
+document.addEventListener('click', function(e) {
+    var dd = document.getElementById('notiDropdown');
+    var p = document.getElementById('notiPanel');
+    var ov = document.getElementById('notiOverlay');
+    if (dd && !dd.contains(e.target) && p.style.display !== 'none') {
+        p.style.display = 'none';
+        ov.style.display = 'none';
+    }
+});
+function checkNotiCount() {
+    fetch('/api/notifications').then(r=>r.json()).then(d=>{
+        var b = document.getElementById('notiBadge');
+        if (d.unread > 0) { b.textContent = d.unread; b.style.display = ''; } else { b.style.display = 'none'; }
+    });
+}
+document.addEventListener('DOMContentLoaded', checkNotiCount);
+setInterval(checkNotiCount, 30000);
+
+// 사이드바 카테고리 토글: 데스크탑은 hover로 자동 펼침/닫힘, 모바일(터치)은 클릭 토글
+(function initSidebarGroups(){
+    var toggles = document.querySelectorAll('.sidebar .nav-group-toggle');
+    var isTouch = !(window.matchMedia && window.matchMedia('(hover: hover)').matches);
+
+    toggles.forEach(function(btn){
+        var group = btn.dataset.group;
+        var items = document.querySelector('.sidebar .nav-group-items[data-group="'+group+'"]');
+        if (!items) return;
+
+        // 현재 페이지가 속한 그룹은 기본 펼쳐진 상태 유지
+        var hasActive = items.querySelector('.side-link.active') !== null;
+        if (hasActive) {
+            btn.classList.add('has-active', 'open');
+            items.classList.add('open');
+        }
+
+        if (isTouch) {
+            // 모바일/터치: 클릭 토글 (hover 없음)
+            btn.addEventListener('click', function(){
+                var willOpen = !items.classList.contains('open');
+                btn.classList.toggle('open', willOpen);
+                items.classList.toggle('open', willOpen);
+            });
+        } else {
+            // 데스크탑: hover로 열고, 벗어나면 자동 닫힘
+            var closeTimer = null;
+            function openGroup() {
+                if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+                btn.classList.add('open');
+                items.classList.add('open');
+            }
+            function scheduleClose() {
+                if (closeTimer) clearTimeout(closeTimer);
+                closeTimer = setTimeout(function(){
+                    // 현재 페이지가 속한 그룹은 유지
+                    if (btn.classList.contains('has-active')) return;
+                    btn.classList.remove('open');
+                    items.classList.remove('open');
+                }, 200);
+            }
+            btn.addEventListener('mouseenter', openGroup);
+            items.addEventListener('mouseenter', openGroup);
+            btn.addEventListener('mouseleave', scheduleClose);
+            items.addEventListener('mouseleave', scheduleClose);
+            // 클릭 시 즉시 열림 (모바일·데스크탑 공통)
+            btn.addEventListener('click', openGroup);
+        }
+    });
+})();
+
+// 상단바 통계 로드 (대시보드 데이터)
+(function loadHeaderStats(){
+    fetch('/api/dashboard_stats').then(r=>r.json()).then(d=>{
+        if(!d.ok) return;
+        document.getElementById('hStat1').textContent = d.checked_in || 0;
+        document.getElementById('hStat2').textContent = d.leave_count || 0;
+        document.getElementById('hStat3').textContent = d.report_count || 0;
+        document.getElementById('hStat4').textContent = d.birthday_count || 0;
+    }).catch(function(){});
+})();
+</script>

@@ -1,0 +1,201 @@
+{% extends "tbm/base.html" %}
+{% block title %}고정 교육내용 템플릿 관리{% endblock %}
+
+{% block extra_style %}
+.tmpl-card { border-radius: 12px; border: 1px solid #e5e7eb; margin-bottom: 1.5rem; }
+.tmpl-card .card-header { font-size: .95rem; font-weight: 700; border-radius: 12px 12px 0 0; }
+textarea.tmpl-area { font-size: .85rem; resize: vertical; min-height: 80px; }
+.dept-tab-btn.active { background: var(--tbm-primary); color: #fff; border-color: var(--tbm-primary); }
+{% endblock %}
+
+{% block content %}
+<div class="page-header mb-3">
+  <h4>📋 고정 교육내용 템플릿 관리</h4>
+  <small class="text-muted">사업부·공통별 기본값 설정 — 서명 화면에 자동 표시됩니다.</small>
+</div>
+
+{% if get_flashed_messages() %}{% endif %}
+
+<form method="post" action="/tbm/admin/templates/save">
+
+  {# 탭 — 사업부 + 공통 #}
+  <ul class="nav nav-pills mb-3" id="deptTab">
+    {% for dept in tbm_depts %}
+    <li class="nav-item me-1">
+      <button type="button" class="nav-link dept-tab-btn {% if loop.first %}active{% endif %}"
+              data-dept="{{ dept }}">{{ dept }}</button>
+    </li>
+    {% endfor %}
+  </ul>
+
+  {% for dept in tbm_depts %}
+  <div class="dept-panel" data-dept="{{ dept }}" {% if not loop.first %}style="display:none"{% endif %}>
+    <div class="tmpl-card card">
+      <div class="card-header {% if dept == '전기사업부' %}text-primary{% elif dept == '전자사업부' %}text-success{% else %}text-secondary{% endif %}">
+        {{ dept }}
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          {% for tkey, tlabel in tmpl_keys %}
+          <div class="col-12">
+            <label class="form-label fw-semibold mb-1">{{ tlabel }}</label>
+            {% if tkey == 'leader_dept' %}
+            {% set cur_org = all_tmpl.get(dept, {}).get(tkey, '') %}
+            {% set cur_name = all_tmpl.get(dept, {}).get('leader_name', '') %}
+            {% set cur_pos = all_tmpl.get(dept, {}).get('leader_position', '') %}
+            <div class="leader-template-picker" data-panel-dept="{{ dept }}">
+              <input type="hidden" name="{{ dept }}__{{ tkey }}" class="tmpl-leader-org-hidden" value="{{ cur_org }}">
+              <input type="hidden" name="{{ dept }}__leader_name" class="tmpl-leader-name-hidden" value="{{ cur_name }}">
+              <input type="hidden" name="{{ dept }}__leader_position" class="tmpl-leader-pos-hidden" value="{{ cur_pos }}">
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold mb-1">소속</label>
+                  <select class="form-select form-select-sm tmpl-leader-org">
+                    <option value="">선택</option>
+                    {% set ns = namespace(seen=[]) %}
+                    {% for m in manager_dept_options.get(dept, []) %}
+                      {% if m.dept and m.dept not in ns.seen %}
+                      <option value="{{ m.dept }}" {{ 'selected' if cur_org == m.dept }}>{{ m.dept }}</option>
+                      {% set _ = ns.seen.append(m.dept) %}
+                      {% endif %}
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold mb-1">성명</label>
+                  <input type="text" class="form-control form-control-sm tmpl-leader-name" list="leader-name-list-{{ dept }}"
+                         placeholder="이름 입력" value="{{ cur_name }}">
+                  <datalist id="leader-name-list-{{ dept }}"></datalist>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold mb-1">직책</label>
+                  <select class="form-select form-select-sm tmpl-leader-pos">
+                    <option value="">선택</option>
+                    {% for p in ['기사','주임','대리','과장','차장','부장'] %}
+                    <option value="{{ p }}" {{ 'selected' if cur_pos == p }}>{{ p }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="form-text mt-1">성명을 입력하면 직책이 자동 선택됩니다. 저장값은 소속입니다.</div>
+            </div>
+            {% else %}
+            <textarea name="{{ dept }}__{{ tkey }}"
+                      class="form-control tmpl-area"
+                      placeholder="{{ tlabel }} 기본값 (비워두면 적용 안 됨)">{{ all_tmpl.get(dept, {}).get(tkey, '') }}</textarea>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="d-flex justify-content-end gap-2 mt-2">
+    <a href="/tbm/admin" class="btn btn-outline-secondary">취소</a>
+    <button type="submit" class="btn btn-tbm-primary px-4">💾 저장</button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const managerDeptOptions = {{ manager_dept_options | tojson }};
+
+document.querySelectorAll('.dept-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.dept-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const dept = btn.dataset.dept;
+    document.querySelectorAll('.dept-panel').forEach(p => {
+      p.style.display = p.dataset.dept === dept ? '' : 'none';
+    });
+  });
+});
+
+function initLeaderDeptPicker(root) {
+  const panelDept = root.dataset.panelDept;
+  const rows = managerDeptOptions[panelDept] || [];
+  const orgSel = root.querySelector('.tmpl-leader-org');
+  const nameInp = root.querySelector('.tmpl-leader-name');
+  const posSel = root.querySelector('.tmpl-leader-pos');
+  const hiddenInp = root.querySelector('.tmpl-leader-org-hidden');
+  const hiddenNameInp = root.querySelector('.tmpl-leader-name-hidden');
+  const hiddenPosInp = root.querySelector('.tmpl-leader-pos-hidden');
+  const nameList = root.querySelector('datalist');
+
+  function fillNameList() {
+    const org = orgSel.value;
+    const names = [];
+    const seen = new Set();
+    rows.forEach(r => {
+      if (org && r.dept !== org) return;
+      if (!r.name || seen.has(r.name)) return;
+      seen.add(r.name);
+      names.push(r.name);
+    });
+    nameList.innerHTML = names.map(n => `<option value="${n}"></option>`).join('');
+  }
+
+  function autoPickPosition() {
+    const org = orgSel.value;
+    const name = (nameInp.value || '').trim();
+    let matched = null;
+
+    if (name) {
+      if (org) {
+        matched = rows.find(r => r.name === name && r.dept === org) || null;
+      }
+      if (!matched) {
+        matched = rows.find(r => r.name === name) || null;
+      }
+    }
+
+    if (matched) {
+      if (!orgSel.value && matched.dept) {
+        orgSel.value = matched.dept;
+        hiddenInp.value = matched.dept;
+        fillNameList();
+      }
+      if (matched.position) {
+        for (const opt of posSel.options) {
+          if (opt.value === matched.position) {
+            opt.selected = true;
+            hiddenPosInp.value = matched.position;
+            return;
+          }
+        }
+      }
+    }
+    posSel.value = '';
+    hiddenPosInp.value = '';
+  }
+
+  orgSel.addEventListener('change', () => {
+    hiddenInp.value = orgSel.value || '';
+    fillNameList();
+    autoPickPosition();
+  });
+  nameInp.addEventListener('input', () => {
+    hiddenNameInp.value = nameInp.value.trim();
+    autoPickPosition();
+  });
+  nameInp.addEventListener('change', () => {
+    hiddenNameInp.value = nameInp.value.trim();
+    autoPickPosition();
+  });
+  posSel.addEventListener('change', () => {
+    hiddenPosInp.value = posSel.value || '';
+  });
+
+  hiddenInp.value = orgSel.value || hiddenInp.value || '';
+  hiddenNameInp.value = nameInp.value.trim();
+  hiddenPosInp.value = posSel.value || hiddenPosInp.value || '';
+  fillNameList();
+  autoPickPosition();
+}
+
+document.querySelectorAll('.leader-template-picker').forEach(initLeaderDeptPicker);
+</script>
+{% endblock %}

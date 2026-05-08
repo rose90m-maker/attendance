@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>전산 요청 — 태인관리시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+.it-header {
+    background: linear-gradient(135deg, #6366f1, #4338ca);
+    color: #fff; padding: 14px 20px; border-radius: 12px; margin-bottom: 14px;
+}
+.it-header .title { font-size: 1.25rem; font-weight: 800; }
+.it-header .sub   { font-size: 0.82rem; opacity: .9; margin-top: 2px; }
+
+.panel {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 14px;
+}
+.panel-title { font-size: 0.98rem; font-weight: 700; color: #1e293b; margin-bottom: 14px; }
+
+.btn-submit { background: #6366f1; color: #fff; border: none; padding: 8px 18px; border-radius: 8px; font-weight: 600; font-size: 0.88rem; }
+.btn-submit:hover { background: #4f46e5; color: #fff; }
+
+.status-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 0.72rem; font-weight: 700;
+}
+.status-badge.pending    { background: #e2e8f0; color: #475569; }
+.status-badge.accepted   { background: #dbeafe; color: #1e40af; }
+.status-badge.processing { background: #fef3c7; color: #92400e; }
+.status-badge.completed  { background: #d1fae5; color: #065f46; }
+.status-badge.rejected   { background: #fee2e2; color: #991b1b; }
+
+.urgency-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+
+.cat-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 0.72rem; background: #f1f5f9; color: #475569;
+}
+
+.request-table th { background: #f8fafc; font-weight: 700; color: #475569; font-size: 0.78rem; padding: 8px 10px; }
+.request-table td { padding: 9px 10px; vertical-align: middle; font-size: 0.84rem; }
+.memo-row {
+    background: #fefce8; border-left: 3px solid #eab308;
+    padding: 6px 12px; font-size: 0.8rem; color: #713f12;
+}
+.btn-cancel {
+    background: transparent; border: 1px solid #fca5a5; color: #dc2626;
+    padding: 2px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer;
+}
+.btn-cancel:hover { background: #fee2e2; }
+</style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main-content">
+
+<!-- 헤더 -->
+<div class="it-header">
+  <div class="title">🖥 전산 물품 요청</div>
+  <div class="sub">필요한 전산 장비 · 소프트웨어 · 수리 등을 요청하면 관리자가 처리합니다</div>
+</div>
+
+<!-- 요청 폼 -->
+<div class="panel">
+  <div class="panel-title">📝 새 요청 작성</div>
+  <form id="reqForm" onsubmit="return submitReq(event)">
+    <div class="row g-2">
+      <div class="col-md-3">
+        <label class="form-label small fw-bold">구분 <span class="text-danger">*</span></label>
+        <select name="category" class="form-select form-select-sm" required>
+          {% for c in categories %}
+          <option value="{{ c.key }}">{{ c.icon }} {{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-bold">사용장소(위치)</label>
+        <input type="text" name="location" class="form-control form-control-sm" placeholder="예: 본관 3층 사무실, 생산동 회의실">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small fw-bold">품목 / 요청 내용 <span class="text-danger">*</span></label>
+        <input type="text" name="item_name" class="form-control form-control-sm" placeholder="예: 24인치 모니터, Office 라이센스, 프린터 수리" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small fw-bold">수량</label>
+        <input type="number" name="quantity" class="form-control form-control-sm" value="1" min="1">
+      </div>
+      <div class="col-12 mt-2">
+        <label class="form-label small fw-bold">요청 사유 / 상세 설명</label>
+        <textarea name="reason" class="form-control form-control-sm" rows="3" placeholder="예: 기존 모니터 화면 결함, 재택근무용 등 상세 내용을 적어주세요"></textarea>
+      </div>
+      <div class="col-12 mt-3 text-end">
+        <button type="submit" class="btn-submit">💾 요청 제출</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- 내 요청 이력 -->
+<div class="panel">
+  <div class="panel-title">📋 내 요청 이력 ({{ my_requests|length }}건)</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover request-table mb-0">
+      <thead>
+        <tr>
+          <th style="width:80px;">상태</th>
+          <th style="width:100px;">구분</th>
+          <th style="width:140px;">사용장소</th>
+          <th>품목</th>
+          <th style="width:60px;" class="text-center">수량</th>
+          <th style="width:130px;">요청일</th>
+          <th style="width:110px;">처리일</th>
+          <th style="width:60px;" class="text-center">취소</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if my_requests %}
+          {% for r in my_requests %}
+          <tr>
+            <td><span class="status-badge {{ r.status_key }}">{{ r.status }}</span></td>
+            <td><span class="cat-badge">{{ r.category_icon }} {{ r.category }}</span></td>
+            <td style="font-size:0.8rem; color:#475569;">{{ r.location or '-' }}</td>
+            <td>
+              <div class="fw-bold">{{ r.item_name }}</div>
+              {% if r.reason %}<div style="font-size:0.76rem; color:#64748b;">{{ r.reason }}</div>{% endif %}
+            </td>
+            <td class="text-center">{{ r.quantity }}</td>
+            <td style="font-size:0.78rem; color:#64748b;">{{ r.created_at }}</td>
+            <td style="font-size:0.78rem; color:#64748b;">{{ r.processed_at or '-' }}</td>
+            <td class="text-center">
+              {% if r.status_key == 'pending' %}
+              <button class="btn-cancel" onclick="cancelReq({{ r.id }})">취소</button>
+              {% else %}
+              <span style="color:#94a3b8; font-size:0.78rem;">-</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% if r.admin_memo %}
+          <tr>
+            <td colspan="8" class="memo-row">💬 <strong>관리자 메모:</strong> {{ r.admin_memo }}{% if r.processor %} — {{ r.processor }}{% endif %}</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="8" class="text-center text-muted py-4">아직 요청 이력이 없습니다</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div><!-- /main-content -->
+
+<script>
+function submitReq(e) {
+    e.preventDefault();
+    var fd = new FormData(document.getElementById('reqForm'));
+    var payload = {
+        category:  fd.get('category'),
+        location:  fd.get('location'),
+        item_name: fd.get('item_name'),
+        quantity:  parseInt(fd.get('quantity'), 10) || 1,
+        reason:    fd.get('reason'),
+    };
+    fetch('/it/api/request', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.ok) { window.location.reload(); }
+        else      { alert('제출 실패: ' + (d.error || 'unknown')); }
+    })
+    .catch(function(e){ alert('오류: ' + e); });
+    return false;
+}
+
+function cancelReq(id) {
+    if (!confirm('이 요청을 취소(삭제)하시겠습니까?')) return;
+    fetch('/it/api/request/' + id, {method: 'DELETE'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.ok) { window.location.reload(); }
+            else      { alert('실패: ' + (d.error || 'unknown')); }
+        });
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>환경 (E) — 태인관리시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+.env-header {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #fff; padding: 14px 20px; border-radius: 12px;
+    margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;
+}
+.env-header .title { font-size: 1.25rem; font-weight: 800; }
+.env-header .sub   { font-size: 0.82rem; opacity: .9; margin-top: 2px; }
+
+.kpi-box {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 14px 18px; height: 100%;
+    transition: box-shadow .2s;
+}
+.kpi-box:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+.kpi-box .lbl { font-size: 0.78rem; color: #64748b; }
+.kpi-box .val { font-size: 1.8rem; font-weight: 800; color: #1e293b; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+.kpi-box .unit { font-size: 0.85rem; color: #64748b; margin-left: 3px; font-weight: 500; }
+.kpi-box .icon { font-size: 1.4rem; float: right; opacity: .6; }
+.kpi-box.power { border-left: 4px solid #3b82f6; }
+.kpi-box.waste { border-left: 4px solid #f59e0b; }
+.kpi-box.water { border-left: 4px solid #06b6d4; }
+.kpi-box.gas   { border-left: 4px solid #ef4444; }
+.kpi-box .ext-link { font-size: 0.72rem; color: #3b82f6; text-decoration: none; margin-top: 4px; display: inline-block; }
+.kpi-box .ext-link:hover { text-decoration: underline; }
+
+.panel {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 14px;
+}
+.panel-title { font-size: 0.98rem; font-weight: 700; color: #1e293b; margin-bottom: 14px; }
+
+.cat-sub-total {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px; margin-top: 8px;
+}
+.cat-sub-item {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 10px 12px; font-size: 0.82rem;
+}
+.cat-sub-item .n { font-size: 0.72rem; color: #64748b; }
+.cat-sub-item .v { font-size: 1.1rem; font-weight: 700; color: #1e293b; font-variant-numeric: tabular-nums; }
+
+.record-table { font-size: 0.85rem; }
+.record-table th { background: #f8fafc; font-weight: 700; color: #475569; padding: 8px 10px; }
+.record-table td { padding: 8px 10px; vertical-align: middle; }
+.cat-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 0.72rem; font-weight: 600; background: #f1f5f9; color: #475569;
+}
+.cat-badge.waste_general    { background: #fef3c7; color: #92400e; }
+.cat-badge.waste_recycle    { background: #d1fae5; color: #065f46; }
+.cat-badge.waste_designated { background: #fee2e2; color: #991b1b; }
+.cat-badge.water            { background: #cffafe; color: #155e75; }
+.cat-badge.gas_lng          { background: #fce7f3; color: #9f1239; }
+.cat-badge.gas_lpg          { background: #ffedd5; color: #9a3412; }
+.cat-badge.etc              { background: #e0e7ff; color: #3730a3; }
+
+.btn-add { background: #10b981; color: #fff; border: none; padding: 7px 16px; border-radius: 8px; font-weight: 600; font-size: 0.86rem; }
+.btn-add:hover { background: #059669; color: #fff; }
+.btn-del { background: transparent; border: none; color: #dc2626; cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 0.82rem; }
+.btn-del:hover { background: #fee2e2; }
+</style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main-content">
+
+<!-- 헤더 -->
+<div class="env-header">
+  <div>
+    <div class="title">🌍 환경 (Environment)</div>
+    <div class="sub">에너지·폐기물·용수 등 환경 지표 관리 · 이번 달 기준: {{ ym[:4] }}년 {{ ym[4:]|int }}월</div>
+  </div>
+</div>
+
+<!-- 상단 KPI 카드 4개 -->
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="kpi-box power">
+      <span class="icon">⚡</span>
+      <div class="lbl">이번 달 전력</div>
+      <div><span class="val">{{ "{:,.0f}".format(power_this_month) }}</span><span class="unit">kWh</span></div>
+      <a href="/power_dashboard" class="ext-link">전력 대시보드 →</a>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-box waste">
+      <span class="icon">🗑</span>
+      <div class="lbl">이번 달 폐기물 (합계)</div>
+      <div><span class="val">{{ "{:,.1f}".format(waste_total) }}</span><span class="unit">kg</span></div>
+      <div class="ext-link" style="color:#64748b;">일반+재활용+지정</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-box water">
+      <span class="icon">💧</span>
+      <div class="lbl">이번 달 상수도</div>
+      <div><span class="val">{{ "{:,.1f}".format(env_totals.water) }}</span><span class="unit">㎥</span></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-box gas">
+      <span class="icon">🔥</span>
+      <div class="lbl">이번 달 도시가스</div>
+      <div><span class="val">{{ "{:,.1f}".format(env_totals.gas_lng) }}</span><span class="unit">㎥</span></div>
+      <div class="ext-link" style="color:#64748b;">LPG: {{ "{:,.1f}".format(env_totals.gas_lpg) }} kg</div>
+    </div>
+  </div>
+</div>
+
+<!-- 폐기물 세부 카테고리 -->
+<div class="panel">
+  <div class="panel-title">🗑 폐기물 세부 (이번 달)</div>
+  <div class="cat-sub-total">
+    <div class="cat-sub-item"><div class="n">일반 폐기물</div><div class="v">{{ "{:,.1f}".format(env_totals.waste_general) }} kg</div></div>
+    <div class="cat-sub-item"><div class="n">재활용 폐기물</div><div class="v">{{ "{:,.1f}".format(env_totals.waste_recycle) }} kg</div></div>
+    <div class="cat-sub-item"><div class="n">지정 폐기물</div><div class="v">{{ "{:,.1f}".format(env_totals.waste_designated) }} kg</div></div>
+    <div class="cat-sub-item"><div class="n">기타</div><div class="v">{{ "{:,.1f}".format(env_totals.etc) }} kg</div></div>
+  </div>
+</div>
+
+<!-- 입력 폼 -->
+<div class="panel">
+  <div class="panel-title d-flex justify-content-between align-items-center">
+    <span>➕ 환경 지표 입력</span>
+    <small style="color:#64748b; font-weight:normal; font-size:0.78rem;">일자·구분·수량 입력 후 저장</small>
+  </div>
+  <form id="envForm" onsubmit="return submitEnv(event)">
+    <div class="row g-2 align-items-end">
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold">일자</label>
+        <input type="date" name="record_date" class="form-control form-control-sm" value="{{ today }}" required>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small fw-bold">구분</label>
+        <select name="category" class="form-select form-select-sm" required onchange="syncUnit(this)">
+          {% for c in categories %}
+          <option value="{{ c.key }}" data-unit="{{ c.unit }}">{{ c.icon }} {{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-8 col-md-2">
+        <label class="form-label small fw-bold">수량</label>
+        <input type="number" step="0.01" min="0" name="amount" class="form-control form-control-sm" placeholder="0" required>
+      </div>
+      <div class="col-4 col-md-1">
+        <label class="form-label small fw-bold">단위</label>
+        <input type="text" name="unit" id="unitField" class="form-control form-control-sm" value="kg" readonly>
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label small fw-bold">메모 (선택)</label>
+        <input type="text" name="memo" class="form-control form-control-sm" placeholder="비고 / 업체 / 처리 방법 등">
+      </div>
+      <div class="col-12 col-md-2">
+        <button type="submit" class="btn-add w-100">💾 저장</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- 최근 기록 -->
+<div class="panel">
+  <div class="panel-title">📋 최근 기록 (최대 30건)</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover record-table mb-0">
+      <thead>
+        <tr>
+          <th style="width:110px;">일자</th>
+          <th style="width:160px;">구분</th>
+          <th style="width:140px;" class="text-end">수량</th>
+          <th>메모</th>
+          <th style="width:100px;">입력자</th>
+          <th style="width:100px;">입력시각</th>
+          <th style="width:60px;" class="text-center">삭제</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if records %}
+          {% for r in records %}
+          <tr id="row-{{ r.id }}">
+            <td>{{ r.date }}</td>
+            <td><span class="cat-badge {{ r.category_key }}">{{ r.category_icon }} {{ r.category_name }}</span></td>
+            <td class="text-end fw-bold" style="font-variant-numeric:tabular-nums;">{{ "{:,.2f}".format(r.amount) }} {{ r.unit }}</td>
+            <td style="color:#64748b; font-size:0.82rem;">{{ r.memo or '-' }}</td>
+            <td style="font-size:0.82rem;">{{ r.created_by or '-' }}</td>
+            <td style="font-size:0.78rem; color:#64748b;">{{ r.created_at }}</td>
+            <td class="text-center">
+              <button class="btn-del" onclick="deleteRecord({{ r.id }})" title="삭제">🗑</button>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-4">기록이 없습니다</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div><!-- /main-content -->
+
+<script>
+function syncUnit(sel) {
+    var unit = sel.options[sel.selectedIndex].dataset.unit;
+    document.getElementById('unitField').value = unit;
+}
+
+function submitEnv(e) {
+    e.preventDefault();
+    var form = document.getElementById('envForm');
+    var fd = new FormData(form);
+    var payload = {
+        record_date: fd.get('record_date'),
+        category:    fd.get('category'),
+        amount:      fd.get('amount'),
+        unit:        fd.get('unit'),
+        memo:        fd.get('memo'),
+    };
+    fetch('/esg/api/env_record', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.ok) { window.location.reload(); }
+        else      { alert('저장 실패: ' + (d.error || 'unknown')); }
+    })
+    .catch(function(err){ alert('오류: ' + err); });
+    return false;
+}
+
+function deleteRecord(id) {
+    if (!confirm('이 기록을 삭제하시겠습니까?')) return;
+    fetch('/esg/api/env_record/' + id, {method: 'DELETE'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.ok) { window.location.reload(); }
+            else      { alert('삭제 실패: ' + (d.error || 'unknown')); }
+        });
+}
+
+// 초기 단위 동기화
+document.addEventListener('DOMContentLoaded', function(){
+    var sel = document.querySelector('select[name="category"]');
+    if (sel) syncUnit(sel);
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

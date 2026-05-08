@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+chroma_db/
+uploads/
+*.tar.gz
+*.sql
+*.log
+.env
+deploy_and_restart.py
+backup.py

@@ -1,0 +1,32 @@
+{
+  "servers": {
+    "attendance-db": {
+      "command": "/opt/homebrew/bin/npx",
+      "args": ["-y", "@benborla29/mcp-server-mysql"],
+      "env": {
+        "MYSQL_HOST": "192.168.100.11",
+        "MYSQL_PORT": "3307",
+        "MYSQL_USER": "root",
+        "MYSQL_PASS": "7602Mr123$$",
+        "MYSQL_DB": "attendance",
+        "MYSQL_CHARSET": "utf8mb4"
+      }
+    },
+    "filesystem": {
+      "command": "/opt/homebrew/bin/npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/changkooji/attendance"]
+    },
+    "fetch": {
+      "command": "/opt/homebrew/bin/uvx",
+      "args": ["mcp-server-fetch"]
+    },
+    "sequential-thinking": {
+      "command": "/opt/homebrew/bin/npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "docker": {
+      "command": "/opt/homebrew/bin/npx",
+      "args": ["-y", "@hypnosis/docker-mcp-server"]
+    }
+  }
+}

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>설문 관리</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        .sv-badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:0.72rem;font-weight:600;}
+        .sv-draft{background:#f3f4f6;color:#6b7280;}
+        .sv-published{background:#dcfce7;color:#166534;}
+        .sv-closed{background:#dbeafe;color:#1e40af;}
+        .sv-archived{background:#fee2e2;color:#991b1b;}
+        .anon-chip{background:#fef3c7;color:#92400e;padding:1px 8px;border-radius:10px;font-size:0.68rem;font-weight:600;margin-left:6px;}
+    </style>
+</head>
+<body>
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">📝 설문 관리 <small class="text-muted" style="font-size:0.55em;">총 {{ surveys|length }}건</small></h4>
+        <div>
+            <a href="/surveys/new" class="btn btn-primary btn-sm">➕ 새 설문</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-0 table-responsive">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0" style="font-size:0.88rem;">
+                <thead>
+                    <tr style="background:#f0f4f7;">
+                        <th style="width:60px;text-align:center;">ID</th>
+                        <th style="width:80px;text-align:center;">상태</th>
+                        <th>제목</th>
+                        <th style="width:140px;text-align:center;">시작</th>
+                        <th style="width:140px;text-align:center;">마감</th>
+                        <th style="width:90px;text-align:center;">응답수</th>
+                        <th style="width:100px;text-align:center;">작성자</th>
+                        <th style="width:200px;text-align:center;">관리</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for s in surveys %}
+                <tr>
+                    <td style="text-align:center;">{{ s.id }}</td>
+                    <td style="text-align:center;">
+                        {% if s.status == 'draft' %}<span class="sv-badge sv-draft">초안</span>
+                        {% elif s.status == 'published' %}<span class="sv-badge sv-published">진행중</span>
+                        {% elif s.status == 'closed' %}<span class="sv-badge sv-closed">마감</span>
+                        {% else %}<span class="sv-badge sv-archived">보관</span>{% endif %}
+                    </td>
+                    <td>
+                        <a href="/surveys/{{ s.id }}/edit" class="text-decoration-none fw-semibold" style="color:#1e40af;">{{ s.title }}</a>
+                        {% if s.anonymous %}<span class="anon-chip">익명</span>{% endif %}
+                    </td>
+                    <td style="text-align:center;font-size:0.82rem;color:#4b5563;">{{ s.start_at or '-' }}</td>
+                    <td style="text-align:center;font-size:0.82rem;color:#4b5563;">{{ s.end_at or '-' }}</td>
+                    <td style="text-align:center;fw-bold;color:#1e40af;">{{ s.resp_cnt }}</td>
+                    <td style="text-align:center;font-size:0.8rem;">{{ s.created_by_name }}</td>
+                    <td style="text-align:center;">
+                        <a href="/surveys/{{ s.id }}/edit" class="btn btn-outline-primary btn-sm" style="font-size:0.75rem;">편집</a>
+                        <a href="/surveys/{{ s.id }}/preview" class="btn btn-outline-secondary btn-sm" style="font-size:0.75rem;">미리보기</a>
+                        <a href="/surveys/{{ s.id }}/stats" class="btn btn-outline-info btn-sm" style="font-size:0.75rem;">통계</a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not surveys %}
+                <tr><td colspan="8" class="text-center text-muted py-4">등록된 설문이 없습니다. <a href="/surveys/new">새 설문 만들기 →</a></td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="mt-3">
+        <a href="/" class="btn btn-secondary btn-sm">← 메인으로</a>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

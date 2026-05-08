@@ -1,0 +1,1228 @@
+2026-04-07 22:20:51 [watchdog] rag_server 시작
+2026-04-07 22:20:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:20:57 [watchdog] rag_server 시작
+2026-04-07 22:20:58 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:21:03 [watchdog] rag_server 시작
+2026-04-07 22:21:03 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:21:08 [watchdog] rag_server 시작
+2026-04-07 22:21:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:21:14 [watchdog] rag_server 시작
+2026-04-07 22:21:14 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:21:19 [watchdog] rag_server 시작
+2026-04-07 22:21:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:21:25 [watchdog] rag_server 시작
+2026-04-07 22:21:26 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:21:31 [watchdog] rag_server 시작
+2026-04-07 22:21:31 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:21:36 [watchdog] rag_server 시작
+2026-04-07 22:21:37 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:21:42 [watchdog] rag_server 시작
+2026-04-07 22:21:42 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:21:47 [watchdog] rag_server 시작
+2026-04-07 22:21:48 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:21:53 [watchdog] rag_server 시작
+2026-04-07 22:21:54 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:21:59 [watchdog] rag_server 시작
+2026-04-07 22:21:59 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:22:04 [watchdog] rag_server 시작
+2026-04-07 22:22:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:22:10 [watchdog] rag_server 시작
+2026-04-07 22:22:10 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:22:15 [watchdog] rag_server 시작
+2026-04-07 22:22:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:22:21 [watchdog] rag_server 시작
+2026-04-07 22:22:22 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:22:27 [watchdog] rag_server 시작
+2026-04-07 22:22:27 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:22:32 [watchdog] rag_server 시작
+2026-04-07 22:22:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:22:38 [watchdog] rag_server 시작
+2026-04-07 22:22:38 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:22:43 [watchdog] rag_server 시작
+2026-04-07 22:22:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:22:49 [watchdog] rag_server 시작
+2026-04-07 22:22:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:22:55 [watchdog] rag_server 시작
+2026-04-07 22:22:55 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:23:00 [watchdog] rag_server 시작
+2026-04-07 22:23:01 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:23:06 [watchdog] rag_server 시작
+2026-04-07 22:23:07 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:23:12 [watchdog] rag_server 시작
+2026-04-07 22:23:12 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:23:17 [watchdog] rag_server 시작
+2026-04-07 22:23:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:23:23 [watchdog] rag_server 시작
+2026-04-07 22:23:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:23:29 [watchdog] rag_server 시작
+2026-04-07 22:23:29 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:23:34 [watchdog] rag_server 시작
+2026-04-07 22:23:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:23:40 [watchdog] rag_server 시작
+2026-04-07 22:23:40 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:23:45 [watchdog] rag_server 시작
+2026-04-07 22:23:46 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:23:51 [watchdog] rag_server 시작
+2026-04-07 22:23:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:23:57 [watchdog] rag_server 시작
+2026-04-07 22:23:57 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:24:02 [watchdog] rag_server 시작
+2026-04-07 22:24:03 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:24:08 [watchdog] rag_server 시작
+2026-04-07 22:24:08 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:24:13 [watchdog] rag_server 시작
+2026-04-07 22:24:14 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:24:19 [watchdog] rag_server 시작
+2026-04-07 22:24:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:24:25 [watchdog] rag_server 시작
+2026-04-07 22:24:25 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:24:30 [watchdog] rag_server 시작
+2026-04-07 22:24:31 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:24:36 [watchdog] rag_server 시작
+2026-04-07 22:24:36 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:24:41 [watchdog] rag_server 시작
+2026-04-07 22:24:42 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:24:47 [watchdog] rag_server 시작
+2026-04-07 22:24:48 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:24:53 [watchdog] rag_server 시작
+2026-04-07 22:24:53 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:24:58 [watchdog] rag_server 시작
+2026-04-07 22:24:59 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:25:04 [watchdog] rag_server 시작
+2026-04-07 22:25:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:25:10 [watchdog] rag_server 시작
+2026-04-07 22:25:10 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:25:15 [watchdog] rag_server 시작
+2026-04-07 22:25:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:25:21 [watchdog] rag_server 시작
+2026-04-07 22:25:21 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:25:26 [watchdog] rag_server 시작
+2026-04-07 22:25:27 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:25:32 [watchdog] rag_server 시작
+2026-04-07 22:25:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:25:38 [watchdog] rag_server 시작
+2026-04-07 22:25:38 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:25:43 [watchdog] rag_server 시작
+2026-04-07 22:25:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:25:49 [watchdog] rag_server 시작
+2026-04-07 22:25:49 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:25:54 [watchdog] rag_server 시작
+2026-04-07 22:25:55 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:26:00 [watchdog] rag_server 시작
+2026-04-07 22:26:01 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:26:06 [watchdog] rag_server 시작
+2026-04-07 22:26:06 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:26:11 [watchdog] rag_server 시작
+2026-04-07 22:26:12 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:26:17 [watchdog] rag_server 시작
+2026-04-07 22:26:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:26:23 [watchdog] rag_server 시작
+2026-04-07 22:26:23 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:26:28 [watchdog] rag_server 시작
+2026-04-07 22:26:29 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:26:34 [watchdog] rag_server 시작
+2026-04-07 22:26:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:26:40 [watchdog] rag_server 시작
+2026-04-07 22:26:40 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:26:45 [watchdog] rag_server 시작
+2026-04-07 22:26:46 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:26:51 [watchdog] rag_server 시작
+2026-04-07 22:26:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:26:57 [watchdog] rag_server 시작
+2026-04-07 22:26:57 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:27:02 [watchdog] rag_server 시작
+2026-04-07 22:27:03 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:27:08 [watchdog] rag_server 시작
+2026-04-07 22:27:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:27:14 [watchdog] rag_server 시작
+2026-04-07 22:27:14 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:27:19 [watchdog] rag_server 시작
+2026-04-07 22:27:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:27:25 [watchdog] rag_server 시작
+2026-04-07 22:27:25 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:27:30 [watchdog] rag_server 시작
+2026-04-07 22:27:31 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:27:36 [watchdog] rag_server 시작
+2026-04-07 22:27:37 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:27:42 [watchdog] rag_server 시작
+2026-04-07 22:27:42 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:27:47 [watchdog] rag_server 시작
+2026-04-07 22:27:48 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:27:53 [watchdog] rag_server 시작
+2026-04-07 22:27:54 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:27:59 [watchdog] rag_server 시작
+2026-04-07 22:27:59 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:28:04 [watchdog] rag_server 시작
+2026-04-07 22:28:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:28:10 [watchdog] rag_server 시작
+2026-04-07 22:28:10 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:28:15 [watchdog] rag_server 시작
+2026-04-07 22:28:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:28:21 [watchdog] rag_server 시작
+2026-04-07 22:28:22 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:28:27 [watchdog] rag_server 시작
+2026-04-07 22:28:27 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:28:32 [watchdog] rag_server 시작
+2026-04-07 22:28:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:28:38 [watchdog] rag_server 시작
+2026-04-07 22:28:39 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:28:44 [watchdog] rag_server 시작
+2026-04-07 22:28:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:29:04 [watchdog] rag_server 시작
+2026-04-07 22:29:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:29:10 [watchdog] rag_server 시작
+2026-04-07 22:29:10 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:29:15 [watchdog] rag_server 시작
+2026-04-07 22:29:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:29:21 [watchdog] rag_server 시작
+2026-04-07 22:29:21 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:29:27 [watchdog] rag_server 시작
+2026-04-07 22:29:27 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:29:32 [watchdog] rag_server 시작
+2026-04-07 22:29:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:29:38 [watchdog] rag_server 시작
+2026-04-07 22:29:38 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:29:43 [watchdog] rag_server 시작
+2026-04-07 22:29:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:29:49 [watchdog] rag_server 시작
+2026-04-07 22:29:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:29:55 [watchdog] rag_server 시작
+2026-04-07 22:29:55 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:30:00 [watchdog] rag_server 시작
+2026-04-07 22:30:01 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:30:06 [watchdog] rag_server 시작
+2026-04-07 22:30:07 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:30:12 [watchdog] rag_server 시작
+2026-04-07 22:30:12 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:30:17 [watchdog] rag_server 시작
+2026-04-07 22:30:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:30:23 [watchdog] rag_server 시작
+2026-04-07 22:30:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:30:29 [watchdog] rag_server 시작
+2026-04-07 22:30:29 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:30:34 [watchdog] rag_server 시작
+2026-04-07 22:30:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:30:40 [watchdog] rag_server 시작
+2026-04-07 22:30:40 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:30:45 [watchdog] rag_server 시작
+2026-04-07 22:30:46 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:30:51 [watchdog] rag_server 시작
+2026-04-07 22:30:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:30:57 [watchdog] rag_server 시작
+2026-04-07 22:30:57 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:31:02 [watchdog] rag_server 시작
+2026-04-07 22:31:03 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:31:08 [watchdog] rag_server 시작
+2026-04-07 22:31:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:31:14 [watchdog] rag_server 시작
+2026-04-07 22:31:14 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:31:20 [watchdog] rag_server 시작
+2026-04-07 22:31:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:31:25 [watchdog] rag_server 시작
+2026-04-07 22:31:26 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:31:31 [watchdog] rag_server 시작
+2026-04-07 22:31:31 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:31:36 [watchdog] rag_server 시작
+2026-04-07 22:31:37 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:31:42 [watchdog] rag_server 시작
+2026-04-07 22:31:43 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:31:48 [watchdog] rag_server 시작
+2026-04-07 22:31:48 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:31:53 [watchdog] rag_server 시작
+2026-04-07 22:31:54 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:31:59 [watchdog] rag_server 시작
+2026-04-07 22:32:00 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:32:05 [watchdog] rag_server 시작
+2026-04-07 22:32:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:32:10 [watchdog] rag_server 시작
+2026-04-07 22:32:11 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:32:16 [watchdog] rag_server 시작
+2026-04-07 22:32:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:32:21 [watchdog] rag_server 시작
+2026-04-07 22:32:22 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:32:27 [watchdog] rag_server 시작
+2026-04-07 22:32:28 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:32:33 [watchdog] rag_server 시작
+2026-04-07 22:32:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:32:38 [watchdog] rag_server 시작
+2026-04-07 22:32:39 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:32:44 [watchdog] rag_server 시작
+2026-04-07 22:32:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:32:49 [watchdog] rag_server 시작
+2026-04-07 22:32:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:32:55 [watchdog] rag_server 시작
+2026-04-07 22:32:56 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:33:01 [watchdog] rag_server 시작
+2026-04-07 22:33:01 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:33:06 [watchdog] rag_server 시작
+2026-04-07 22:33:07 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:33:12 [watchdog] rag_server 시작
+2026-04-07 22:33:13 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:33:18 [watchdog] rag_server 시작
+2026-04-07 22:33:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:33:23 [watchdog] rag_server 시작
+2026-04-07 22:33:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:33:29 [watchdog] rag_server 시작
+2026-04-07 22:33:30 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:33:35 [watchdog] rag_server 시작
+2026-04-07 22:33:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:33:40 [watchdog] rag_server 시작
+2026-04-07 22:33:41 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:33:46 [watchdog] rag_server 시작
+2026-04-07 22:33:46 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:33:51 [watchdog] rag_server 시작
+2026-04-07 22:33:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:33:57 [watchdog] rag_server 시작
+2026-04-07 22:33:58 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:34:03 [watchdog] rag_server 시작
+2026-04-07 22:34:03 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:34:08 [watchdog] rag_server 시작
+2026-04-07 22:34:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:34:14 [watchdog] rag_server 시작
+2026-04-07 22:34:15 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:34:20 [watchdog] rag_server 시작
+2026-04-07 22:34:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:34:25 [watchdog] rag_server 시작
+2026-04-07 22:34:26 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:34:31 [watchdog] rag_server 시작
+2026-04-07 22:34:31 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:34:36 [watchdog] rag_server 시작
+2026-04-07 22:34:37 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:34:42 [watchdog] rag_server 시작
+2026-04-07 22:34:43 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:34:48 [watchdog] rag_server 시작
+2026-04-07 22:34:48 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:34:53 [watchdog] rag_server 시작
+2026-04-07 22:34:54 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:34:59 [watchdog] rag_server 시작
+2026-04-07 22:35:00 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:35:05 [watchdog] rag_server 시작
+2026-04-07 22:35:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:35:10 [watchdog] rag_server 시작
+2026-04-07 22:35:11 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:35:16 [watchdog] rag_server 시작
+2026-04-07 22:35:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:35:21 [watchdog] rag_server 시작
+2026-04-07 22:35:22 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:35:27 [watchdog] rag_server 시작
+2026-04-07 22:35:28 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:35:33 [watchdog] rag_server 시작
+2026-04-07 22:35:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:35:38 [watchdog] rag_server 시작
+2026-04-07 22:35:39 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:35:44 [watchdog] rag_server 시작
+2026-04-07 22:35:45 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:35:50 [watchdog] rag_server 시작
+2026-04-07 22:35:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:35:55 [watchdog] rag_server 시작
+2026-04-07 22:35:56 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:36:01 [watchdog] rag_server 시작
+2026-04-07 22:36:02 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:36:07 [watchdog] rag_server 시작
+2026-04-07 22:36:07 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:36:12 [watchdog] rag_server 시작
+2026-04-07 22:36:13 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:36:18 [watchdog] rag_server 시작
+2026-04-07 22:36:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:36:23 [watchdog] rag_server 시작
+2026-04-07 22:36:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:36:29 [watchdog] rag_server 시작
+2026-04-07 22:36:30 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:36:35 [watchdog] rag_server 시작
+2026-04-07 22:36:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:36:40 [watchdog] rag_server 시작
+2026-04-07 22:36:41 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:36:46 [watchdog] rag_server 시작
+2026-04-07 22:36:47 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:36:52 [watchdog] rag_server 시작
+2026-04-07 22:36:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:36:57 [watchdog] rag_server 시작
+2026-04-07 22:36:58 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:37:03 [watchdog] rag_server 시작
+2026-04-07 22:37:04 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:37:09 [watchdog] rag_server 시작
+2026-04-07 22:37:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:37:14 [watchdog] rag_server 시작
+2026-04-07 22:37:15 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:37:20 [watchdog] rag_server 시작
+2026-04-07 22:37:21 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:37:26 [watchdog] rag_server 시작
+2026-04-07 22:37:26 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:37:31 [watchdog] rag_server 시작
+2026-04-07 22:37:32 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:37:37 [watchdog] rag_server 시작
+2026-04-07 22:37:38 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:37:43 [watchdog] rag_server 시작
+2026-04-07 22:37:43 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:37:48 [watchdog] rag_server 시작
+2026-04-07 22:37:49 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:37:54 [watchdog] rag_server 시작
+2026-04-07 22:37:54 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:37:59 [watchdog] rag_server 시작
+2026-04-07 22:38:00 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:38:05 [watchdog] rag_server 시작
+2026-04-07 22:38:06 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:38:11 [watchdog] rag_server 시작
+2026-04-07 22:38:11 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:38:16 [watchdog] rag_server 시작
+2026-04-07 22:38:17 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:38:22 [watchdog] rag_server 시작
+2026-04-07 22:38:23 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:38:28 [watchdog] rag_server 시작
+2026-04-07 22:38:28 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:38:33 [watchdog] rag_server 시작
+2026-04-07 22:38:34 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:38:39 [watchdog] rag_server 시작
+2026-04-07 22:38:40 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:38:45 [watchdog] rag_server 시작
+2026-04-07 22:38:45 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:38:50 [watchdog] rag_server 시작
+2026-04-07 22:38:51 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:38:56 [watchdog] rag_server 시작
+2026-04-07 22:38:57 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:39:02 [watchdog] rag_server 시작
+2026-04-07 22:39:02 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:39:07 [watchdog] rag_server 시작
+2026-04-07 22:39:08 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:39:13 [watchdog] rag_server 시작
+2026-04-07 22:39:13 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:39:19 [watchdog] rag_server 시작
+2026-04-07 22:39:19 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:39:24 [watchdog] rag_server 시작
+2026-04-07 22:39:25 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:39:30 [watchdog] rag_server 시작
+2026-04-07 22:39:30 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:39:35 [watchdog] rag_server 시작
+2026-04-07 22:39:36 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:39:41 [watchdog] rag_server 시작
+2026-04-07 22:39:42 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:39:47 [watchdog] rag_server 시작
+2026-04-07 22:39:47 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:39:52 [watchdog] rag_server 시작
+2026-04-07 22:39:53 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:39:58 [watchdog] rag_server 시작
+2026-04-07 22:39:59 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:40:04 [watchdog] rag_server 시작
+2026-04-07 22:40:04 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:40:09 [watchdog] rag_server 시작
+2026-04-07 22:40:10 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:40:15 [watchdog] rag_server 시작
+2026-04-07 22:40:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:40:21 [watchdog] rag_server 시작
+2026-04-07 22:40:21 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:40:26 [watchdog] rag_server 시작
+2026-04-07 22:40:27 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:40:32 [watchdog] rag_server 시작
+2026-04-07 22:40:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:40:38 [watchdog] rag_server 시작
+2026-04-07 22:40:38 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:40:43 [watchdog] rag_server 시작
+2026-04-07 22:40:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:40:49 [watchdog] rag_server 시작
+2026-04-07 22:40:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:40:55 [watchdog] rag_server 시작
+2026-04-07 22:40:55 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:41:00 [watchdog] rag_server 시작
+2026-04-07 22:41:01 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:41:06 [watchdog] rag_server 시작
+2026-04-07 22:41:07 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:41:12 [watchdog] rag_server 시작
+2026-04-07 22:41:12 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:41:17 [watchdog] rag_server 시작
+2026-04-07 22:41:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:41:23 [watchdog] rag_server 시작
+2026-04-07 22:41:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:41:29 [watchdog] rag_server 시작
+2026-04-07 22:41:29 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:41:34 [watchdog] rag_server 시작
+2026-04-07 22:41:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:41:40 [watchdog] rag_server 시작
+2026-04-07 22:41:41 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:41:46 [watchdog] rag_server 시작
+2026-04-07 22:41:46 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:41:51 [watchdog] rag_server 시작
+2026-04-07 22:41:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:41:57 [watchdog] rag_server 시작
+2026-04-07 22:41:57 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:42:02 [watchdog] rag_server 시작
+2026-04-07 22:42:03 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:42:08 [watchdog] rag_server 시작
+2026-04-07 22:42:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:42:14 [watchdog] rag_server 시작
+2026-04-07 22:42:14 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:42:19 [watchdog] rag_server 시작
+2026-04-07 22:42:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:42:25 [watchdog] rag_server 시작
+2026-04-07 22:42:26 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:42:31 [watchdog] rag_server 시작
+2026-04-07 22:42:31 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:42:36 [watchdog] rag_server 시작
+2026-04-07 22:42:37 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:42:42 [watchdog] rag_server 시작
+2026-04-07 22:42:42 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:42:47 [watchdog] rag_server 시작
+2026-04-07 22:42:48 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:42:53 [watchdog] rag_server 시작
+2026-04-07 22:42:54 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:42:59 [watchdog] rag_server 시작
+2026-04-07 22:42:59 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:43:04 [watchdog] rag_server 시작
+2026-04-07 22:43:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:43:10 [watchdog] rag_server 시작
+2026-04-07 22:43:10 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:43:15 [watchdog] rag_server 시작
+2026-04-07 22:43:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:43:21 [watchdog] rag_server 시작
+2026-04-07 22:43:22 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:43:27 [watchdog] rag_server 시작
+2026-04-07 22:43:27 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:43:32 [watchdog] rag_server 시작
+2026-04-07 22:43:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:43:38 [watchdog] rag_server 시작
+2026-04-07 22:43:39 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:43:44 [watchdog] rag_server 시작
+2026-04-07 22:43:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:43:49 [watchdog] rag_server 시작
+2026-04-07 22:43:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:43:55 [watchdog] rag_server 시작
+2026-04-07 22:43:56 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:44:01 [watchdog] rag_server 시작
+2026-04-07 22:44:01 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:44:06 [watchdog] rag_server 시작
+2026-04-07 22:44:07 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:44:12 [watchdog] rag_server 시작
+2026-04-07 22:44:12 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:44:17 [watchdog] rag_server 시작
+2026-04-07 22:44:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:44:23 [watchdog] rag_server 시작
+2026-04-07 22:44:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:44:29 [watchdog] rag_server 시작
+2026-04-07 22:44:29 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:44:34 [watchdog] rag_server 시작
+2026-04-07 22:44:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:44:40 [watchdog] rag_server 시작
+2026-04-07 22:44:41 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:44:46 [watchdog] rag_server 시작
+2026-04-07 22:44:46 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:44:51 [watchdog] rag_server 시작
+2026-04-07 22:44:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:44:57 [watchdog] rag_server 시작
+2026-04-07 22:44:58 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:45:03 [watchdog] rag_server 시작
+2026-04-07 22:45:03 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:45:08 [watchdog] rag_server 시작
+2026-04-07 22:45:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:45:14 [watchdog] rag_server 시작
+2026-04-07 22:45:14 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:45:19 [watchdog] rag_server 시작
+2026-04-07 22:45:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:45:25 [watchdog] rag_server 시작
+2026-04-07 22:45:26 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:45:31 [watchdog] rag_server 시작
+2026-04-07 22:45:31 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:45:36 [watchdog] rag_server 시작
+2026-04-07 22:45:37 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:45:42 [watchdog] rag_server 시작
+2026-04-07 22:45:43 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:45:48 [watchdog] rag_server 시작
+2026-04-07 22:45:48 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:45:53 [watchdog] rag_server 시작
+2026-04-07 22:45:54 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:45:59 [watchdog] rag_server 시작
+2026-04-07 22:46:00 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:46:05 [watchdog] rag_server 시작
+2026-04-07 22:46:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:46:10 [watchdog] rag_server 시작
+2026-04-07 22:46:11 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:46:16 [watchdog] rag_server 시작
+2026-04-07 22:46:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:46:21 [watchdog] rag_server 시작
+2026-04-07 22:46:22 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:46:27 [watchdog] rag_server 시작
+2026-04-07 22:46:28 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:46:33 [watchdog] rag_server 시작
+2026-04-07 22:46:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:46:38 [watchdog] rag_server 시작
+2026-04-07 22:46:39 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:46:44 [watchdog] rag_server 시작
+2026-04-07 22:46:45 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:46:50 [watchdog] rag_server 시작
+2026-04-07 22:46:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:46:55 [watchdog] rag_server 시작
+2026-04-07 22:46:56 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:47:01 [watchdog] rag_server 시작
+2026-04-07 22:47:02 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:47:07 [watchdog] rag_server 시작
+2026-04-07 22:47:07 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:47:11 [watchdog] rag_server 시작
+2026-04-07 22:47:11 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:47:16 [watchdog] rag_server 시작
+2026-04-07 22:47:17 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:47:22 [watchdog] rag_server 시작
+2026-04-07 22:47:23 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:47:28 [watchdog] rag_server 시작
+2026-04-07 22:47:28 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:47:33 [watchdog] rag_server 시작
+2026-04-07 22:47:34 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:47:39 [watchdog] rag_server 시작
+2026-04-07 22:47:40 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:47:45 [watchdog] rag_server 시작
+2026-04-07 22:47:45 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:47:50 [watchdog] rag_server 시작
+2026-04-07 22:47:51 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:47:56 [watchdog] rag_server 시작
+2026-04-07 22:47:56 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:48:02 [watchdog] rag_server 시작
+2026-04-07 22:48:02 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:48:07 [watchdog] rag_server 시작
+2026-04-07 22:48:08 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:48:13 [watchdog] rag_server 시작
+2026-04-07 22:48:13 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:48:18 [watchdog] rag_server 시작
+2026-04-07 22:48:19 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:48:24 [watchdog] rag_server 시작
+2026-04-07 22:48:25 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:48:30 [watchdog] rag_server 시작
+2026-04-07 22:48:30 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:48:35 [watchdog] rag_server 시작
+2026-04-07 22:48:36 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:48:41 [watchdog] rag_server 시작
+2026-04-07 22:48:41 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:48:46 [watchdog] rag_server 시작
+2026-04-07 22:48:47 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:48:52 [watchdog] rag_server 시작
+2026-04-07 22:48:53 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:48:58 [watchdog] rag_server 시작
+2026-04-07 22:48:58 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:49:03 [watchdog] rag_server 시작
+2026-04-07 22:49:04 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:49:09 [watchdog] rag_server 시작
+2026-04-07 22:49:10 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:49:15 [watchdog] rag_server 시작
+2026-04-07 22:49:15 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:49:20 [watchdog] rag_server 시작
+2026-04-07 22:49:21 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:49:26 [watchdog] rag_server 시작
+2026-04-07 22:49:27 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:49:32 [watchdog] rag_server 시작
+2026-04-07 22:49:32 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:49:37 [watchdog] rag_server 시작
+2026-04-07 22:49:38 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:49:43 [watchdog] rag_server 시작
+2026-04-07 22:49:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:49:49 [watchdog] rag_server 시작
+2026-04-07 22:49:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:49:55 [watchdog] rag_server 시작
+2026-04-07 22:49:55 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:50:00 [watchdog] rag_server 시작
+2026-04-07 22:50:01 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:50:06 [watchdog] rag_server 시작
+2026-04-07 22:50:07 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:50:12 [watchdog] rag_server 시작
+2026-04-07 22:50:12 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:50:17 [watchdog] rag_server 시작
+2026-04-07 22:50:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:50:23 [watchdog] rag_server 시작
+2026-04-07 22:50:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:50:29 [watchdog] rag_server 시작
+2026-04-07 22:50:30 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:50:35 [watchdog] rag_server 시작
+2026-04-07 22:50:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:50:40 [watchdog] rag_server 시작
+2026-04-07 22:50:41 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:50:46 [watchdog] rag_server 시작
+2026-04-07 22:50:47 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:50:52 [watchdog] rag_server 시작
+2026-04-07 22:50:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:50:57 [watchdog] rag_server 시작
+2026-04-07 22:50:58 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:51:03 [watchdog] rag_server 시작
+2026-04-07 22:51:04 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:51:09 [watchdog] rag_server 시작
+2026-04-07 22:51:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:51:14 [watchdog] rag_server 시작
+2026-04-07 22:51:15 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:51:20 [watchdog] rag_server 시작
+2026-04-07 22:51:21 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:51:26 [watchdog] rag_server 시작
+2026-04-07 22:51:26 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:51:32 [watchdog] rag_server 시작
+2026-04-07 22:51:32 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:51:37 [watchdog] rag_server 시작
+2026-04-07 22:51:38 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:51:43 [watchdog] rag_server 시작
+2026-04-07 22:51:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:51:49 [watchdog] rag_server 시작
+2026-04-07 22:51:49 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:51:54 [watchdog] rag_server 시작
+2026-04-07 22:51:55 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:52:00 [watchdog] rag_server 시작
+2026-04-07 22:52:01 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:52:06 [watchdog] rag_server 시작
+2026-04-07 22:52:06 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:52:11 [watchdog] rag_server 시작
+2026-04-07 22:52:12 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:52:17 [watchdog] rag_server 시작
+2026-04-07 22:52:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:52:23 [watchdog] rag_server 시작
+2026-04-07 22:52:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:52:29 [watchdog] rag_server 시작
+2026-04-07 22:52:29 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:52:34 [watchdog] rag_server 시작
+2026-04-07 22:52:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:52:40 [watchdog] rag_server 시작
+2026-04-07 22:52:41 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:52:46 [watchdog] rag_server 시작
+2026-04-07 22:52:46 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:52:51 [watchdog] rag_server 시작
+2026-04-07 22:52:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:52:57 [watchdog] rag_server 시작
+2026-04-07 22:52:58 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:53:03 [watchdog] rag_server 시작
+2026-04-07 22:53:04 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:53:09 [watchdog] rag_server 시작
+2026-04-07 22:53:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:53:14 [watchdog] rag_server 시작
+2026-04-07 22:53:14 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:53:19 [watchdog] rag_server 시작
+2026-04-07 22:53:19 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:53:24 [watchdog] rag_server 시작
+2026-04-07 22:53:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:53:29 [watchdog] rag_server 시작
+2026-04-07 22:53:29 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:53:34 [watchdog] rag_server 시작
+2026-04-07 22:53:34 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:53:39 [watchdog] rag_server 시작
+2026-04-07 22:53:39 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:53:44 [watchdog] rag_server 시작
+2026-04-07 22:53:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:53:49 [watchdog] rag_server 시작
+2026-04-07 22:53:49 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:53:54 [watchdog] rag_server 시작
+2026-04-07 22:53:54 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:53:59 [watchdog] rag_server 시작
+2026-04-07 22:53:59 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:54:04 [watchdog] rag_server 시작
+2026-04-07 22:54:04 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:54:09 [watchdog] rag_server 시작
+2026-04-07 22:54:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:54:14 [watchdog] rag_server 시작
+2026-04-07 22:54:14 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:54:19 [watchdog] rag_server 시작
+2026-04-07 22:54:19 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:54:24 [watchdog] rag_server 시작
+2026-04-07 22:54:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:54:29 [watchdog] rag_server 시작
+2026-04-07 22:54:29 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:54:34 [watchdog] rag_server 시작
+2026-04-07 22:54:34 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:54:39 [watchdog] rag_server 시작
+2026-04-07 22:54:39 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:54:44 [watchdog] rag_server 시작
+2026-04-07 22:54:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:54:49 [watchdog] rag_server 시작
+2026-04-07 22:54:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:54:55 [watchdog] rag_server 시작
+2026-04-07 22:54:55 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:55:00 [watchdog] rag_server 시작
+2026-04-07 22:55:00 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:55:05 [watchdog] rag_server 시작
+2026-04-07 22:55:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:55:10 [watchdog] rag_server 시작
+2026-04-07 22:55:10 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:55:15 [watchdog] rag_server 시작
+2026-04-07 22:55:15 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:55:20 [watchdog] rag_server 시작
+2026-04-07 22:55:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:55:25 [watchdog] rag_server 시작
+2026-04-07 22:55:25 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:55:30 [watchdog] rag_server 시작
+2026-04-07 22:55:30 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:55:35 [watchdog] rag_server 시작
+2026-04-07 22:55:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:55:40 [watchdog] rag_server 시작
+2026-04-07 22:55:40 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:55:45 [watchdog] rag_server 시작
+2026-04-07 22:55:45 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:55:50 [watchdog] rag_server 시작
+2026-04-07 22:55:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:55:55 [watchdog] rag_server 시작
+2026-04-07 22:55:55 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:56:00 [watchdog] rag_server 시작
+2026-04-07 22:56:00 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:56:05 [watchdog] rag_server 시작
+2026-04-07 22:56:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:56:10 [watchdog] rag_server 시작
+2026-04-07 22:56:10 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:56:15 [watchdog] rag_server 시작
+2026-04-07 22:56:15 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:56:20 [watchdog] rag_server 시작
+2026-04-07 22:56:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:56:25 [watchdog] rag_server 시작
+2026-04-07 22:56:25 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:56:30 [watchdog] rag_server 시작
+2026-04-07 22:56:30 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:56:35 [watchdog] rag_server 시작
+2026-04-07 22:56:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:56:41 [watchdog] rag_server 시작
+2026-04-07 22:56:41 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:56:46 [watchdog] rag_server 시작
+2026-04-07 22:56:46 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:56:51 [watchdog] rag_server 시작
+2026-04-07 22:56:51 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:56:56 [watchdog] rag_server 시작
+2026-04-07 22:56:56 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:57:01 [watchdog] rag_server 시작
+2026-04-07 22:57:01 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:57:06 [watchdog] rag_server 시작
+2026-04-07 22:57:06 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:57:11 [watchdog] rag_server 시작
+2026-04-07 22:57:11 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:57:16 [watchdog] rag_server 시작
+2026-04-07 22:57:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:57:21 [watchdog] rag_server 시작
+2026-04-07 22:57:21 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:57:26 [watchdog] rag_server 시작
+2026-04-07 22:57:26 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:57:31 [watchdog] rag_server 시작
+2026-04-07 22:57:31 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:57:36 [watchdog] rag_server 시작
+2026-04-07 22:57:36 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:57:41 [watchdog] rag_server 시작
+2026-04-07 22:57:41 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:57:46 [watchdog] rag_server 시작
+2026-04-07 22:57:46 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:57:51 [watchdog] rag_server 시작
+2026-04-07 22:57:51 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:57:56 [watchdog] rag_server 시작
+2026-04-07 22:57:56 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:58:01 [watchdog] rag_server 시작
+2026-04-07 22:58:01 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:58:06 [watchdog] rag_server 시작
+2026-04-07 22:58:06 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:58:11 [watchdog] rag_server 시작
+2026-04-07 22:58:11 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:58:16 [watchdog] rag_server 시작
+2026-04-07 22:58:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:58:21 [watchdog] rag_server 시작
+2026-04-07 22:58:21 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:58:26 [watchdog] rag_server 시작
+2026-04-07 22:58:26 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:58:31 [watchdog] rag_server 시작
+2026-04-07 22:58:32 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:58:37 [watchdog] rag_server 시작
+2026-04-07 22:58:37 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:58:42 [watchdog] rag_server 시작
+2026-04-07 22:58:42 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:58:47 [watchdog] rag_server 시작
+2026-04-07 22:58:47 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:58:52 [watchdog] rag_server 시작
+2026-04-07 22:58:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:58:57 [watchdog] rag_server 시작
+2026-04-07 22:58:57 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:59:02 [watchdog] rag_server 시작
+2026-04-07 22:59:02 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:59:07 [watchdog] rag_server 시작
+2026-04-07 22:59:07 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:59:12 [watchdog] rag_server 시작
+2026-04-07 22:59:12 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:59:17 [watchdog] rag_server 시작
+2026-04-07 22:59:17 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:59:22 [watchdog] rag_server 시작
+2026-04-07 22:59:22 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:59:27 [watchdog] rag_server 시작
+2026-04-07 22:59:27 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:59:32 [watchdog] rag_server 시작
+2026-04-07 22:59:32 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:59:37 [watchdog] rag_server 시작
+2026-04-07 22:59:37 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:59:42 [watchdog] rag_server 시작
+2026-04-07 22:59:42 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:59:47 [watchdog] rag_server 시작
+2026-04-07 22:59:47 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:59:52 [watchdog] rag_server 시작
+2026-04-07 22:59:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 22:59:57 [watchdog] rag_server 시작
+2026-04-07 22:59:57 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:00:02 [watchdog] rag_server 시작
+2026-04-07 23:00:02 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:00:07 [watchdog] rag_server 시작
+2026-04-07 23:00:07 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:00:12 [watchdog] rag_server 시작
+2026-04-07 23:00:12 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:00:17 [watchdog] rag_server 시작
+2026-04-07 23:00:17 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:00:22 [watchdog] rag_server 시작
+2026-04-07 23:00:23 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:00:28 [watchdog] rag_server 시작
+2026-04-07 23:00:28 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:00:33 [watchdog] rag_server 시작
+2026-04-07 23:00:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:00:38 [watchdog] rag_server 시작
+2026-04-07 23:00:38 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:00:43 [watchdog] rag_server 시작
+2026-04-07 23:00:43 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:00:48 [watchdog] rag_server 시작
+2026-04-07 23:00:48 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:00:53 [watchdog] rag_server 시작
+2026-04-07 23:00:53 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:00:58 [watchdog] rag_server 시작
+2026-04-07 23:00:58 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:01:03 [watchdog] rag_server 시작
+2026-04-07 23:01:03 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:01:08 [watchdog] rag_server 시작
+2026-04-07 23:01:08 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:01:13 [watchdog] rag_server 시작
+2026-04-07 23:01:13 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:01:18 [watchdog] rag_server 시작
+2026-04-07 23:01:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:01:23 [watchdog] rag_server 시작
+2026-04-07 23:01:23 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:01:28 [watchdog] rag_server 시작
+2026-04-07 23:01:28 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:01:33 [watchdog] rag_server 시작
+2026-04-07 23:01:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:01:38 [watchdog] rag_server 시작
+2026-04-07 23:01:38 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:01:43 [watchdog] rag_server 시작
+2026-04-07 23:01:43 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:01:48 [watchdog] rag_server 시작
+2026-04-07 23:01:48 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:01:53 [watchdog] rag_server 시작
+2026-04-07 23:01:53 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:01:58 [watchdog] rag_server 시작
+2026-04-07 23:01:58 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:02:03 [watchdog] rag_server 시작
+2026-04-07 23:02:03 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:02:08 [watchdog] rag_server 시작
+2026-04-07 23:02:08 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:02:13 [watchdog] rag_server 시작
+2026-04-07 23:02:13 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:02:18 [watchdog] rag_server 시작
+2026-04-07 23:02:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:02:23 [watchdog] rag_server 시작
+2026-04-07 23:02:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:02:29 [watchdog] rag_server 시작
+2026-04-07 23:02:29 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:02:34 [watchdog] rag_server 시작
+2026-04-07 23:02:34 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:02:39 [watchdog] rag_server 시작
+2026-04-07 23:02:39 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:02:44 [watchdog] rag_server 시작
+2026-04-07 23:02:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:02:49 [watchdog] rag_server 시작
+2026-04-07 23:02:49 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:02:54 [watchdog] rag_server 시작
+2026-04-07 23:02:54 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:02:59 [watchdog] rag_server 시작
+2026-04-07 23:02:59 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:03:04 [watchdog] rag_server 시작
+2026-04-07 23:03:04 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:03:09 [watchdog] rag_server 시작
+2026-04-07 23:03:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:03:14 [watchdog] rag_server 시작
+2026-04-07 23:03:14 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:03:19 [watchdog] rag_server 시작
+2026-04-07 23:03:19 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:03:24 [watchdog] rag_server 시작
+2026-04-07 23:03:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:03:29 [watchdog] rag_server 시작
+2026-04-07 23:03:29 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:03:34 [watchdog] rag_server 시작
+2026-04-07 23:03:34 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:03:39 [watchdog] rag_server 시작
+2026-04-07 23:03:39 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:03:44 [watchdog] rag_server 시작
+2026-04-07 23:03:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:03:49 [watchdog] rag_server 시작
+2026-04-07 23:03:49 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:03:54 [watchdog] rag_server 시작
+2026-04-07 23:03:54 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:03:59 [watchdog] rag_server 시작
+2026-04-07 23:03:59 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:04:04 [watchdog] rag_server 시작
+2026-04-07 23:04:04 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:04:09 [watchdog] rag_server 시작
+2026-04-07 23:04:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:04:14 [watchdog] rag_server 시작
+2026-04-07 23:04:15 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:04:20 [watchdog] rag_server 시작
+2026-04-07 23:04:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:04:25 [watchdog] rag_server 시작
+2026-04-07 23:04:25 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:04:30 [watchdog] rag_server 시작
+2026-04-07 23:04:30 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:04:35 [watchdog] rag_server 시작
+2026-04-07 23:04:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:04:40 [watchdog] rag_server 시작
+2026-04-07 23:04:40 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:04:45 [watchdog] rag_server 시작
+2026-04-07 23:04:45 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:04:50 [watchdog] rag_server 시작
+2026-04-07 23:04:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:04:55 [watchdog] rag_server 시작
+2026-04-07 23:04:55 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:05:00 [watchdog] rag_server 시작
+2026-04-07 23:05:00 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:05:05 [watchdog] rag_server 시작
+2026-04-07 23:05:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:05:10 [watchdog] rag_server 시작
+2026-04-07 23:05:10 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:05:15 [watchdog] rag_server 시작
+2026-04-07 23:05:15 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:05:20 [watchdog] rag_server 시작
+2026-04-07 23:05:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:05:25 [watchdog] rag_server 시작
+2026-04-07 23:05:25 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:05:30 [watchdog] rag_server 시작
+2026-04-07 23:05:30 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:05:35 [watchdog] rag_server 시작
+2026-04-07 23:05:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:05:40 [watchdog] rag_server 시작
+2026-04-07 23:05:40 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:05:45 [watchdog] rag_server 시작
+2026-04-07 23:05:45 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:05:50 [watchdog] rag_server 시작
+2026-04-07 23:05:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:05:55 [watchdog] rag_server 시작
+2026-04-07 23:05:55 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:06:00 [watchdog] rag_server 시작
+2026-04-07 23:06:00 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:06:05 [watchdog] rag_server 시작
+2026-04-07 23:06:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:06:10 [watchdog] rag_server 시작
+2026-04-07 23:06:11 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:06:16 [watchdog] rag_server 시작
+2026-04-07 23:06:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:06:21 [watchdog] rag_server 시작
+2026-04-07 23:06:21 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:06:26 [watchdog] rag_server 시작
+2026-04-07 23:06:26 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:06:31 [watchdog] rag_server 시작
+2026-04-07 23:06:31 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:06:36 [watchdog] rag_server 시작
+2026-04-07 23:06:36 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:06:41 [watchdog] rag_server 시작
+2026-04-07 23:06:41 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:06:46 [watchdog] rag_server 시작
+2026-04-07 23:06:46 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:06:51 [watchdog] rag_server 시작
+2026-04-07 23:06:51 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:06:56 [watchdog] rag_server 시작
+2026-04-07 23:06:56 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:07:01 [watchdog] rag_server 시작
+2026-04-07 23:07:01 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:07:06 [watchdog] rag_server 시작
+2026-04-07 23:07:06 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:07:11 [watchdog] rag_server 시작
+2026-04-07 23:07:11 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:07:16 [watchdog] rag_server 시작
+2026-04-07 23:07:16 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:07:21 [watchdog] rag_server 시작
+2026-04-07 23:07:21 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:07:26 [watchdog] rag_server 시작
+2026-04-07 23:07:26 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:07:31 [watchdog] rag_server 시작
+2026-04-07 23:07:31 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:07:36 [watchdog] rag_server 시작
+2026-04-07 23:07:36 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:07:41 [watchdog] rag_server 시작
+2026-04-07 23:07:41 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:07:46 [watchdog] rag_server 시작
+2026-04-07 23:07:46 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:07:51 [watchdog] rag_server 시작
+2026-04-07 23:07:51 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:07:56 [watchdog] rag_server 시작
+2026-04-07 23:07:56 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:08:02 [watchdog] rag_server 시작
+2026-04-07 23:08:02 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:08:07 [watchdog] rag_server 시작
+2026-04-07 23:08:07 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:08:12 [watchdog] rag_server 시작
+2026-04-07 23:08:12 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:08:17 [watchdog] rag_server 시작
+2026-04-07 23:08:17 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:08:22 [watchdog] rag_server 시작
+2026-04-07 23:08:22 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:08:27 [watchdog] rag_server 시작
+2026-04-07 23:08:27 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:08:32 [watchdog] rag_server 시작
+2026-04-07 23:08:32 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:08:37 [watchdog] rag_server 시작
+2026-04-07 23:08:37 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:08:42 [watchdog] rag_server 시작
+2026-04-07 23:08:42 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:08:47 [watchdog] rag_server 시작
+2026-04-07 23:08:47 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:08:52 [watchdog] rag_server 시작
+2026-04-07 23:08:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:08:57 [watchdog] rag_server 시작
+2026-04-07 23:08:57 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:09:02 [watchdog] rag_server 시작
+2026-04-07 23:09:02 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:09:07 [watchdog] rag_server 시작
+2026-04-07 23:09:07 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:09:12 [watchdog] rag_server 시작
+2026-04-07 23:09:12 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:09:17 [watchdog] rag_server 시작
+2026-04-07 23:09:17 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:09:22 [watchdog] rag_server 시작
+2026-04-07 23:09:22 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:09:27 [watchdog] rag_server 시작
+2026-04-07 23:09:27 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:09:32 [watchdog] rag_server 시작
+2026-04-07 23:09:32 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:09:37 [watchdog] rag_server 시작
+2026-04-07 23:09:37 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:09:42 [watchdog] rag_server 시작
+2026-04-07 23:09:42 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:09:47 [watchdog] rag_server 시작
+2026-04-07 23:09:47 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:09:52 [watchdog] rag_server 시작
+2026-04-07 23:09:52 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:09:58 [watchdog] rag_server 시작
+2026-04-07 23:09:58 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:10:03 [watchdog] rag_server 시작
+2026-04-07 23:10:03 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:10:08 [watchdog] rag_server 시작
+2026-04-07 23:10:08 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:10:13 [watchdog] rag_server 시작
+2026-04-07 23:10:13 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:10:18 [watchdog] rag_server 시작
+2026-04-07 23:10:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:10:23 [watchdog] rag_server 시작
+2026-04-07 23:10:23 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:10:28 [watchdog] rag_server 시작
+2026-04-07 23:10:28 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:10:33 [watchdog] rag_server 시작
+2026-04-07 23:10:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:10:38 [watchdog] rag_server 시작
+2026-04-07 23:10:38 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:10:43 [watchdog] rag_server 시작
+2026-04-07 23:10:43 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:10:48 [watchdog] rag_server 시작
+2026-04-07 23:10:48 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:10:53 [watchdog] rag_server 시작
+2026-04-07 23:10:53 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:10:58 [watchdog] rag_server 시작
+2026-04-07 23:10:58 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:11:03 [watchdog] rag_server 시작
+2026-04-07 23:11:03 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:11:08 [watchdog] rag_server 시작
+2026-04-07 23:11:08 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:11:13 [watchdog] rag_server 시작
+2026-04-07 23:11:13 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:11:18 [watchdog] rag_server 시작
+2026-04-07 23:11:18 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:11:23 [watchdog] rag_server 시작
+2026-04-07 23:11:23 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:11:28 [watchdog] rag_server 시작
+2026-04-07 23:11:28 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:11:33 [watchdog] rag_server 시작
+2026-04-07 23:11:33 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:11:38 [watchdog] rag_server 시작
+2026-04-07 23:11:38 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:11:43 [watchdog] rag_server 시작
+2026-04-07 23:11:43 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:11:48 [watchdog] rag_server 시작
+2026-04-07 23:11:49 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:11:54 [watchdog] rag_server 시작
+2026-04-07 23:11:54 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:11:59 [watchdog] rag_server 시작
+2026-04-07 23:11:59 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:12:04 [watchdog] rag_server 시작
+2026-04-07 23:12:04 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:12:09 [watchdog] rag_server 시작
+2026-04-07 23:12:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:12:14 [watchdog] rag_server 시작
+2026-04-07 23:12:14 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:12:19 [watchdog] rag_server 시작
+2026-04-07 23:12:19 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:12:24 [watchdog] rag_server 시작
+2026-04-07 23:12:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:12:29 [watchdog] rag_server 시작
+2026-04-07 23:12:29 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:12:34 [watchdog] rag_server 시작
+2026-04-07 23:12:34 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:12:39 [watchdog] rag_server 시작
+2026-04-07 23:12:39 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:12:44 [watchdog] rag_server 시작
+2026-04-07 23:12:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:12:49 [watchdog] rag_server 시작
+2026-04-07 23:12:49 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:12:54 [watchdog] rag_server 시작
+2026-04-07 23:12:54 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:12:59 [watchdog] rag_server 시작
+2026-04-07 23:12:59 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:13:04 [watchdog] rag_server 시작
+2026-04-07 23:13:04 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:13:09 [watchdog] rag_server 시작
+2026-04-07 23:13:09 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:13:14 [watchdog] rag_server 시작
+2026-04-07 23:13:14 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:13:19 [watchdog] rag_server 시작
+2026-04-07 23:13:19 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:13:24 [watchdog] rag_server 시작
+2026-04-07 23:13:24 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:13:29 [watchdog] rag_server 시작
+2026-04-07 23:13:29 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:13:34 [watchdog] rag_server 시작
+2026-04-07 23:13:34 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:13:39 [watchdog] rag_server 시작
+2026-04-07 23:13:39 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:13:44 [watchdog] rag_server 시작
+2026-04-07 23:13:44 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:13:50 [watchdog] rag_server 시작
+2026-04-07 23:13:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:13:55 [watchdog] rag_server 시작
+2026-04-07 23:13:55 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:14:00 [watchdog] rag_server 시작
+2026-04-07 23:14:00 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:14:05 [watchdog] rag_server 시작
+2026-04-07 23:14:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:14:10 [watchdog] rag_server 시작
+2026-04-07 23:14:10 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:14:15 [watchdog] rag_server 시작
+2026-04-07 23:14:15 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:14:20 [watchdog] rag_server 시작
+2026-04-07 23:14:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:14:25 [watchdog] rag_server 시작
+2026-04-07 23:14:25 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:14:30 [watchdog] rag_server 시작
+2026-04-07 23:14:30 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:14:35 [watchdog] rag_server 시작
+2026-04-07 23:14:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:14:40 [watchdog] rag_server 시작
+2026-04-07 23:14:40 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:14:45 [watchdog] rag_server 시작
+2026-04-07 23:14:45 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:14:50 [watchdog] rag_server 시작
+2026-04-07 23:14:50 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:14:55 [watchdog] rag_server 시작
+2026-04-07 23:14:55 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:15:00 [watchdog] rag_server 시작
+2026-04-07 23:15:00 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:15:05 [watchdog] rag_server 시작
+2026-04-07 23:15:05 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:15:10 [watchdog] rag_server 시작
+2026-04-07 23:15:10 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:15:15 [watchdog] rag_server 시작
+2026-04-07 23:15:15 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:15:20 [watchdog] rag_server 시작
+2026-04-07 23:15:20 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:15:25 [watchdog] rag_server 시작
+2026-04-07 23:15:25 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:15:30 [watchdog] rag_server 시작
+2026-04-07 23:15:30 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:15:35 [watchdog] rag_server 시작
+2026-04-07 23:15:35 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:15:40 [watchdog] rag_server 시작
+2026-04-07 23:15:41 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:15:46 [watchdog] rag_server 시작
+2026-04-07 23:15:46 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:15:51 [watchdog] rag_server 시작
+2026-04-07 23:15:51 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:15:56 [watchdog] rag_server 시작
+2026-04-07 23:15:56 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작
+2026-04-07 23:16:01 [watchdog] rag_server 시작
+2026-04-07 23:16:01 [watchdog] 비정상 종료 (exit 1) → 5초 후 재시작

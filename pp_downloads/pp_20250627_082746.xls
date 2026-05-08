@@ -1,0 +1,99 @@
+
+
+
+<html>
+<head>
+	<style>	
+		table th {
+			text-align:center;
+			background: #e5e9f1;
+			mso-number-format:"\@";
+		}
+		/*
+		table td {
+			mso-number-format:"\@";
+		}
+		*/
+	</style>	
+</head>
+
+<body>
+
+<table width="100%" class="btableN" border="1" id="tableListSum">
+		<tbody>
+			<tr>
+				<th width="4%" rowspan="2" id="LABEL_SUM">총<br>사용량</th>
+				<td width="8%" rowspan="2" id="F_AP_QT" class="center">15,169.74 kWh</td>
+				<th width="3%" rowspan="2">최대<br>수요</th>
+				<td width="8%" rowspan="2" id="MAX_PWR" class="center">731.28 kW</td>
+				<th width="4%" rowspan="2">무효<br>전력량</th>
+				<th width="5%">지상</th>
+				<td width="8%" id="F_LARAP_QT" class="center">4,602.66 kVarh</td>
+				<th width="3%" rowspan="2">CO2</th>
+				<td width="8%" rowspan="2" id="CO2" class="center" style="border-right:1px solid #fff;">6.89 tCO2</td>
+			</tr>
+			<tr>
+				<th>진상</th>
+				<td id="F_LERAP_QT" class="center" style="border-right:1px solid #bfbfbf;">0.00 kVarh</td>
+			</tr>
+		</tbody>
+	</table><br><table width="100%" border="1" class="btableN" id="tableListHour">
+		<thead>
+			<tr>
+				<th rowspan="2">시</th>
+				<th rowspan="2" id="LABEL_ONE_1">사용량<br>(kWh)</th>
+				<th rowspan="2"><nobr>최대수요<br>(kW)</nobr></th>
+				<th colspan="2">무효전력 (kVarh)</th>
+				<th rowspan="2">CO2<br>(tCO2)</th>
+				<th colspan="2">역률 (%)</th>				
+				<th rowspan="2">시</th>
+				<th rowspan="2" id="LABEL_ONE_2">사용량<br>(kWh)</th>
+				<th rowspan="2"><nobr>최대수요<br>(kW)</nobr></th>
+				<th colspan="2">무효전력 (kVarh)</th>
+				<th rowspan="2">CO2<br>(tCO2)</th>
+				<th colspan="2" style="border-right:1px solid #fff;">역률 (%)</th>				
+			</tr>
+			<tr>
+				<th>지상</th>
+				<th>진상</th>
+				<th>지상</th>
+				<th>진상</th>
+				<th>지상</th>
+				<th>진상</th>
+				<th>지상</th>
+				<th style="border-right:1px solid #fff;">진상</th>								
+			</tr>
+		</thead>
+		<tbody><tr>  <th>01</th><td>568.62</td><td>578.16</td><td>188.88</td><td>0.00</td><td>0.26</td><td>94.90</td><td>100.00</td>  <th>13</th><td>639.06</td><td>705.12</td><td>187.38</td><td>0.00</td><td>0.29</td><td>95.96</td><td>100.00</td></tr><tr>  <th>02</th><td>610.74</td><td>619.68</td><td>190.20</td><td>0.00</td><td>0.28</td><td>95.48</td><td>100.00</td>  <th>14</th><td>642.06</td><td>724.08</td><td>182.94</td><td>0.00</td><td>0.29</td><td>96.17</td><td>100.00</td></tr><tr>  <th>03</th><td>623.34</td><td>633.60</td><td>192.78</td><td>0.00</td><td>0.28</td><td>95.54</td><td>100.00</td>  <th>15</th><td>722.64</td><td>731.28</td><td>206.40</td><td>0.00</td><td>0.33</td><td>96.15</td><td>100.00</td></tr><tr>  <th>04</th><td>623.04</td><td>628.80</td><td>194.82</td><td>0.00</td><td>0.28</td><td>95.44</td><td>100.00</td>  <th>16</th><td>703.74</td><td>720.00</td><td>204.84</td><td>0.00</td><td>0.32</td><td>96.02</td><td>100.00</td></tr><tr>  <th>05</th><td>597.84</td><td>619.92</td><td>192.78</td><td>0.00</td><td>0.27</td><td>95.17</td><td>100.00</td>  <th>17</th><td>691.80</td><td>702.00</td><td>204.54</td><td>0.00</td><td>0.31</td><td>95.90</td><td>100.00</td></tr><tr>  <th>06</th><td>563.46</td><td>579.84</td><td>184.38</td><td>0.00</td><td>0.26</td><td>95.04</td><td>100.00</td>  <th>18</th><td>600.00</td><td>659.28</td><td>180.60</td><td>0.00</td><td>0.27</td><td>95.76</td><td>100.00</td></tr><tr>  <th>07</th><td>579.24</td><td>585.36</td><td>182.70</td><td>0.00</td><td>0.26</td><td>95.37</td><td>100.00</td>  <th>19</th><td>564.90</td><td>571.44</td><td>169.68</td><td>0.00</td><td>0.26</td><td>95.77</td><td>100.00</td></tr><tr>  <th>08</th><td>576.24</td><td>581.76</td><td>180.24</td><td>0.00</td><td>0.26</td><td>95.44</td><td>100.00</td>  <th>20</th><td>574.08</td><td>593.28</td><td>170.94</td><td>0.00</td><td>0.26</td><td>95.84</td><td>100.00</td></tr><tr>  <th>09</th><td>633.78</td><td>707.28</td><td>197.40</td><td>0.00</td><td>0.29</td><td>95.48</td><td>100.00</td>  <th>21</th><td>631.56</td><td>636.00</td><td>185.40</td><td>0.00</td><td>0.29</td><td>95.95</td><td>100.00</td></tr><tr>  <th>10</th><td>707.52</td><td>715.68</td><td>207.84</td><td>0.00</td><td>0.32</td><td>95.95</td><td>100.00</td>  <th>22</th><td>624.30</td><td>631.92</td><td>198.48</td><td>0.00</td><td>0.28</td><td>95.30</td><td>100.00</td></tr><tr>  <th>11</th><td>707.04</td><td>731.04</td><td>196.08</td><td>0.00</td><td>0.32</td><td>96.36</td><td>100.00</td>  <th>23</th><td>631.80</td><td>640.08</td><td>201.66</td><td>0.00</td><td>0.29</td><td>95.26</td><td>100.00</td></tr><tr>  <th>12</th><td>709.32</td><td>719.04</td><td>196.68</td><td>0.00</td><td>0.32</td><td>96.36</td><td>100.00</td>  <th>24</th><td>643.62</td><td>656.16</td><td>205.02</td><td>0.00</td><td>0.29</td><td>95.28</td><td>100.00</td></tr></tbody>
+	</table><br><table width="100%" border="1" class="btableN" id="tableListChart">
+		<thead>
+			<tr>
+				<th rowspan="2">시</th>
+				<th rowspan="2" id="LABEL_MINUTE_1">사용량<br>(kWh)</th>
+				<th rowspan="2"><nobr>최대수요<br>(kW)</nobr></th>
+				<th colspan="2">무효전력 (kVarh)</th>
+				<th rowspan="2">CO2<br>(tCO2)</th>
+				<th colspan="2">역률 (%)</th>				
+				<th rowspan="2">시</th>
+				<th rowspan="2" id="LABEL_MINUTE_2">사용량<br>(kWh)</th>
+				<th rowspan="2"><nobr>최대수요<br>(kW)</nobr></th>
+				<th colspan="2">무효전력 (kVarh)</th>
+				<th rowspan="2">CO2<br>(tCO2)</th>
+				<th colspan="2" style="border-right:1px solid #fff;">역률 (%)</th>				
+			</tr>
+			<tr>
+				<th>지상</th>
+				<th>진상</th>
+				<th>지상</th>
+				<th>진상</th>
+				<th>지상</th>
+				<th>진상</th>
+				<th>지상</th>
+				<th style="border-right:1px solid #fff;">진상</th>								
+			</tr>
+		</thead>
+		<tbody><tr>  <th>00:15</th><td>139.14</td><td>556.56</td><td>48.06</td><td>0.00</td><td>0.06</td><td>94.52</td><td>100.00</td>  <th>12:15</th><td>176.28</td><td>705.12</td><td>49.98</td><td>0.00</td><td>0.08</td><td>96.21</td><td>100.00</td></tr><tr>  <th>00:30</th><td>144.54</td><td>578.16</td><td>48.42</td><td>0.00</td><td>0.07</td><td>94.82</td><td>100.00</td>  <th>12:30</th><td>167.82</td><td>671.28</td><td>49.08</td><td>0.00</td><td>0.08</td><td>95.98</td><td>100.00</td></tr><tr>  <th>00:45</th><td>140.52</td><td>562.08</td><td>45.84</td><td>0.00</td><td>0.06</td><td>95.07</td><td>100.00</td>  <th>12:45</th><td>151.26</td><td>605.04</td><td>45.78</td><td>0.00</td><td>0.07</td><td>95.71</td><td>100.00</td></tr><tr>  <th>01:00</th><td>144.42</td><td>577.68</td><td>46.56</td><td>0.00</td><td>0.07</td><td>95.18</td><td>100.00</td>  <th>13:00</th><td>143.70</td><td>574.80</td><td>42.54</td><td>0.00</td><td>0.07</td><td>95.89</td><td>100.00</td></tr><tr>  <th>01:15</th><td>151.56</td><td>606.24</td><td>47.34</td><td>0.00</td><td>0.07</td><td>95.45</td><td>100.00</td>  <th>13:15</th><td>145.98</td><td>583.92</td><td>42.24</td><td>0.00</td><td>0.07</td><td>96.06</td><td>100.00</td></tr><tr>  <th>01:30</th><td>151.56</td><td>606.24</td><td>47.82</td><td>0.00</td><td>0.07</td><td>95.37</td><td>100.00</td>  <th>13:30</th><td>145.74</td><td>582.96</td><td>41.52</td><td>0.00</td><td>0.07</td><td>96.17</td><td>100.00</td></tr><tr>  <th>01:45</th><td>152.70</td><td>610.80</td><td>47.34</td><td>0.00</td><td>0.07</td><td>95.52</td><td>100.00</td>  <th>13:45</th><td>169.32</td><td>677.28</td><td>48.36</td><td>0.00</td><td>0.08</td><td>96.15</td><td>100.00</td></tr><tr>  <th>02:00</th><td>154.92</td><td>619.68</td><td>47.70</td><td>0.00</td><td>0.07</td><td>95.57</td><td>100.00</td>  <th>14:00</th><td>181.02</td><td>724.08</td><td>50.82</td><td>0.00</td><td>0.08</td><td>96.28</td><td>100.00</td></tr><tr>  <th>02:15</th><td>153.90</td><td>615.60</td><td>48.00</td><td>0.00</td><td>0.07</td><td>95.46</td><td>100.00</td>  <th>14:15</th><td>177.90</td><td>711.60</td><td>50.28</td><td>0.00</td><td>0.08</td><td>96.23</td><td>100.00</td></tr><tr>  <th>02:30</th><td>156.36</td><td>625.44</td><td>47.64</td><td>0.00</td><td>0.07</td><td>95.66</td><td>100.00</td>  <th>14:30</th><td>179.34</td><td>717.36</td><td>51.06</td><td>0.00</td><td>0.08</td><td>96.18</td><td>100.00</td></tr><tr>  <th>02:45</th><td>154.68</td><td>618.72</td><td>47.88</td><td>0.00</td><td>0.07</td><td>95.53</td><td>100.00</td>  <th>14:45</th><td>182.82</td><td>731.28</td><td>52.38</td><td>0.00</td><td>0.08</td><td>96.13</td><td>100.00</td></tr><tr>  <th>03:00</th><td>158.40</td><td>633.60</td><td>49.26</td><td>0.00</td><td>0.07</td><td>95.49</td><td>100.00</td>  <th>15:00</th><td>182.58</td><td>730.32</td><td>52.68</td><td>0.00</td><td>0.08</td><td>96.08</td><td>100.00</td></tr><tr>  <th>03:15</th><td>155.46</td><td>621.84</td><td>48.18</td><td>0.00</td><td>0.07</td><td>95.52</td><td>100.00</td>  <th>15:15</th><td>178.68</td><td>714.72</td><td>52.74</td><td>0.00</td><td>0.08</td><td>95.91</td><td>100.00</td></tr><tr>  <th>03:30</th><td>156.06</td><td>624.24</td><td>49.02</td><td>0.00</td><td>0.07</td><td>95.40</td><td>100.00</td>  <th>15:30</th><td>180.00</td><td>720.00</td><td>52.68</td><td>0.00</td><td>0.08</td><td>95.97</td><td>100.00</td></tr><tr>  <th>03:45</th><td>157.20</td><td>628.80</td><td>49.44</td><td>0.00</td><td>0.07</td><td>95.39</td><td>100.00</td>  <th>15:45</th><td>170.10</td><td>680.40</td><td>48.96</td><td>0.00</td><td>0.08</td><td>96.10</td><td>100.00</td></tr><tr>  <th>04:00</th><td>154.32</td><td>617.28</td><td>48.18</td><td>0.00</td><td>0.07</td><td>95.46</td><td>100.00</td>  <th>16:00</th><td>174.96</td><td>699.84</td><td>50.46</td><td>0.00</td><td>0.08</td><td>96.08</td><td>100.00</td></tr><tr>  <th>04:15</th><td>154.98</td><td>619.92</td><td>49.38</td><td>0.00</td><td>0.07</td><td>95.28</td><td>100.00</td>  <th>16:15</th><td>175.50</td><td>702.00</td><td>51.24</td><td>0.00</td><td>0.08</td><td>95.99</td><td>100.00</td></tr><tr>  <th>04:30</th><td>154.02</td><td>616.08</td><td>49.02</td><td>0.00</td><td>0.07</td><td>95.29</td><td>100.00</td>  <th>16:30</th><td>171.12</td><td>684.48</td><td>50.58</td><td>0.00</td><td>0.08</td><td>95.90</td><td>100.00</td></tr><tr>  <th>04:45</th><td>145.98</td><td>583.92</td><td>47.58</td><td>0.00</td><td>0.07</td><td>95.08</td><td>100.00</td>  <th>16:45</th><td>174.90</td><td>699.60</td><td>52.20</td><td>0.00</td><td>0.08</td><td>95.82</td><td>100.00</td></tr><tr>  <th>05:00</th><td>142.86</td><td>571.44</td><td>46.80</td><td>0.00</td><td>0.06</td><td>95.03</td><td>100.00</td>  <th>17:00</th><td>170.28</td><td>681.12</td><td>50.52</td><td>0.00</td><td>0.08</td><td>95.87</td><td>100.00</td></tr><tr>  <th>05:15</th><td>135.30</td><td>541.20</td><td>45.78</td><td>0.00</td><td>0.06</td><td>94.72</td><td>100.00</td>  <th>17:15</th><td>164.82</td><td>659.28</td><td>49.80</td><td>0.00</td><td>0.07</td><td>95.73</td><td>100.00</td></tr><tr>  <th>05:30</th><td>139.62</td><td>558.48</td><td>46.32</td><td>0.00</td><td>0.06</td><td>94.91</td><td>100.00</td>  <th>17:30</th><td>155.10</td><td>620.40</td><td>46.26</td><td>0.00</td><td>0.07</td><td>95.83</td><td>100.00</td></tr><tr>  <th>05:45</th><td>143.58</td><td>574.32</td><td>46.02</td><td>0.00</td><td>0.07</td><td>95.23</td><td>100.00</td>  <th>17:45</th><td>138.18</td><td>552.72</td><td>42.24</td><td>0.00</td><td>0.06</td><td>95.63</td><td>100.00</td></tr><tr>  <th>06:00</th><td>144.96</td><td>579.84</td><td>46.26</td><td>0.00</td><td>0.07</td><td>95.27</td><td>100.00</td>  <th>18:00</th><td>141.90</td><td>567.60</td><td>42.30</td><td>0.00</td><td>0.06</td><td>95.83</td><td>100.00</td></tr><tr>  <th>06:15</th><td>146.34</td><td>585.36</td><td>45.84</td><td>0.00</td><td>0.07</td><td>95.43</td><td>100.00</td>  <th>18:15</th><td>142.86</td><td>571.44</td><td>42.72</td><td>0.00</td><td>0.06</td><td>95.81</td><td>100.00</td></tr><tr>  <th>06:30</th><td>144.24</td><td>576.96</td><td>45.72</td><td>0.00</td><td>0.07</td><td>95.33</td><td>100.00</td>  <th>18:30</th><td>140.64</td><td>562.56</td><td>42.36</td><td>0.00</td><td>0.06</td><td>95.75</td><td>100.00</td></tr><tr>  <th>06:45</th><td>146.28</td><td>585.12</td><td>45.90</td><td>0.00</td><td>0.07</td><td>95.41</td><td>100.00</td>  <th>18:45</th><td>141.48</td><td>565.92</td><td>42.60</td><td>0.00</td><td>0.06</td><td>95.75</td><td>100.00</td></tr><tr>  <th>07:00</th><td>142.38</td><td>569.52</td><td>45.24</td><td>0.00</td><td>0.06</td><td>95.30</td><td>100.00</td>  <th>19:00</th><td>139.92</td><td>559.68</td><td>42.00</td><td>0.00</td><td>0.06</td><td>95.78</td><td>100.00</td></tr><tr>  <th>07:15</th><td>144.78</td><td>579.12</td><td>45.18</td><td>0.00</td><td>0.07</td><td>95.46</td><td>100.00</td>  <th>19:15</th><td>141.60</td><td>566.40</td><td>42.60</td><td>0.00</td><td>0.06</td><td>95.76</td><td>100.00</td></tr><tr>  <th>07:30</th><td>141.36</td><td>565.44</td><td>44.52</td><td>0.00</td><td>0.06</td><td>95.38</td><td>100.00</td>  <th>19:30</th><td>143.04</td><td>572.16</td><td>42.72</td><td>0.00</td><td>0.06</td><td>95.82</td><td>100.00</td></tr><tr>  <th>07:45</th><td>144.66</td><td>578.64</td><td>45.24</td><td>0.00</td><td>0.07</td><td>95.44</td><td>100.00</td>  <th>19:45</th><td>141.12</td><td>564.48</td><td>42.00</td><td>0.00</td><td>0.06</td><td>95.85</td><td>100.00</td></tr><tr>  <th>08:00</th><td>145.44</td><td>581.76</td><td>45.30</td><td>0.00</td><td>0.07</td><td>95.48</td><td>100.00</td>  <th>20:00</th><td>148.32</td><td>593.28</td><td>43.62</td><td>0.00</td><td>0.07</td><td>95.94</td><td>100.00</td></tr><tr>  <th>08:15</th><td>143.34</td><td>573.36</td><td>44.58</td><td>0.00</td><td>0.07</td><td>95.49</td><td>100.00</td>  <th>20:15</th><td>157.62</td><td>630.48</td><td>46.02</td><td>0.00</td><td>0.07</td><td>95.99</td><td>100.00</td></tr><tr>  <th>08:30</th><td>149.16</td><td>596.64</td><td>46.20</td><td>0.00</td><td>0.07</td><td>95.52</td><td>100.00</td>  <th>20:30</th><td>157.44</td><td>629.76</td><td>46.38</td><td>0.00</td><td>0.07</td><td>95.92</td><td>100.00</td></tr><tr>  <th>08:45</th><td>164.46</td><td>657.84</td><td>51.60</td><td>0.00</td><td>0.07</td><td>95.41</td><td>100.00</td>  <th>20:45</th><td>157.50</td><td>630.00</td><td>45.72</td><td>0.00</td><td>0.07</td><td>96.04</td><td>100.00</td></tr><tr>  <th>09:00</th><td>176.82</td><td>707.28</td><td>55.02</td><td>0.00</td><td>0.08</td><td>95.48</td><td>100.00</td>  <th>21:00</th><td>159.00</td><td>636.00</td><td>47.28</td><td>0.00</td><td>0.07</td><td>95.85</td><td>100.00</td></tr><tr>  <th>09:15</th><td>175.20</td><td>700.80</td><td>53.94</td><td>0.00</td><td>0.08</td><td>95.57</td><td>100.00</td>  <th>21:15</th><td>155.64</td><td>622.56</td><td>46.26</td><td>0.00</td><td>0.07</td><td>95.86</td><td>100.00</td></tr><tr>  <th>09:30</th><td>176.52</td><td>706.08</td><td>53.22</td><td>0.00</td><td>0.08</td><td>95.74</td><td>100.00</td>  <th>21:30</th><td>156.60</td><td>626.40</td><td>50.28</td><td>0.00</td><td>0.07</td><td>95.21</td><td>100.00</td></tr><tr>  <th>09:45</th><td>178.92</td><td>715.68</td><td>50.70</td><td>0.00</td><td>0.08</td><td>96.21</td><td>100.00</td>  <th>21:45</th><td>157.98</td><td>631.92</td><td>52.44</td><td>0.00</td><td>0.07</td><td>94.91</td><td>100.00</td></tr><tr>  <th>10:00</th><td>176.88</td><td>707.52</td><td>49.98</td><td>0.00</td><td>0.08</td><td>96.23</td><td>100.00</td>  <th>22:00</th><td>154.08</td><td>616.32</td><td>49.50</td><td>0.00</td><td>0.07</td><td>95.21</td><td>100.00</td></tr><tr>  <th>10:15</th><td>182.76</td><td>731.04</td><td>51.12</td><td>0.00</td><td>0.08</td><td>96.30</td><td>100.00</td>  <th>22:15</th><td>156.78</td><td>627.12</td><td>50.16</td><td>0.00</td><td>0.07</td><td>95.24</td><td>100.00</td></tr><tr>  <th>10:30</th><td>174.06</td><td>696.24</td><td>48.18</td><td>0.00</td><td>0.08</td><td>96.38</td><td>100.00</td>  <th>22:30</th><td>160.02</td><td>640.08</td><td>51.06</td><td>0.00</td><td>0.07</td><td>95.27</td><td>100.00</td></tr><tr>  <th>10:45</th><td>171.90</td><td>687.60</td><td>47.40</td><td>0.00</td><td>0.08</td><td>96.40</td><td>100.00</td>  <th>22:45</th><td>158.88</td><td>635.52</td><td>51.12</td><td>0.00</td><td>0.07</td><td>95.19</td><td>100.00</td></tr><tr>  <th>11:00</th><td>178.32</td><td>713.28</td><td>49.38</td><td>0.00</td><td>0.08</td><td>96.37</td><td>100.00</td>  <th>23:00</th><td>156.12</td><td>624.48</td><td>49.32</td><td>0.00</td><td>0.07</td><td>95.35</td><td>100.00</td></tr><tr>  <th>11:15</th><td>175.26</td><td>701.04</td><td>48.18</td><td>0.00</td><td>0.08</td><td>96.42</td><td>100.00</td>  <th>23:15</th><td>160.08</td><td>640.32</td><td>51.06</td><td>0.00</td><td>0.07</td><td>95.27</td><td>100.00</td></tr><tr>  <th>11:30</th><td>179.76</td><td>719.04</td><td>49.80</td><td>0.00</td><td>0.08</td><td>96.37</td><td>100.00</td>  <th>23:30</th><td>162.30</td><td>649.20</td><td>51.60</td><td>0.00</td><td>0.07</td><td>95.30</td><td>100.00</td></tr><tr>  <th>11:45</th><td>174.60</td><td>698.40</td><td>48.54</td><td>0.00</td><td>0.08</td><td>96.35</td><td>100.00</td>  <th>23:45</th><td>164.04</td><td>656.16</td><td>51.78</td><td>0.00</td><td>0.07</td><td>95.36</td><td>100.00</td></tr><tr>  <th>12:00</th><td>179.70</td><td>718.80</td><td>50.16</td><td>0.00</td><td>0.08</td><td>96.32</td><td>100.00</td>  <th>24:00</th><td>157.20</td><td>628.80</td><td>50.58</td><td>0.00</td><td>0.07</td><td>95.19</td><td>100.00</td></tr></tbody>
+	</table>
+
+</body>
+</html>

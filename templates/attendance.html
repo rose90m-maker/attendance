@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>태인관리시스템</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <style>
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:hover { opacity: 0.85; }
+        th .sort-icon { margin-left: 4px; font-size: 0.75em; }
+        .table-responsive { max-height: 75vh; }
+        .late { color: var(--c-primary); font-weight: 600; }
+        .on-time { color: var(--c-success); }
+        .no-record { color: var(--c-muted); font-style: italic; }
+        .gate-name { font-size: 0.8em; color: var(--c-muted); }
+        .saturday td { color: #2563eb !important; }
+        .sunday td { color: #dc2626 !important; }
+        .month-row { cursor: pointer; transition: background 0.15s; }
+        .month-row:hover { background: var(--c-primary-light) !important; }
+        .month-row.active-month { background: var(--c-primary-light) !important; }
+        @media (max-width: 767.98px) {
+            .table { font-size: 0.72rem; }
+            .table th, .table td { padding: 3px 2px; white-space: nowrap; }
+            .filter-bar .row { flex-direction: column; }
+            .filter-bar .col-md-2,
+            .filter-bar .col-md-3 { width: 100%; max-width: 100%; }
+            .badge.fs-6 { font-size: 0.7rem !important; }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'attendance' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <!-- 검색 조건 -->
+    <div class="filter-bar">
+        <div class="row g-3 align-items-end">
+            {% if can_edit %}
+            <!-- 이름/사번 검색 -->
+            <div class="col-md-3">
+                <form method="GET">
+                    <label class="form-label">🔍 이름 / 사번 검색</label>
+                    <div class="input-group">
+                        <input type="text" name="search" value="{{ search }}" class="form-control" placeholder="이름 또는 사번 입력">
+                        <input type="hidden" name="dept" value="{{ sel_dept }}">
+                        <button type="submit" class="btn btn-primary">검색</button>
+                    </div>
+                </form>
+            </div>
+            <!-- 날짜 선택 -->
+            <div class="col-md-2">
+                <form method="GET">
+                    <label class="form-label">📅 날짜 선택</label>
+                    <input type="date" name="date" value="{{ sel_date }}" class="form-control" onchange="this.form.submit()">
+                    <input type="hidden" name="dept" value="{{ sel_dept }}">
+                </form>
+            </div>
+            <!-- 부서 선택 -->
+            <div class="col-md-2">
+                <form method="GET">
+                    <label class="form-label">🏢 부서</label>
+                    <select name="dept" class="form-select" onchange="this.form.submit()">
+                        <option value="">전체 부서</option>
+                        {% for d in dept_list %}
+                        <option value="{{ d }}" {% if sel_dept == d %}selected{% endif %}>{{ d }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
+                    {% if sel_date %}<input type="hidden" name="date" value="{{ sel_date }}">{% endif %}
+                </form>
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                {% if search or sel_date or sel_dept %}
+                <a href="{{ url_for('attendance') }}" class="btn btn-outline-secondary">초기화</a>
+                {% endif %}
+            </div>
+            {% else %}
+            <!-- 일반 사용자: 월 선택만 -->
+            <div class="col-md-3">
+                <form method="GET">
+                    <label class="form-label">📅 월별 선택</label>
+                    <input type="month" name="month" value="{{ sel_month }}" class="form-control" onchange="this.form.submit()">
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if records %}
+    <!-- 엑셀 다운로드 버튼 -->
+    <div class="mb-2 text-end">
+        <button class="btn btn-success" onclick="exportExcel()">📥 엑셀 다운로드</button>
+    </div>
+    <!-- 요약 통계 -->
+    {% if mode == 'search' %}
+    <div class="card mb-4">
+        <div class="card-header fw-bold" id="summaryHeader">📊 월별 요약</div>
+        <div class="card-body p-0 table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>월</th>
+                        <th class="text-center">출근일수</th>
+                        <th class="text-center">주간</th>
+                        <th class="text-center">야간</th>
+                        {% if stats.has_both %}
+                        <th class="text-center">주간 평균출근</th>
+                        <th class="text-center">주간 평균퇴근</th>
+                        <th class="text-center">야간 평균출근</th>
+                        <th class="text-center">야간 평균퇴근</th>
+                        {% else %}
+                        <th class="text-center">평균출근</th>
+                        <th class="text-center">평균퇴근</th>
+                        {% endif %}
+                        <th class="text-center">총근무시간</th>
+                        <th class="text-center">총연장시간</th>
+                        <th class="text-center">퇴근미기록</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m, ms in monthly.items() %}
+                    <tr class="month-row" data-month="{{ m }}" onclick="filterMonth('{{ m }}')" style="cursor:pointer">
+                        <td><strong>{{ ms.label }}</strong></td>
+                        <td class="text-center">{{ ms.total }}일</td>
+                        <td class="text-center text-success fw-bold">{{ ms.on_time }}</td>
+                        <td class="text-center text-danger fw-bold">{{ ms.late }}</td>
+                        {% if stats.has_both %}
+                        <td class="text-center fw-bold">{{ ms.avg_in_normal }}</td>
+                        <td class="text-center fw-bold">{{ ms.avg_out_normal }}</td>
+                        <td class="text-center fw-bold">{{ ms.avg_in_late }}</td>
+                        <td class="text-center fw-bold">{{ ms.avg_out_late }}</td>
+                        {% else %}
+                        <td class="text-center fw-bold">{{ ms.avg_in_normal if stats.on_time > 0 else ms.avg_in_late }}</td>
+                        <td class="text-center fw-bold">{{ ms.avg_out_normal if stats.on_time > 0 else ms.avg_out_late }}</td>
+                        {% endif %}
+                        <td class="text-center fw-bold">{{ ms.total_work|int }}</td>
+                        <td class="text-center fw-bold">{{ ms.total_overtime }}</td>
+                        <td class="text-center text-muted">{{ ms.no_out }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="table-secondary fw-bold month-row" data-month="all" onclick="filterMonth('all')" style="cursor:pointer">
+                        <td>합계 (전체보기)</td>
+                        <td class="text-center">{{ stats.total }}일</td>
+                        <td class="text-center text-success">{{ stats.on_time }}</td>
+                        <td class="text-center text-danger">{{ stats.late }}</td>
+                        {% if stats.has_both %}
+                        <td class="text-center">{{ stats.avg_in_normal }}</td>
+                        <td class="text-center">{{ stats.avg_out_normal }}</td>
+                        <td class="text-center">{{ stats.avg_in_late }}</td>
+                        <td class="text-center">{{ stats.avg_out_late }}</td>
+                        {% else %}
+                        <td class="text-center">{{ stats.avg_in_normal if stats.on_time > 0 else stats.avg_in_late }}</td>
+                        <td class="text-center">{{ stats.avg_out_normal if stats.on_time > 0 else stats.avg_out_late }}</td>
+                        {% endif %}
+                        <td class="text-center">{{ stats.total_work|int }}</td>
+                        <td class="text-center">{{ stats.total_overtime }}</td>
+                        <td class="text-center text-muted">{{ stats.no_out }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% elif mode == 'date' %}
+    <div class="row mb-3">
+        <div class="col">
+            {% if sel_month and not sel_date %}
+            <span class="badge bg-primary fs-6">{{ sel_month }}</span>
+            {% else %}
+            <span class="badge bg-primary fs-6">{{ sel_date }}</span>
+            {% if sel_date_holiday %}<span class="badge bg-danger fs-6">{{ sel_date_holiday }}</span>{% endif %}
+            {% endif %}
+            <span class="badge bg-secondary fs-6">총 {{ stats.total }}명</span>
+            <span class="badge bg-success fs-6">주간 {{ stats.on_time }}명</span>
+            <span class="badge bg-info fs-6">야간 {{ stats.late }}명</span>
+            {% if stats.no_out > 0 %}
+            <span class="badge bg-info text-dark fs-6">퇴근미기록 {{ stats.no_out }}명</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 결과 테이블 -->
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover table-striped align-middle mb-0" id="attendTable">
+            <thead>
+                <tr>
+                    <th class="d-none d-md-table-cell text-center">#</th>
+                    {% set show_date = mode == 'search' or (mode == 'date' and sel_month and not sel_date) %}
+                    {% if show_date %}<th class="sortable text-center" data-col="1" onclick="sortTable(this)" style="white-space:nowrap">날짜 <span class="sort-icon"></span></th>{% endif %}
+                    <th class="sortable d-none d-md-table-cell text-center" data-col="{{ 2 if show_date else 1 }}" onclick="sortTable(this)">사번 <span class="sort-icon"></span></th>
+                    <th class="sortable d-none d-md-table-cell text-center" data-col="{{ 3 if show_date else 2 }}" onclick="sortTable(this)">이름 <span class="sort-icon"></span></th>
+                    <th class="sortable d-none d-md-table-cell text-center" data-col="{{ 4 if show_date else 3 }}" onclick="sortTable(this)">부서 <span class="sort-icon"></span></th>
+                    <th class="sortable text-center" data-col="{{ 5 if show_date else 4 }}" onclick="sortTable(this)">출근시간 <span class="sort-icon"></span></th>
+                    <th class="sortable text-center" data-col="{{ 6 if show_date else 5 }}" onclick="sortTable(this)">퇴근시간 <span class="sort-icon"></span></th>
+                    <th class="sortable text-center" data-col="{{ 7 if show_date else 6 }}" onclick="sortTable(this)">기본 <span class="sort-icon"></span></th>
+                    <th class="sortable text-center" data-col="{{ 8 if show_date else 7 }}" onclick="sortTable(this)">연장 <span class="sort-icon"></span></th>
+                    <th class="sortable text-center" data-col="{{ 9 if show_date else 8 }}" onclick="sortTable(this)">야간 <span class="sort-icon"></span></th>
+                    <th class="sortable text-center" data-col="{{ 10 if show_date else 9 }}" onclick="sortTable(this)">기타 <span class="sort-icon"></span></th>
+                    <th class="sortable text-center" data-col="{{ 11 if show_date else 10 }}" onclick="sortTable(this)">상태 <span class="sort-icon"></span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in records %}
+                <tr data-month="{{ r.month }}" class="{% if r.weekday == 5 %}saturday{% elif r.weekday == 6 %}sunday{% endif %}">
+                    <td class="d-none d-md-table-cell text-center">{{ loop.index }}</td>
+                    {% if show_date %}<td class="text-center" style="white-space:nowrap"><strong>{{ r.date_fmt }}</strong>{% if r.holiday %}<br><small class="text-danger">{{ r.holiday }}</small>{% endif %}</td>{% endif %}
+                    <td class="d-none d-md-table-cell text-center">{{ r.emp_no }}</td>
+                    <td class="d-none d-md-table-cell text-center"><strong>{{ r.name }}</strong></td>
+                    <td class="d-none d-md-table-cell text-center">{{ r.dept or '-' }}</td>
+                    <td class="text-center {% if r.in_time and r.in_time >= '180000' %}late{% elif r.in_time %}on-time{% else %}no-record{% endif %}">
+                        {{ r.in_time_fmt or '-' }}
+                    </td>
+                    <td class="text-center">{{ r.out_time_fmt or '-' }}</td>
+                    <td class="text-center" style="white-space:nowrap">{{ r.basic_fmt }}</td>
+                    <td class="text-center text-danger">{{ r.overtime }}</td>
+                    <td class="text-center text-primary">{{ r.night_fmt }}</td>
+                    <td class="text-center text-secondary">{{ r.other_fmt }}</td>
+                    <td class="text-center">
+                        {% if not r.in_time and r.out_time and r.out_time >= '040000' and r.out_time < '120000' %}
+                            <span class="badge bg-info text-dark">야간</span>
+                        {% elif not r.in_time %}
+                            <span class="badge bg-secondary">출근기록없음</span>
+                        {% elif r.in_time >= '180000' %}
+                            <span class="badge bg-info text-dark">야간</span>
+                        {% else %}
+                            <span class="badge bg-success">주간</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if mode == 'search' and monthly %}
+    <!-- 월별 급여명세서 스타일 요약 -->
+    {% for m, ms in monthly.items() %}
+    <div class="card mt-4 mb-4 month-summary" id="summary-{{ m }}" style="display:none">
+        <div class="card-header bg-dark text-white fw-bold fs-5">
+            📋 {{ ms.label }} 근무 요약 — {{ records[0].name if records else '' }}
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-bordered align-middle mb-0" style="font-size:1.05rem">
+                <tbody>
+                    <tr>
+                        <th class="table-light text-center" style="width:25%">출근일수</th>
+                        <td class="text-center fw-bold fs-5">{{ ms.total }}일</td>
+                        <th class="table-light text-center" style="width:25%">퇴근미기록</th>
+                        <td class="text-center">{{ ms.no_out }}일</td>
+                    </tr>
+                    <tr>
+                        <th class="table-light text-center">주간근무</th>
+                        <td class="text-center text-success fw-bold">{{ ms.on_time }}일</td>
+                        <th class="table-light text-center">야간근무</th>
+                        <td class="text-center text-info fw-bold">{{ ms.late }}일</td>
+                    </tr>
+                    <tr class="table-warning">
+                        <th class="text-center">총 근무시간</th>
+                        <td class="text-center fw-bold fs-4">{{ ms.total_work|int }}시간</td>
+                        <th class="text-center">총 연장시간</th>
+                        <td class="text-center fw-bold fs-4 text-danger">{{ ms.total_overtime }}시간</td>
+                    </tr>
+                    {% if ms.sat_days > 0 %}
+                    <tr>
+                        <th class="table-light text-center">토요일 휴일근로</th>
+                        <td class="text-center fw-bold text-primary">{{ ms.sat_days }}일 / {{ ms.sat_work|int }}시간</td>
+                        <th class="table-light text-center">토요일 휴일연장</th>
+                        <td class="text-center fw-bold text-danger">{{ ms.sat_over|int }}시간</td>
+                    </tr>
+                    {% endif %}
+                    {% if ms.sun_days > 0 %}
+                    <tr>
+                        <th class="table-light text-center">일요일 휴일근로</th>
+                        <td class="text-center fw-bold text-primary">{{ ms.sun_days }}일 / {{ ms.sun_work|int }}시간</td>
+                        <th class="table-light text-center">일요일 휴일연장</th>
+                        <td class="text-center fw-bold text-danger">{{ ms.sun_over|int }}시간</td>
+                    </tr>
+                    {% endif %}
+                    {% if ms.hol_days > 0 %}
+                    <tr>
+                        <th class="table-light text-center">공휴일 휴일근로</th>
+                        <td class="text-center fw-bold text-primary">{{ ms.hol_days }}일 / {{ ms.hol_work|int }}시간</td>
+                        <th class="table-light text-center">공휴일 휴일연장</th>
+                        <td class="text-center fw-bold text-danger">{{ ms.hol_over|int }}시간</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+            <table class="table table-sm table-bordered align-middle mb-0 mt-0" style="font-size:0.9rem">
+                <thead class="table-secondary">
+                    <tr><th colspan="2" class="text-center">📌 시급 기준 핵심 요약</th></tr>
+                    <tr>
+                        <th class="text-center" style="width:60%">상황</th>
+                        <th class="text-center">수당</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>주말 + 주 40시간 이하</td><td class="text-center">❌ 없음</td></tr>
+                    <tr><td>주말 + 주 40시간 초과</td><td class="text-center fw-bold">1.5배</td></tr>
+                    <tr><td>유급휴일 근무</td><td class="text-center fw-bold">1.5배</td></tr>
+                    <tr><td>휴일 + 8시간 초과</td><td class="text-center fw-bold text-danger">2배</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% elif mode %}
+    <div class="alert alert-info mt-3">
+        {% if mode == 'search' %}'{{ search }}' 에 해당하는 근태 기록이 없습니다.
+        {% else %}{{ sel_date }} 에 근태 기록이 없습니다.
+        {% endif %}
+    </div>
+    {% else %}
+    {% if today_top %}
+
+    {# ── 차트 4개 상단 가로 배치 ──────────────────────────────── #}
+    {% if hourly_dist_labels %}
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-header py-2 fw-bold" style="font-size:0.82rem;">⏰ 시간대별 출근</div>
+            <div class="card-body p-2"><canvas id="chartHourly" height="130"></canvas></div>
+        </div>
+        </div>
+        <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-header py-2 fw-bold" style="font-size:0.82rem;">📉 퇴근 미처리 추이</div>
+            <div class="card-body p-2"><canvas id="chartWeekly" height="130"></canvas></div>
+        </div>
+        </div>
+        <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-header py-2 fw-bold" style="font-size:0.82rem;">🏢 부서별 출근</div>
+            <div class="card-body p-2"><canvas id="chartDept" height="130"></canvas></div>
+        </div>
+        </div>
+        {% set att_total = today_in_count + today_absent %}
+        {% set att_rate = ((today_in_count / att_total) * 100)|int if att_total > 0 else 0 %}
+        <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-header py-2 fw-bold d-flex align-items-center justify-content-between" style="font-size:0.82rem;background:linear-gradient(90deg,rgba(52,199,89,.08) 0%,transparent 100%);">
+                <span>📊 오늘 출근 요약</span>
+                <span style="background:rgba(52,199,89,.15);color:#1a9e40;font-size:0.72rem;font-weight:600;border-radius:20px;padding:2px 10px;">출근율 {{ att_rate }}%</span>
+            </div>
+            <div class="card-body p-2 d-flex align-items-center justify-content-center gap-3" style="position:relative;">
+                <div style="position:relative;width:130px;height:130px;flex-shrink:0;">
+                    <canvas id="chartDonut" style="width:130px;height:130px;"></canvas>
+                    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;">
+                        <div style="font-size:1.4rem;font-weight:800;color:#1a9e40;line-height:1;">{{ att_rate }}%</div>
+                        <div style="font-size:0.62rem;color:#999;margin-top:2px;">출근율</div>
+                    </div>
+                </div>
+                <div style="line-height:1;">
+                    <div style="margin-bottom:10px;">
+                        <div style="font-size:0.68rem;color:#999;margin-bottom:2px;">출근</div>
+                        <div style="font-size:1.5rem;font-weight:800;color:#34c759;">{{ today_in_count }}<span style="font-size:0.75rem;font-weight:500;color:#34c759;margin-left:2px;">명</span></div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.68rem;color:#999;margin-bottom:2px;">미출근</div>
+                        <div style="font-size:1.5rem;font-weight:800;color:#aaa;">{{ today_absent }}<span style="font-size:0.75rem;font-weight:500;color:#aaa;margin-left:2px;">명</span></div>
+                    </div>
+                </div>
+                <span style="position:absolute;bottom:6px;right:10px;font-size:0.68rem;color:#bbb;">* 임원, 서울사무소 제외</span>
+            </div>
+        </div>
+        </div>
+    </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var gridC = 'rgba(0,0,0,.06)';
+        var scaleOpt = {
+            x: { grid:{color:gridC}, ticks:{font:{size:10}} },
+            y: { grid:{color:gridC}, ticks:{font:{size:10},stepSize:1}, beginAtZero:true }
+        };
+        var tooltipLabel = function(ctx){ return ctx.raw + '명'; };
+
+        // ① 시간대별 출근 분포
+        new Chart(document.getElementById('chartHourly'), {
+            type: 'bar',
+            data: {
+                labels: {{ hourly_dist_labels | tojson }},
+                datasets: [{ data: {{ hourly_dist_data | tojson }},
+                    backgroundColor: {{ hourly_dist_data | tojson }}.map(function(v,i){ return i===2?'rgba(52,199,89,.8)':'rgba(0,113,227,.65)'; }),
+                    borderRadius: 4, borderSkipped: false }]
+            },
+            options: { plugins:{legend:{display:false},tooltip:{callbacks:{label:tooltipLabel}}}, scales: scaleOpt }
+        });
+
+        // ② 최근 7일 퇴근 미처리
+        new Chart(document.getElementById('chartWeekly'), {
+            type: 'line',
+            data: {
+                labels: {{ weekly_no_out_labels | tojson }},
+                datasets: [{ data: {{ weekly_no_out_data | tojson }},
+                    borderColor:'rgba(255,149,0,.9)', backgroundColor:'rgba(255,149,0,.12)',
+                    tension:0.35, fill:true, pointBackgroundColor:'rgba(255,149,0,.9)', pointRadius:4 }]
+            },
+            options: { plugins:{legend:{display:false},tooltip:{callbacks:{label:tooltipLabel}}}, scales: scaleOpt }
+        });
+
+        // ③ 부서별 출근 (가로 막대)
+        var deptColors = ['rgba(0,113,227,.8)','rgba(52,199,89,.8)','rgba(255,149,0,.8)','rgba(88,86,214,.8)','rgba(90,200,250,.8)','rgba(255,59,48,.8)','rgba(255,45,85,.8)'];
+        new Chart(document.getElementById('chartDept'), {
+            type: 'bar',
+            data: {
+                labels: {{ dept_chart_labels | tojson }},
+                datasets: [{ data: {{ dept_chart_data | tojson }},
+                    backgroundColor: deptColors.slice(0, {{ dept_chart_labels | length }}),
+                    borderRadius: 4, borderSkipped: false }]
+            },
+            options: {
+                indexAxis: 'y',
+                plugins:{legend:{display:false},tooltip:{callbacks:{label:tooltipLabel}}},
+                scales:{
+                    x:{grid:{color:gridC},ticks:{font:{size:10},stepSize:1},beginAtZero:true},
+                    y:{grid:{display:false},ticks:{font:{size:10}}}
+                }
+            }
+        });
+
+        // ④ 도넛
+        new Chart(document.getElementById('chartDonut'), {
+            type: 'doughnut',
+            data: {
+                labels: ['출근','미출근'],
+                datasets: [{ data:[{{ today_in_count }},{{ today_absent }}],
+                    backgroundColor:['rgba(52,199,89,.85)','#e9ecef'],
+                    borderWidth:0, hoverOffset:6,
+                    borderRadius:4 }]
+            },
+            options: {
+                cutout:'72%',
+                plugins:{
+                    legend:{display:false},
+                    tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+ctx.raw+'명';}}}
+                },
+                animation:{ animateRotate:true, duration:800 }
+            }
+        });
+    });
+    </script>
+    {% endif %}
+
+    <div class="row">
+    <div class="col-md-6">
+    <div class="card mb-4">
+        <div class="card-header fw-bold">🚀 금일 출근 TOP 20</div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center" style="width:50px">순위</th>
+                        <th class="text-center">이름</th>
+                        <th class="text-center">부서</th>
+                        <th class="text-center">출근시간</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in today_top %}
+                    <tr>
+                        <td class="text-center fw-bold">
+                            {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+                        </td>
+                        <td class="text-center"><a href="{{ url_for('attendance', search=emp.name) }}" class="text-decoration-none fw-bold">{{ emp.name }}</a></td>
+                        <td class="text-center">{{ emp.dept or '-' }}</td>
+                        <td class="text-center fw-bold text-success">{{ emp.in_time }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    </div>
+    {% if ranking %}
+    <div class="col-md-6">
+    {% for label, employees in ranking.items() %}
+    <div class="card mb-4">
+        <div class="card-header fw-bold">🏆 최근 1개월 평균 출근 TOP 20 ({{ label }})</div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center" style="width:50px">순위</th>
+                        <th class="text-center">이름</th>
+                        <th class="text-center">부서</th>
+                        <th class="text-center">평균출근시간</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in employees %}
+                    <tr>
+                        <td class="text-center fw-bold">
+                            {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+                        </td>
+                        <td class="text-center"><a href="{{ url_for('attendance', search=emp.name) }}" class="text-decoration-none fw-bold">{{ emp.name }}</a></td>
+                        <td class="text-center">{{ emp.dept or '-' }}</td>
+                        <td class="text-center fw-bold text-success">{{ emp.avg_in }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+    </div>
+    {% endif %}
+    </div>
+
+    {% if prev_no_out_list %}
+    <div class="row mt-2">
+    <div class="col-md-6">
+    <div class="card mb-4 border-secondary">
+        <div class="card-header fw-bold text-secondary">📋 전일 출근 O / 퇴근 X ({{ prev_no_out_list|length }}명)</div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center" style="width:40px">#</th>
+                        <th class="text-center">이름</th>
+                        <th class="text-center">부서</th>
+                        <th class="text-center">출근시간</th>
+                        <th class="text-center">퇴근시간</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in prev_no_out_list %}
+                    <tr>
+                        <td class="text-center">{{ loop.index }}</td>
+                        <td class="text-center"><a href="{{ url_for('attendance', search=emp.name) }}" class="text-decoration-none fw-bold">{{ emp.name }}</a></td>
+                        <td class="text-center">{{ emp.dept or '-' }}</td>
+                        <td class="text-center fw-bold">{{ emp.in_time }}</td>
+                        <td class="text-center text-danger fw-bold">{{ emp.out_time }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    </div>
+    </div>
+    {% endif %}
+
+
+    {% else %}
+    <div class="alert alert-light mt-3 text-center fs-5">이름/사번을 검색하거나, 날짜를 선택하여 근태 기록을 조회합니다.</div>
+    {% endif %}
+    {% endif %}
+</div>
+<div class="app-footer">© 태인관리시스템</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+function exportExcel() {
+    var table = document.getElementById('attendTable');
+    if (!table) return;
+    var rows = table.querySelectorAll('tr');
+    var data = [];
+    rows.forEach(function(row) {
+        if (row.style.display === 'none') return;
+        var cells = row.querySelectorAll('th, td');
+        var rowData = [];
+        cells.forEach(function(cell) {
+            rowData.push(cell.textContent.trim());
+        });
+        data.push(rowData);
+    });
+    var ws = XLSX.utils.aoa_to_sheet(data);
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '근태기록');
+    var fname = '근태기록';
+    var search = '{{ search }}';
+    var selDate = '{{ sel_date }}';
+    if (search) fname += '_' + search;
+    if (selDate) fname += '_' + selDate;
+    XLSX.writeFile(wb, fname + '.xlsx');
+}
+let sortDir = {};
+let activeMonth = 'all';
+function filterMonth(month) {
+    activeMonth = month;
+    const tbody = document.querySelector('#attendTable tbody');
+    const rows = tbody.querySelectorAll('tr');
+    let idx = 1;
+    rows.forEach(function(row) {
+        if (month === 'all' || row.dataset.month === month) {
+            row.style.display = '';
+            row.cells[0].textContent = idx++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    document.querySelectorAll('.month-row').forEach(function(r) {
+        r.classList.remove('active-month');
+        if (r.dataset.month === month) r.classList.add('active-month');
+    });
+    document.querySelectorAll('.month-summary').forEach(function(s) {
+        s.style.display = 'none';
+    });
+    var header = document.getElementById('summaryHeader');
+    if (month !== 'all') {
+        var card = document.getElementById('summary-' + month);
+        if (card) card.style.display = '';
+        var y = month.substring(0,4);
+        var m = parseInt(month.substring(4,6));
+        if (header) header.textContent = '📊 ' + y + '년 ' + m + '월 요약';
+    } else {
+        if (header) header.textContent = '📊 월별 요약';
+    }
+}
+function sortTable(th) {
+    const col = parseInt(th.dataset.col);
+    const table = document.getElementById('attendTable');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    // toggle direction
+    sortDir[col] = sortDir[col] === 'asc' ? 'desc' : 'asc';
+    const dir = sortDir[col];
+    rows.sort(function(a, b) {
+        let va = a.cells[col].textContent.trim();
+        let vb = b.cells[col].textContent.trim();
+        if (va === '-') va = '';
+        if (vb === '-') vb = '';
+        const cmp = va.localeCompare(vb, 'ko', {numeric: true});
+        return dir === 'asc' ? cmp : -cmp;
+    });
+    // re-append and re-number
+    rows.forEach(function(row, i) {
+        row.cells[0].textContent = i + 1;
+        tbody.appendChild(row);
+    });
+    // update icons
+    table.querySelectorAll('th.sortable .sort-icon').forEach(function(s) { s.textContent = ''; });
+    th.querySelector('.sort-icon').textContent = dir === 'asc' ? '▲' : '▼';
+}
+{% if mode == 'search' and sel_month %}
+document.addEventListener('DOMContentLoaded', function() {
+    filterMonth('{{ sel_month|replace("-","") }}');
+});
+{% endif %}
+</script>
+</body>
+</html>

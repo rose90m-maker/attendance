@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>사원명부</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        .roster-table { font-size:0.82rem; }
+        .roster-table th { background:#f9fafb; position:sticky; top:0; z-index:2; white-space:nowrap; text-align:center; vertical-align:middle; cursor:pointer; user-select:none; }
+        .roster-table th:hover { background:#eef2ff; }
+        .roster-table th .sort-arrow { font-size:0.65rem; margin-left:2px; color:#9ca3af; }
+        .roster-table th.sort-asc .sort-arrow::after { content:'▲'; color:#2563eb; }
+        .roster-table th.sort-desc .sort-arrow::after { content:'▼'; color:#2563eb; }
+        .roster-table th:not(.sort-asc):not(.sort-desc) .sort-arrow::after { content:'⇅'; }
+        .roster-table td { vertical-align:middle; white-space:nowrap; }
+        .roster-table td.wrap { white-space:normal; word-break:break-all; }
+        .roster-table tr:hover { background:#fefce8 !important; }
+        .table-wrap { max-height:72vh; overflow:auto; border:1px solid #dee2e6; border-radius:8px; }
+        .badge-m { background:#dbeafe; color:#1e40af; }
+        .badge-f { background:#fce7f3; color:#9d174d; }
+        .badge-dept { background:#f3f4f6; color:#374151; font-weight:500; }
+        .stat-card { background:white; border:1px solid #e5e7eb; border-radius:10px; padding:12px 18px; text-align:center; }
+        .stat-card .num { font-size:1.5rem; font-weight:700; }
+        .stat-card .label { font-size:0.78rem; color:#6b7280; }
+        .info-panel { background:#fff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; }
+        .info-panel .panel-header { padding:10px 16px; font-weight:700; font-size:0.88rem; display:flex; align-items:center; gap:6px; }
+        .info-panel .panel-body { max-height:220px; overflow-y:auto; }
+        .info-panel table { font-size:0.78rem; margin:0; }
+        .info-panel th { background:#f9fafb; position:sticky; top:0; z-index:1; text-align:center; white-space:nowrap; font-weight:600; }
+        .info-panel td { vertical-align:middle; text-align:center; white-space:nowrap; }
+        .bday-day { display:inline-block; background:#fef3c7; color:#92400e; border-radius:50%; width:24px; height:24px; line-height:24px; text-align:center; font-weight:700; font-size:0.75rem; }
+        @media (max-width: 767.98px) {
+            .roster-table { font-size:0.7rem; }
+            .roster-table th, .roster-table td { padding: 3px 2px; }
+            .table-wrap { max-height: 60vh; }
+            .stat-card { padding: 8px 10px; }
+            .stat-card .num { font-size: 1.1rem; }
+            .stat-card .label { font-size: 0.68rem; }
+            .info-panel .panel-header { font-size: 0.8rem; padding: 8px 10px; }
+            .info-panel table { font-size: 0.7rem; }
+            .filter-bar .col-auto { width: 100%; max-width: 100%; }
+            .filter-bar .col-auto.ms-auto { margin-left: 0 !important; margin-top: 4px; }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'roster' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid px-3 mt-4">
+    <!-- 통계 카드 -->
+    <div class="row g-2 mb-3">
+        <div class="col-auto">
+            <div class="stat-card">
+                <div class="num">{{ rows|length }}</div>
+                <div class="label">총 인원</div>
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="stat-card">
+                <div class="num" style="color:#1e40af;">{{ rows|selectattr('gender','equalto','남자')|list|length }}</div>
+                <div class="label">남자</div>
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="stat-card">
+                <div class="num" style="color:#9d174d;">{{ rows|selectattr('gender','equalto','여자')|list|length }}</div>
+                <div class="label">여자</div>
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="stat-card">
+                <div class="num" style="color:#059669;">{{ dept_list|length }}</div>
+                <div class="label">부서</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 필터 바 -->
+    <div class="filter-bar mb-3">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label">🔍 검색</label>
+                <input type="text" name="search" value="{{ search }}" class="form-control form-control-sm" placeholder="이름 / 사번 / 직위 / 전화번호">
+            </div>
+            <div class="col-auto">
+                <label class="form-label">🏢 부서</label>
+                <select name="dept" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">전체</option>
+                    {% for d in dept_list %}
+                    <option value="{{ d }}" {% if d == sel_dept %}selected{% endif %}>{{ d }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label">💼 직위</label>
+                <select name="pos" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">전체</option>
+                    {% for p in pos_list %}
+                    <option value="{{ p }}" {% if p == sel_pos %}selected{% endif %}>{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm">검색</button>
+                <a href="/roster" class="btn btn-outline-secondary btn-sm">초기화</a>
+            </div>
+            <div class="col-auto ms-auto d-flex gap-2">
+                {% if is_admin %}
+                <button type="button" class="btn btn-success btn-sm" onclick="document.getElementById('fileInput').click()">📤 엑셀 업로드</button>
+                <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="uploadFile(this)">
+                {% endif %}
+                <a href="/export_roster" class="btn btn-outline-success btn-sm">📥 엑셀 다운로드</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- 테이블 -->
+    <div class="table-wrap" style="max-height:none;">
+        <table class="table table-sm table-bordered table-hover roster-table mb-0" id="rosterTable">
+            <thead>
+                <tr>
+                    <th style="width:40px;" data-col="0" data-type="num">No<span class="sort-arrow"></span></th>
+                    <th style="width:70px;" data-col="1" data-type="str">이름<span class="sort-arrow"></span></th>
+                    <th style="width:80px;" data-col="2" data-type="str">부서<span class="sort-arrow"></span></th>
+                    <th style="width:90px;" data-col="3" data-type="str">사번<span class="sort-arrow"></span></th>
+                    <th style="width:50px;" data-col="4" data-type="str">성별<span class="sort-arrow"></span></th>
+                    <th style="width:100px;" data-col="5" data-type="str">생년월일<span class="sort-arrow"></span></th>
+                    <th style="width:45px;" data-col="6" data-type="num">나이<span class="sort-arrow"></span></th>
+                    <th style="width:70px;" data-col="7" data-type="str">직위<span class="sort-arrow"></span></th>
+                    <th style="width:130px;" data-col="8" data-type="str">휴대전화<span class="sort-arrow"></span></th>
+                    <th style="width:180px;" data-col="9" data-type="str">이메일<span class="sort-arrow"></span></th>
+                    <th style="width:120px;" data-col="10" data-type="str">입사일<span class="sort-arrow"></span></th>
+                    <th style="width:60px;" data-col="11" data-type="num">근속<span class="sort-arrow"></span></th>
+                    <th data-col="12" data-type="str">현주소<span class="sort-arrow"></span></th>
+                </tr>
+            </thead>
+            <tbody id="rosterBody">
+            {% for r in rows %}
+                <tr>
+                    <td style="text-align:center; color:#9ca3af;">{{ loop.index }}</td>
+                    <td style="text-align:center; font-weight:600;"><a href="#" class="text-decoration-none" style="color:#1e40af;" onclick="showDetail('{{ r.emp_no }}');return false;">{{ r.name }}</a></td>
+                    <td style="text-align:center;"><span class="badge badge-dept">{{ r.dept }}</span></td>
+                    <td style="text-align:center; font-family:monospace; font-size:0.8rem;">{{ r.emp_no }}</td>
+                    <td style="text-align:center;">
+                        {% if r.gender == '남자' %}<span class="badge badge-m">남</span>
+                        {% elif r.gender == '여자' %}<span class="badge badge-f">여</span>
+                        {% else %}{{ r.gender }}{% endif %}
+                    </td>
+                    <td style="text-align:center;">{{ r.birth_date }}{% if r.calendar_type == '음력' %} <small style="color:#ef4444;">음</small>{% endif %}</td>
+                    <td style="text-align:center;">{{ r.age }}</td>
+                    <td style="text-align:center;">{{ r.position }}</td>
+                    <td style="text-align:center;">{{ r.phone }}</td>
+                    <td class="wrap" style="font-size:0.75rem;">{{ r.email }}</td>
+                    <td style="text-align:center; white-space:nowrap;">{{ r.hire_date }}</td>
+                    <td style="text-align:center; font-size:0.78rem; color:#059669; font-weight:600;">{{ r.years_worked }}</td>
+                    <td class="wrap" style="font-size:0.75rem; min-width:260px;">{{ r.address }}</td>
+                </tr>
+            {% endfor %}
+            {% if not rows %}
+                <tr><td colspan="13" class="text-center text-muted py-4">데이터가 없습니다. 엑셀 파일을 업로드해주세요.</td></tr>
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 페이지네이션 -->
+    {% if rows %}
+    <div class="d-flex justify-content-between align-items-center mt-2 mb-3 flex-wrap gap-2" id="paginationWrap">
+        <div class="d-flex align-items-center gap-2">
+            <label class="form-label mb-0 small fw-bold" style="white-space:nowrap;">페이지당</label>
+            <select id="pageSize" class="form-select form-select-sm" style="width:75px;" onchange="goPage(1)">
+                <option value="20" selected>20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="0">전체</option>
+            </select>
+        </div>
+        <div id="pageInfo" class="small text-muted fw-bold"></div>
+        <div id="pageButtons"></div>
+    </div>
+    {% endif %}
+
+    <!-- 이달 생일자 / 임금피크대상자 -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="info-panel">
+                <div class="panel-header" style="background:#fffbeb; color:#92400e;">
+                    🎂 {{ cur_month }}월 생일자 <span class="badge bg-warning text-dark">{{ birthday_list|length }}명</span>
+                </div>
+                <div class="panel-body">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead><tr><th>일</th><th>이름</th><th>부서</th><th>직위</th><th>나이</th><th>생년월일</th></tr></thead>
+                        <tbody>
+                        {% for b in birthday_list %}
+                        <tr>
+                            <td><span class="bday-day">{{ b.day }}</span></td>
+                            <td style="font-weight:600;">{{ b.name }}</td>
+                            <td>{{ b.dept }}</td>
+                            <td>{{ b.position }}</td>
+                            <td>{{ b.age }}</td>
+                            <td>{{ b.birth_date }}{% if b.calendar_type == '음력' %} <small style="color:#ef4444;">음</small>{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                        {% if not birthday_list %}
+                        <tr><td colspan="6" class="text-muted text-center py-3">이번 달 생일자가 없습니다</td></tr>
+                        {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="info-panel">
+                <div class="panel-header" style="background:#eff6ff; color:#1e40af;">
+                    📋 임금피크 대상자 <span class="badge bg-primary">{{ peak_list|length }}명</span>
+                    <small style="color:#9ca3af; font-weight:400; margin-left:auto;">만 56세 이상 (이사·회장·사장 제외)</small>
+                </div>
+                <div class="panel-body">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead><tr><th>이름</th><th>부서</th><th>직위</th><th>나이</th><th>생년월일</th><th>입사일</th></tr></thead>
+                        <tbody>
+                        {% for p in peak_list %}
+                        <tr>
+                            <td style="font-weight:600;">{{ p.name }}</td>
+                            <td>{{ p.dept }}</td>
+                            <td>{{ p.position }}</td>
+                            <td><span class="badge {% if p.age >= 60 %}bg-danger{% else %}bg-info text-dark{% endif %}">{{ p.age }}</span></td>
+                            <td>{{ p.birth_date }}</td>
+                            <td>{{ p.hire_date }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% if not peak_list %}
+                        <tr><td colspan="6" class="text-muted text-center py-3">해당자가 없습니다</td></tr>
+                        {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 상세 모달 -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white py-2">
+        <h5 class="modal-title" id="detailTitle">사원 상세</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="detailBody">
+        <div class="text-center text-muted py-4">로딩중...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.detail-section { margin-bottom:1rem; }
+.detail-section h6 { background:#eff6ff; color:#1e40af; padding:6px 10px; border-radius:4px; font-size:0.9rem; margin-bottom:6px; font-weight:700; }
+.detail-table { font-size:0.82rem; width:100%; }
+.detail-table th { background:#f9fafb; color:#374151; font-weight:600; text-align:right; padding:6px 10px; width:130px; vertical-align:top; white-space:nowrap; }
+.detail-table td { padding:6px 10px; vertical-align:top; word-break:break-all; }
+.detail-table tr { border-bottom:1px solid #f3f4f6; }
+.detail-empty { color:#d1d5db; }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// 정렬
+(function(){
+    var table = document.getElementById('rosterTable');
+    if (!table) return;
+    var thead = table.querySelector('thead');
+    var tbody = table.querySelector('tbody');
+    var ths = thead.querySelectorAll('th[data-col]');
+
+    ths.forEach(function(th){
+        th.addEventListener('click', function(){
+            var col = parseInt(th.dataset.col);
+            var type = th.dataset.type || 'str';
+            var asc = !th.classList.contains('sort-asc');
+            ths.forEach(function(h){ h.classList.remove('sort-asc','sort-desc'); });
+            th.classList.add(asc ? 'sort-asc' : 'sort-desc');
+
+            var rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort(function(a,b){
+                var ca = a.cells[col], cb = b.cells[col];
+                if (!ca || !cb) return 0;
+                var va = ca.textContent.trim(), vb = cb.textContent.trim();
+                if (type === 'num') {
+                    var na = parseFloat(va.replace(/[^0-9.\-]/g,'')) || 0;
+                    var nb = parseFloat(vb.replace(/[^0-9.\-]/g,'')) || 0;
+                    return asc ? na - nb : nb - na;
+                }
+                return asc ? va.localeCompare(vb,'ko') : vb.localeCompare(va,'ko');
+            });
+            rows.forEach(function(r){ tbody.appendChild(r); });
+            allRows = Array.from(tbody.querySelectorAll('tr'));
+            goPage(1);
+        });
+    });
+})();
+
+// 페이지네이션
+var allRows = Array.from(document.querySelectorAll('#rosterBody tr'));
+var curPage = 1;
+
+function goPage(p) {
+    var sel = document.getElementById('pageSize');
+    if (!sel) return;
+    var size = parseInt(sel.value);
+    var total = allRows.length;
+    if (!total) return;
+
+    if (size === 0) {
+        allRows.forEach(function(r){ r.style.display = ''; });
+        document.getElementById('pageInfo').textContent = '전체 ' + total + '명';
+        document.getElementById('pageButtons').innerHTML = '';
+        curPage = 1;
+        return;
+    }
+
+    var pages = Math.ceil(total / size);
+    if (p < 1) p = 1;
+    if (p > pages) p = pages;
+    curPage = p;
+
+    allRows.forEach(function(r, i){
+        r.style.display = (i >= (p-1)*size && i < p*size) ? '' : 'none';
+    });
+
+    var from = (p-1)*size + 1;
+    var to = Math.min(p*size, total);
+    document.getElementById('pageInfo').textContent = from + '-' + to + ' / ' + total + '명';
+
+    var html = '';
+    var startP = Math.max(1, p - 3);
+    var endP = Math.min(pages, p + 3);
+    html += '<button class="btn btn-sm ' + (p<=1?'btn-outline-secondary disabled':'btn-outline-primary') + '" onclick="goPage(' + (p-1) + ')">◀</button> ';
+    for (var i = startP; i <= endP; i++) {
+        html += '<button class="btn btn-sm ' + (i===p?'btn-primary':'btn-outline-primary') + '" onclick="goPage(' + i + ')" style="min-width:32px;">' + i + '</button> ';
+    }
+    html += '<button class="btn btn-sm ' + (p>=pages?'btn-outline-secondary disabled':'btn-outline-primary') + '" onclick="goPage(' + (p+1) + ')">▶</button>';
+    document.getElementById('pageButtons').innerHTML = html;
+}
+if (allRows.length) goPage(1);
+
+var FIELD_LABELS = {
+    emp_no:'사번', name:'사원', name_en:'영문명', dept:'부서', position:'직급',
+    job_title:'직위', job_role:'직책', job_duty:'직무', pay_grade:'직급(급호)',
+    job_category:'직종', org_name:'소속', work_state:'근무상태', work_status:'재직상태',
+    emp_type:'사원구분', hire_type:'입사구분', is_probation:'수습여부', pay_type:'급여구분',
+    gender:'성별', birth_date:'생년월일', age:'나이', calendar_type:'양/음력',
+    nationality_type:'국적구분', nationality:'국적', is_married:'결혼여부', wedding_date:'결혼기념일',
+    height:'신장', weight:'체중', is_disabled:'장애여부', is_veteran:'보훈여부',
+    religion:'종교', household_type:'세대구분', hobby:'취미', specialty:'특기', desired_job:'희망직무',
+    military_type:'병역구분', military_branch:'병역(군별)',
+    phone:'휴대전화', office_phone:'사무실전화', internal_phone:'내선번호',
+    email:'이메일', address:'현주소', car_number:'차량번호',
+    hire_date:'입사일', group_join_date:'그룹입사일', appoint_date:'발령일', retire_date:'퇴사일',
+    retire_reason:'퇴사사유', probation_end_date:'수습종료일',
+    severance_base_date:'퇴직금기산일', interim_settle_date:'중간정산일',
+    annual_base_date:'연차기산일', monthly_base_date:'월차기산일', tenure_base_date:'근속기산일',
+    curr_dept_date:'현부서발령일', curr_dept_pos_date:'현부서직책일',
+    curr_title_date:'현직위일', curr_role_date:'현직책일', curr_position_date:'현직급일',
+    curr_paygrade_date:'현호봉일', curr_duty_date:'현직무일', curr_category_date:'현직종일',
+    work_days:'근속일수', pension_type:'연금구분',
+    education:'최종학력', school:'학교명', major:'전공', degree:'학위',
+    remarks:'비고', updated_at:'수정일'
+};
+var SECTIONS = [
+    {title:'기본정보', fields:['emp_no','name','name_en','gender','birth_date','age','calendar_type']},
+    {title:'조직/직무', fields:['org_name','dept','position','job_title','job_role','job_duty','pay_grade','job_category','work_state','work_status','emp_type','hire_type','is_probation','pay_type']},
+    {title:'연락처', fields:['phone','office_phone','internal_phone','email','address','car_number']},
+    {title:'입퇴사/기산일', fields:['hire_date','group_join_date','appoint_date','probation_end_date','retire_date','retire_reason','severance_base_date','interim_settle_date','annual_base_date','monthly_base_date','tenure_base_date','work_days','pension_type']},
+    {title:'현(現) 발령일', fields:['curr_dept_date','curr_dept_pos_date','curr_title_date','curr_role_date','curr_position_date','curr_paygrade_date','curr_duty_date','curr_category_date']},
+    {title:'학력', fields:['education','school','major','degree']},
+    {title:'개인/기타', fields:['nationality_type','nationality','is_married','wedding_date','height','weight','is_disabled','is_veteran','religion','household_type','hobby','specialty','desired_job','military_type','military_branch','remarks','updated_at']}
+];
+
+function _esc(s) {
+    return String(s).replace(/[&<>"']/g, function(c){
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+}
+
+function showDetail(empNo) {
+    var modal = new bootstrap.Modal(document.getElementById('detailModal'));
+    document.getElementById('detailTitle').textContent = '사원 상세 - ' + empNo;
+    document.getElementById('detailBody').innerHTML = '<div class="text-center text-muted py-4">로딩중...</div>';
+    modal.show();
+
+    fetch('/api/roster_detail/' + encodeURIComponent(empNo))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (!d.ok) {
+            document.getElementById('detailBody').innerHTML = '<div class="alert alert-danger">조회 실패: ' + _esc(d.error||'') + '</div>';
+            return;
+        }
+        var data = d.data;
+        document.getElementById('detailTitle').textContent = '사원 상세 - ' + (data.name||'') + ' (' + (data.emp_no||'') + ')';
+
+        var used = {};
+        var html = '';
+        SECTIONS.forEach(function(sec){
+            var rows = '';
+            sec.fields.forEach(function(f){
+                if (!(f in data)) return;
+                used[f] = true;
+                var v = data[f];
+                var disp = (v === null || v === undefined || v === '')
+                    ? '<span class="detail-empty">-</span>'
+                    : _esc(v);
+                rows += '<tr><th>' + _esc(FIELD_LABELS[f]||f) + '</th><td>' + disp + '</td></tr>';
+            });
+            if (rows) {
+                html += '<div class="detail-section"><h6>' + sec.title + '</h6><table class="detail-table"><tbody>' + rows + '</tbody></table></div>';
+            }
+        });
+        // 미분류 필드
+        var extraRows = '';
+        Object.keys(data).forEach(function(f){
+            if (used[f] || f === 'id') return;
+            var v = data[f];
+            var disp = (v === null || v === undefined || v === '')
+                ? '<span class="detail-empty">-</span>'
+                : _esc(v);
+            extraRows += '<tr><th>' + _esc(FIELD_LABELS[f]||f) + '</th><td>' + disp + '</td></tr>';
+        });
+        if (extraRows) {
+            html += '<div class="detail-section"><h6>기타</h6><table class="detail-table"><tbody>' + extraRows + '</tbody></table></div>';
+        }
+        document.getElementById('detailBody').innerHTML = html;
+    })
+    .catch(function(e){
+        document.getElementById('detailBody').innerHTML = '<div class="alert alert-danger">네트워크 오류: ' + _esc(e.message) + '</div>';
+    });
+}
+
+function uploadFile(input) {
+    if (!input.files[0]) return;
+    var fd = new FormData();
+    fd.append('file', input.files[0]);
+    fetch('/upload_roster', { method:'POST', body: fd })
+    .then(function(r){return r.json();})
+    .then(function(d){
+        if (d.ok) {
+            alert('신규 ' + d.added + '명, 업데이트 ' + d.updated + '명 처리완료');
+            location.reload();
+        } else {
+            alert('실패: ' + (d.error||''));
+        }
+    });
+    input.value = '';
+}
+</script>
+</body>
+</html>

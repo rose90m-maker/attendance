@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>배차조회 — 태인관리시스템</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+.bus-card { border-radius:10px; overflow:hidden; }
+.bus-card .card-header { font-weight:700; font-size:0.9rem; }
+.bus1-header { background:#3b82f6; color:#fff; }
+.bus2-header { background:#f59e0b; color:#fff; }
+.unassigned-header { background:#94a3b8; color:#fff; }
+.name-tag { display:inline-flex; align-items:center; gap:3px; background:#f1f5f9; border:1px solid #e2e8f0;
+            border-radius:6px; padding:2px 10px; margin:2px; font-size:0.82rem; }
+.name-remove-btn { cursor:pointer; color:#ef4444; font-size:0.75rem; line-height:1; padding:0 2px; font-weight:bold; }
+.name-remove-btn:hover { color:#b91c1c; }
+.overtime-badge { font-size:0.75rem; padding:2px 8px; border-radius:8px; }
+.sms-preview { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;
+               font-family:monospace; font-size:0.85rem; white-space:pre-wrap; min-height:60px; }
+.extra-panel { border-left:3px solid #f59e0b; background:#fffbeb; border-radius:0 8px 8px 0; padding:12px; margin-top:8px; }
+.result-section { display:none; }
+.edit-border { outline:2px dashed #ef4444; }
+@media print { .no-print { display:none !important; } .main-content { margin:0; padding:0; } }
+</style>
+</head>
+<body>
+{% set active_page = 'bus_dispatch' %}
+{% include '_sidebar.html' %}
+
+<main class="main-content">
+<div class="container-fluid py-3">
+    <h5 class="mb-3">📋 버스 배차 조회</h5>
+
+    <!-- 조회 조건 -->
+    <div class="card mb-3 no-print">
+        <div class="card-body py-2">
+            <div class="row align-items-end g-2">
+                <div class="col-auto">
+                    <label class="form-label small mb-1">날짜</label>
+                    <input type="date" class="form-control form-control-sm" id="selDate" style="width:160px">
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small mb-1">구분</label>
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="shiftType" id="shiftAll" value="전체" checked>
+                        <label class="btn btn-outline-primary btn-sm" for="shiftAll">전체</label>
+                        <input type="radio" class="btn-check" name="shiftType" id="shiftDay" value="주간">
+                        <label class="btn btn-outline-primary btn-sm" for="shiftDay">주간</label>
+                        <input type="radio" class="btn-check" name="shiftType" id="shiftNight" value="야간">
+                        <label class="btn btn-outline-primary btn-sm" for="shiftNight">야간</label>
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary btn-sm" onclick="queryDispatch()">🔍 배차조회</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 연장근무 정보 -->
+    <div class="card mb-3 result-section" id="overtimeCard">
+        <div class="card-body py-2">
+            <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold small">연장근무 현황</span>
+                <span id="overtimeInfo"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 배차 결과 -->
+    <div class="result-section" id="resultSection">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0" id="resultTitle"></h6>
+            <div class="no-print d-flex gap-2">
+                <button class="btn btn-outline-warning btn-sm" id="editBtn" onclick="toggleEditMode()" style="display:none">✏️ 편집</button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="printDispatch()">🖨️ 출력</button>
+                <button class="btn btn-outline-success btn-sm" onclick="copyText()">📋 문자복사</button>
+                <button class="btn btn-primary btn-sm" onclick="openSmsModal()">📨 문자전송</button>
+                <button class="btn btn-success btn-sm" onclick="saveLog()">💾 이력저장</button>
+            </div>
+        </div>
+
+        <!-- 동적 렌더링 영역 -->
+        <div id="dispatchBody"></div>
+
+        <!-- 문자 미리보기 -->
+        <div class="mt-3 no-print">
+            <label class="form-label small fw-bold">문자 내용 미리보기</label>
+            <div class="sms-preview" id="smsPreview"></div>
+        </div>
+    </div>
+
+    <!-- 금요일/휴일전일 추가 패널 -->
+    <div class="result-section mt-3" id="extraSection">
+        <h6 class="mb-2">📅 주말/휴일 배차 (자동 생성)</h6>
+        <div id="extraPanels"></div>
+    </div>
+</div>
+</main>
+
+<!-- 탑승자 추가 모달 (관리자 편집 전용) -->
+<div class="modal fade" id="addPersonModal" tabindex="-1">
+<div class="modal-dialog modal-sm modal-dialog-centered">
+<div class="modal-content">
+    <div class="modal-header py-2">
+        <h6 class="modal-title">탑승자 추가</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+        <div class="mb-2 small text-muted" id="addCtxLabel"></div>
+        <div class="mb-2">
+            <label class="form-label small mb-1">직접 입력</label>
+            <input type="text" class="form-control form-control-sm" id="addPersonNameInput" placeholder="이름 직접 입력...">
+        </div>
+        <div class="mb-2">
+            <label class="form-label small mb-1">명단에서 선택</label>
+            <input type="text" class="form-control form-control-sm mb-1" id="addPersonSearch" placeholder="검색..." oninput="filterAddList()">
+            <select class="form-select form-select-sm" id="addPersonSelect" size="6" style="font-size:0.8rem"
+                    onclick="document.getElementById('addPersonNameInput').value=this.value"></select>
+        </div>
+        <div class="mb-2">
+            <label class="form-label small mb-1">호차</label>
+            <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="addBusNo" id="addBus1" value="1" checked>
+                <label class="btn btn-outline-primary btn-sm" for="addBus1">1호차</label>
+                <input type="radio" class="btn-check" name="addBusNo" id="addBus2" value="2">
+                <label class="btn btn-outline-warning btn-sm" for="addBus2">2호차</label>
+            </div>
+        </div>
+    </div>
+    <div class="modal-footer py-1">
+        <button class="btn btn-primary btn-sm" onclick="confirmAddPerson()">추가</button>
+    </div>
+</div>
+</div>
+</div>
+
+<!-- 문자 전송 모달 -->
+<div class="modal fade" id="smsModal" tabindex="-1">
+<div class="modal-dialog modal-lg modal-dialog-centered">
+<div class="modal-content">
+    <div class="modal-header py-2">
+        <h6 class="modal-title">📨 문자 전송</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+        <div class="row g-3">
+            <!-- 수신자 선택 -->
+            <div class="col-md-6">
+                <div class="fw-bold small mb-2">수신자 선택</div>
+                <div class="d-flex gap-2 mb-2">
+                    <div class="dropdown" style="width:140px;flex-shrink:0">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start" type="button" id="smsDeptBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="font-size:0.82rem">
+                            전체 부서
+                        </button>
+                        <div class="dropdown-menu p-2" id="smsDeptMenu" style="min-width:200px;max-height:260px;overflow-y:auto;font-size:0.82rem">
+                            <div class="d-flex gap-2 mb-2 pb-2 border-bottom">
+                                <button type="button" class="btn btn-outline-primary btn-sm py-0 flex-fill" onclick="selectAllDepts(true)">전체</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm py-0 flex-fill" onclick="selectAllDepts(false)">해제</button>
+                            </div>
+                            <div id="smsDeptOptions"></div>
+                        </div>
+                    </div>
+                    <input type="text" class="form-control form-control-sm" id="smsSearch" placeholder="이름 검색..." oninput="filterSmsRecipients()">
+                </div>
+                <div class="d-flex gap-2 mb-1">
+                    <button class="btn btn-outline-secondary btn-sm py-0" onclick="checkAllSms(true)">전체선택</button>
+                    <button class="btn btn-outline-secondary btn-sm py-0" onclick="checkAllSms(false)">전체해제</button>
+                    <span class="small text-muted ms-auto my-auto" id="smsSelCount">0명 선택</span>
+                </div>
+                <div id="smsRecipientList" style="height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:6px;font-size:0.82rem;">
+                    <div class="text-muted small">불러오는 중...</div>
+                </div>
+                <div class="mt-2">
+                    <label class="form-label small mb-1">추가 번호 직접 입력 <span class="text-muted">(쉼표/줄바꿈)</span></label>
+                    <textarea class="form-control form-control-sm" id="smsExtraPhones" rows="2" placeholder="010-1234-5678"></textarea>
+                </div>
+            </div>
+            <!-- 메시지 내용 -->
+            <div class="col-md-6">
+                <div class="fw-bold small mb-2">메시지 내용 <span class="text-muted small" id="smsByteCount"></span></div>
+                <textarea class="form-control form-control-sm" id="smsMsgContent" rows="14" style="font-family:monospace;font-size:0.82rem;resize:vertical"></textarea>
+                <div class="mt-2 small">
+                    <div class="fw-bold text-primary mb-1">🚌 버스기사</div>
+                    <label class="form-check-label d-flex align-items-center gap-1 mb-1" style="cursor:pointer;">
+                        <input type="checkbox" class="form-check-input driver-chk" value="010-5461-9806" onchange="updateSmsSelCount()">
+                        권정일 <span class="text-muted">(010-5461-9806)</span>
+                    </label>
+                    <label class="form-check-label d-flex align-items-center gap-1" style="cursor:pointer;">
+                        <input type="checkbox" class="form-check-input driver-chk" value="010-2083-0932" onchange="updateSmsSelCount()">
+                        안중영 <span class="text-muted">(010-2083-0932)</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-footer py-2">
+        <span class="text-muted small me-auto" id="smsSendInfo"></span>
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary btn-sm" onclick="sendSms()">📨 전송</button>
+    </div>
+</div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+var IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+var lastResult = null;
+var isEditMode = false;
+var editOverrides = {};   // { "주간": { removed:[], added:[{name, bus_no}] }, "야간":{...} }
+var currentAddShift = '';
+var ALL_BUS_MEMBERS = [];
+var addModalObj, smsModalObj;
+var ALL_RECIPIENTS = [];  // employee_roster phone list
+
+document.addEventListener('DOMContentLoaded', function() {
+    addModalObj = new bootstrap.Modal(document.getElementById('addPersonModal'));
+    smsModalObj = new bootstrap.Modal(document.getElementById('smsModal'));
+    var today = new Date();
+    document.getElementById('selDate').value = today.toISOString().slice(0,10);
+    if (IS_ADMIN) document.getElementById('editBtn').style.display = '';
+
+    // 이름 제거 버튼 이벤트 위임
+    document.getElementById('dispatchBody').addEventListener('click', function(e) {
+        var btn = e.target.closest('.name-remove-btn');
+        if (btn && isEditMode && IS_ADMIN) {
+            removePerson(btn.dataset.shift, btn.dataset.name);
+        }
+    });
+
+    queryDispatch();
+});
+
+/* ─── 편집 모드 ──────────────────────────────────────── */
+function toggleEditMode() {
+    if (!IS_ADMIN) return;
+    isEditMode = !isEditMode;
+    var btn = document.getElementById('editBtn');
+    if (isEditMode) {
+        btn.textContent = '✅ 편집완료'; btn.className = 'btn btn-warning btn-sm';
+    } else {
+        btn.textContent = '✏️ 편집'; btn.className = 'btn btn-outline-warning btn-sm';
+    }
+    renderResult(lastResult);
+}
+
+function initOv(shift) {
+    if (!editOverrides[shift]) editOverrides[shift] = { removed: [], added: [] };
+}
+
+function applyOv(s) {
+    initOv(s.shift);
+    var ov = editOverrides[s.shift];
+    var notRemoved = function(n){ return ov.removed.indexOf(n) < 0; };
+    var b1 = s.bus1.filter(notRemoved).concat(ov.added.filter(function(a){ return a.bus_no===1; }).map(function(a){ return a.name; }));
+    var b2 = s.bus2.filter(notRemoved).concat(ov.added.filter(function(a){ return a.bus_no===2; }).map(function(a){ return a.name; }));
+    var un = s.unassigned.filter(notRemoved);
+    return { shift:s.shift, bus1:b1, bus2:b2, unassigned:un,
+             has_overtime:s.has_overtime, meal_info:s.meal_info, meal_type:s.meal_type,
+             elec_excluded:s.elec_excluded||[] };
+}
+
+function removePerson(shift, name) {
+    initOv(shift);
+    var ov = editOverrides[shift];
+    if (ov.removed.indexOf(name) < 0) ov.removed.push(name);
+    ov.added = ov.added.filter(function(a){ return a.name !== name; });
+    renderResult(lastResult);
+}
+
+function openAddPersonModal(shift, prefillBus) {
+    currentAddShift = shift;
+    document.getElementById('addCtxLabel').textContent = shift + ' 배차 — 탑승자 추가';
+    document.getElementById(prefillBus === 2 ? 'addBus2' : 'addBus1').checked = true;
+    document.getElementById('addPersonNameInput').value = '';
+    document.getElementById('addPersonSearch').value = '';
+
+    // 이미 배정된 인원 제외하여 목록 구성
+    var eff = getCurrentEffective(shift);
+    var assigned = {};
+    eff.bus1.concat(eff.bus2).concat(eff.unassigned).forEach(function(n){ assigned[n]=true; });
+    populateAddList(assigned, '');
+    addModalObj.show();
+}
+
+function getCurrentEffective(shift) {
+    if (!lastResult) return {bus1:[],bus2:[],unassigned:[]};
+    if (lastResult.shift === '전체' && lastResult.shifts) {
+        var found = null;
+        lastResult.shifts.forEach(function(s){ if (s.shift===shift) found=s; });
+        return found ? applyOv(found) : {bus1:[],bus2:[],unassigned:[]};
+    }
+    return applyOv(lastResult);
+}
+
+function populateAddList(assigned, q) {
+    var sel = document.getElementById('addPersonSelect');
+    sel.innerHTML = '';
+    ALL_BUS_MEMBERS.forEach(function(m) {
+        if (assigned && assigned[m.name]) return;
+        if (q && m.name.toLowerCase().indexOf(q) < 0 && (m.dept||'').toLowerCase().indexOf(q) < 0) return;
+        var opt = document.createElement('option');
+        opt.value = m.name;
+        opt.textContent = m.name + (m.dept ? ' ('+m.dept+')' : '');
+        sel.appendChild(opt);
+    });
+}
+
+function filterAddList() {
+    var q = document.getElementById('addPersonSearch').value.toLowerCase();
+    var eff = getCurrentEffective(currentAddShift);
+    var assigned = {};
+    eff.bus1.concat(eff.bus2).concat(eff.unassigned).forEach(function(n){ assigned[n]=true; });
+    populateAddList(assigned, q);
+}
+
+function confirmAddPerson() {
+    var nameInput = document.getElementById('addPersonNameInput').value.trim();
+    var selEl = document.getElementById('addPersonSelect');
+    var name = nameInput || (selEl.selectedOptions[0] ? selEl.selectedOptions[0].value : '');
+    if (!name) { alert('이름을 입력하거나 목록에서 선택하세요.'); return; }
+    var busNo = parseInt(document.querySelector('input[name="addBusNo"]:checked').value);
+
+    initOv(currentAddShift);
+    var ov = editOverrides[currentAddShift];
+    ov.removed = ov.removed.filter(function(n){ return n !== name; });
+    ov.added = ov.added.filter(function(a){ return a.name !== name; });
+    ov.added.push({ name: name, bus_no: busNo });
+
+    addModalObj.hide();
+    renderResult(lastResult);
+}
+
+/* ─── 배차 조회 ──────────────────────────────────────── */
+function queryDispatch() {
+    var date = document.getElementById('selDate').value;
+    var shift = document.querySelector('input[name="shiftType"]:checked').value;
+    if (!date) { alert('날짜를 선택하세요.'); return; }
+
+    // 조회 시 편집 상태 초기화
+    editOverrides = {};
+    if (isEditMode) {
+        isEditMode = false;
+        var btn = document.getElementById('editBtn');
+        btn.textContent = '✏️ 편집'; btn.className = 'btn btn-outline-warning btn-sm';
+    }
+
+    fetch('/api/bus_dispatch_query?date='+date+'&shift='+encodeURIComponent(shift))
+    .then(function(r){return r.json();})
+    .then(function(d) {
+        if (!d.ok) { alert(d.error||'조회 실패'); return; }
+        lastResult = d;
+        ALL_BUS_MEMBERS = d.all_members || [];
+        renderResult(d);
+    });
+}
+
+/* ─── 렌더링 ──────────────────────────────────────────── */
+function buildShiftHTML(s, showTitle) {
+    var h = '';
+    if (showTitle) {
+        h += '<h6 class="mt-3 mb-2" style="border-bottom:2px solid '+(s.shift==='주간'?'#3b82f6':'#6366f1')+';padding-bottom:4px;">';
+        h += (s.shift==='주간'?'☀️':'🌙')+' '+s.shift+'</h6>';
+    }
+    h += '<div class="row g-3">';
+
+    // 1호차
+    var card1class = 'card bus-card'+(isEditMode&&IS_ADMIN?' edit-border':'');
+    h += '<div class="col-md-6"><div class="'+card1class+'">';
+    h += '<div class="card-header bus1-header py-2 d-flex justify-content-between align-items-center">';
+    h += '<span>🚌 1호차 <span class="badge bg-white text-primary ms-1">'+s.bus1.length+'</span></span>';
+    if (isEditMode && IS_ADMIN) {
+        h += '<button class="btn btn-sm btn-light py-0 px-2 no-print" style="font-size:0.7rem" onclick="openAddPersonModal(\''+s.shift+'\',1)">＋ 추가</button>';
+    }
+    h += '</div>';
+    h += '<div class="card-body py-2">'+renderNamesEdit(s.bus1, s.shift)+'</div></div></div>';
+
+    // 2호차
+    var card2class = 'card bus-card'+(isEditMode&&IS_ADMIN?' edit-border':'');
+    h += '<div class="col-md-6"><div class="'+card2class+'">';
+    h += '<div class="card-header bus2-header py-2 d-flex justify-content-between align-items-center">';
+    h += '<span>🚌 2호차 <span class="badge bg-white text-warning ms-1">'+s.bus2.length+'</span></span>';
+    if (isEditMode && IS_ADMIN) {
+        h += '<button class="btn btn-sm btn-light py-0 px-2 no-print" style="font-size:0.7rem" onclick="openAddPersonModal(\''+s.shift+'\',2)">＋ 추가</button>';
+    }
+    h += '</div>';
+    h += '<div class="card-body py-2">'+renderNamesEdit(s.bus2, s.shift)+'</div></div></div>';
+
+    h += '</div>';
+
+    if (s.unassigned && s.unassigned.length > 0) {
+        h += '<div class="mt-2"><div class="card bus-card"><div class="card-header unassigned-header py-2">미배정</div>';
+        h += '<div class="card-body py-2">'+renderNamesEdit(s.unassigned, s.shift)+'</div></div></div>';
+    }
+    if (s.elec_excluded && s.elec_excluded.length > 0) {
+        h += '<div class="mt-2"><div class="alert alert-info py-2 small mb-0"><strong>전기사업부 제외:</strong> '+esc(s.elec_excluded.join(', '))+'</div></div>';
+    }
+    if (s.has_overtime) {
+        var parts = [];
+        for (var dept in s.meal_info) { if (s.meal_info[dept]>0) parts.push(dept+' '+s.meal_info[dept]+'명'); }
+        h += '<div class="mt-2"><span class="overtime-badge bg-success text-white">연장근무 있음</span> ';
+        h += '<span class="small text-muted ms-1">('+esc(s.meal_type)+': '+esc(parts.join(', '))+')</span></div>';
+    } else if (s.meal_info && Object.keys(s.meal_info).length > 0) {
+        h += '<div class="mt-2"><span class="overtime-badge bg-secondary text-white">연장근무 없음</span></div>';
+    }
+    if (s.needs_check) {
+        h += '<div class="mt-2"><div class="alert alert-warning py-2 mb-0" style="font-weight:700;">⚠️ 식수 미입력 — 담당자에게 확인하세요</div></div>';
+    }
+    return h;
+}
+
+function renderNamesEdit(names, shift) {
+    if (!names || names.length === 0) return '<span class="text-muted small">없음</span>';
+    return names.map(function(n) {
+        var tag = '<span class="name-tag">'+esc(n);
+        if (isEditMode && IS_ADMIN) {
+            tag += '<span class="name-remove-btn no-print" data-shift="'+escAttr(shift)+'" data-name="'+escAttr(n)+'">✕</span>';
+        }
+        tag += '</span>';
+        return tag;
+    }).join('');
+}
+
+function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+    return String(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function renderResult(d) {
+    document.getElementById('resultSection').style.display = 'block';
+    var holSuffix = d.is_holiday ? ' (휴일'+(d.hol_name?':'+d.hol_name:'')+')' : '';
+    document.getElementById('resultTitle').textContent = d.display_date+' '+d.shift+' 버스 탑승 인원'+holSuffix;
+    document.getElementById('overtimeCard').style.display = 'none';
+
+    var html = '';
+    if (d.shift === '전체' && d.shifts) {
+        d.shifts.forEach(function(s) { html += buildShiftHTML(isEditMode?applyOv(s):s, true); });
+    } else {
+        html = buildShiftHTML(isEditMode?applyOv(d):d, false);
+    }
+    document.getElementById('dispatchBody').innerHTML = html;
+
+    document.getElementById('smsPreview').textContent = buildSmsText(d);
+
+    var extraSec = document.getElementById('extraSection');
+    if (d.is_pre_holiday && d.extra_dispatches && d.extra_dispatches.length > 0) {
+        extraSec.style.display = 'block';
+        var eh = '';
+        d.extra_dispatches.forEach(function(ex) {
+            eh += '<div class="extra-panel mb-2"><strong>'+esc(ex.date)+' '+esc(ex.shift)+'</strong>';
+            if (ex.bus1.length+ex.bus2.length === 0) {
+                eh += '<div class="text-muted small mt-1">근무보고서 데이터 없음</div>';
+            } else {
+                eh += '<div class="mt-1"><span style="background:#3b82f6;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.75rem">1호차</span> '+esc(ex.bus1.join(', ')||'-')+'</div>';
+                eh += '<div class="mt-1"><span style="background:#f59e0b;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.75rem">2호차</span> '+esc(ex.bus2.join(', ')||'-')+'</div>';
+                if (ex.unassigned.length>0) eh += '<div class="mt-1 text-muted small">미배정: '+esc(ex.unassigned.join(', '))+'</div>';
+            }
+            eh += '</div>';
+        });
+        document.getElementById('extraPanels').innerHTML = eh;
+    } else {
+        extraSec.style.display = 'none';
+    }
+}
+
+/* ─── SMS 텍스트 생성 ─────────────────────────────────── */
+function buildShiftSmsLines(s, dateStr) {
+    var lines = [dateStr+' '+s.shift+' 버스 탑승 인원',
+                 '1호차: '+(s.bus1.length>0?s.bus1.join(', '):'없음'),
+                 '2호차: '+(s.bus2.length>0?s.bus2.join(', '):'없음')];
+    if (s.has_overtime) {
+        var parts = [];
+        for (var dept in s.meal_info) { if (s.meal_info[dept]>0) parts.push(dept); }
+        if (parts.length>0) { lines.push(''); lines.push('금일 '+parts.join(', ')+' 연장근무 있습니다.'); }
+    } else if (s.shift === '주간' && s.skip_depts && s.skip_depts.length > 0) {
+        lines.push('');
+        lines.push('금일 주간연장은 없습니다.');
+    }
+    if (s.needs_check) {
+        lines.push('');
+        lines.push('※ 식수 미입력 — 담당자에게 확인하세요');
+    }
+    return lines;
+}
+
+function buildSmsText(d) {
+    var lines = [];
+    if (d.shift === '전체' && d.shifts) {
+        d.shifts.forEach(function(s, i) {
+            var es = isEditMode ? applyOv(s) : s;
+            if (i>0) lines.push('');
+            lines = lines.concat(buildShiftSmsLines(es, d.display_date));
+        });
+    } else {
+        lines = buildShiftSmsLines(isEditMode?applyOv(d):d, d.display_date);
+    }
+    if (d.is_pre_holiday && d.extra_dispatches) {
+        d.extra_dispatches.forEach(function(ex) {
+            if (ex.bus1.length+ex.bus2.length>0) {
+                lines.push('');
+                lines.push(ex.date+' '+ex.shift+' 버스 탑승 인원');
+                lines.push('1호차: '+(ex.bus1.join(', ')||'없음'));
+                lines.push('2호차: '+(ex.bus2.join(', ')||'없음'));
+            }
+        });
+    }
+    return lines.join('\n');
+}
+
+function copyText() {
+    navigator.clipboard.writeText(document.getElementById('smsPreview').textContent)
+    .then(function(){ alert('문자 내용이 클립보드에 복사되었습니다.'); });
+}
+
+function saveLog() {
+    if (!lastResult) return;
+    var d = lastResult;
+    var content = document.getElementById('smsPreview').textContent;
+    var b1 = '', b2 = '';
+    if (d.shift === '전체' && d.shifts) {
+        var allB1=[], allB2=[];
+        d.shifts.forEach(function(s){ var es=isEditMode?applyOv(s):s; allB1=allB1.concat(es.bus1); allB2=allB2.concat(es.bus2); });
+        b1=allB1.join(','); b2=allB2.join(',');
+    } else {
+        var es=isEditMode?applyOv(d):d; b1=es.bus1.join(','); b2=es.bus2.join(',');
+    }
+    fetch('/api/bus_dispatch_save', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({dispatch_date:d.date.replace(/-/g,''), shift_type:d.shift, content:content, bus1_names:b1, bus2_names:b2})
+    }).then(function(r){return r.json();}).then(function(res){
+        if(res.ok) alert('이력이 저장되었습니다.'); else alert('저장 실패');
+    });
+}
+
+/* ─── 문자 전송 ──────────────────────────────────────── */
+function openSmsModal() {
+    if (!lastResult) return;
+    // 메시지 내용 미리채우기
+    document.getElementById('smsMsgContent').value = buildSmsText(lastResult);
+    updateSmsByteCount();
+    document.getElementById('smsExtraPhones').value = '';
+
+    // 수신자 목록 불러오기 (캐시)
+    if (ALL_RECIPIENTS.length === 0) {
+        fetch('/api/bus_sms_recipients')
+        .then(function(r){return r.json();})
+        .then(function(d){
+            if (d.ok) { ALL_RECIPIENTS = d.recipients; buildSmsRecipientList(); }
+        });
+    } else {
+        buildSmsRecipientList();
+    }
+    smsModalObj.show();
+}
+
+function buildSmsRecipientList() {
+    // 부서 필터 목록 생성 (체크박스 복수선택)
+    var depts = [];
+    ALL_RECIPIENTS.forEach(function(r){ if (r.dept && depts.indexOf(r.dept)<0) depts.push(r.dept); });
+    depts.sort();
+    var deptOpts = document.getElementById('smsDeptOptions');
+    deptOpts.innerHTML = '';
+    depts.forEach(function(d){
+        var id = 'deptChk_'+d.replace(/[^가-힣a-zA-Z0-9]/g,'_');
+        var div = document.createElement('div');
+        div.className = 'form-check';
+        div.innerHTML = '<input type="checkbox" class="form-check-input sms-dept-chk" id="'+esc(id)+'" value="'+escAttr(d)+'">' +
+                        '<label class="form-check-label" for="'+esc(id)+'" style="cursor:pointer">'+esc(d)+'</label>';
+        div.querySelector('input').addEventListener('change', function(){
+            updateDeptBtnLabel();
+            filterSmsRecipients();
+        });
+        deptOpts.appendChild(div);
+    });
+    updateDeptBtnLabel();
+    filterSmsRecipients();
+}
+
+function selectAllDepts(check) {
+    document.querySelectorAll('.sms-dept-chk').forEach(function(cb){ cb.checked = check; });
+    updateDeptBtnLabel();
+    filterSmsRecipients();
+}
+
+function updateDeptBtnLabel() {
+    var sel = Array.from(document.querySelectorAll('.sms-dept-chk:checked')).map(function(cb){ return cb.value; });
+    var btn = document.getElementById('smsDeptBtn');
+    if (!sel.length) btn.textContent = '전체 부서';
+    else if (sel.length === 1) btn.textContent = sel[0];
+    else btn.textContent = sel[0] + ' 외 ' + (sel.length-1);
+}
+
+function filterSmsRecipients() {
+    var selDepts = Array.from(document.querySelectorAll('.sms-dept-chk:checked')).map(function(cb){ return cb.value; });
+    var q = document.getElementById('smsSearch').value.toLowerCase();
+    var list = document.getElementById('smsRecipientList');
+    list.innerHTML = '';
+    var filtered = ALL_RECIPIENTS.filter(function(r){
+        var deptOk = !selDepts.length || selDepts.indexOf(r.dept) >= 0;
+        var qOk = !q || r.name.toLowerCase().indexOf(q)>=0 || (r.dept||'').toLowerCase().indexOf(q)>=0;
+        return deptOk && qOk;
+    });
+    if (filtered.length === 0) {
+        list.innerHTML = '<div class="text-muted small p-2">검색 결과 없음</div>'; updateSmsSelCount(); return;
+    }
+    filtered.forEach(function(r) {
+        var id = 'sms_'+r.phone.replace(/[^0-9]/g,'');
+        var div = document.createElement('div');
+        div.className = 'd-flex align-items-center gap-2 py-1 px-1';
+        div.innerHTML = '<input type="checkbox" class="form-check-input sms-chk" id="'+esc(id)+'" value="'+escAttr(r.phone)+'">' +
+            '<label class="form-check-label" for="'+esc(id)+'" style="cursor:pointer;flex:1">' +
+            esc(r.name)+'<span class="text-muted ms-1">('+esc(r.dept)+')</span></label>' +
+            '<span class="text-muted" style="font-size:0.75rem">'+esc(r.phone)+'</span>';
+        div.querySelector('input').addEventListener('change', updateSmsSelCount);
+        list.appendChild(div);
+    });
+    updateSmsSelCount();
+}
+
+function checkAllSms(check) {
+    document.querySelectorAll('.sms-chk').forEach(function(cb){ cb.checked = check; });
+    updateSmsSelCount();
+}
+
+function updateSmsSelCount() {
+    var cnt = document.querySelectorAll('.sms-chk:checked').length;
+    var drvCnt = document.querySelectorAll('.driver-chk:checked').length;
+    var extra = document.getElementById('smsExtraPhones').value.trim();
+    var extraCnt = extra ? extra.split(/[,\n]+/).filter(function(s){ return s.trim(); }).length : 0;
+    document.getElementById('smsSelCount').textContent = cnt + '명 선택';
+    document.getElementById('smsSendInfo').textContent = '총 ' + (cnt+extraCnt+drvCnt) + '명에게 전송';
+}
+
+function updateSmsByteCount() {
+    var msg = document.getElementById('smsMsgContent').value;
+    var bytes = new TextEncoder().encode(msg).length;
+    var type = bytes > 90 ? 'LMS' : 'SMS';
+    document.getElementById('smsByteCount').textContent = '('+bytes+'bytes / '+type+')';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('smsMsgContent').addEventListener('input', updateSmsByteCount);
+    document.getElementById('smsExtraPhones').addEventListener('input', updateSmsSelCount);
+});
+
+function sendSms() {
+    var checked = Array.from(document.querySelectorAll('.sms-chk:checked')).map(function(cb){ return cb.value; });
+    var drivers = Array.from(document.querySelectorAll('.driver-chk:checked')).map(function(cb){ return cb.value; });
+    var extra = document.getElementById('smsExtraPhones').value.trim();
+    var extraNums = extra ? extra.split(/[,\n]+/).map(function(s){ return s.trim(); }).filter(Boolean) : [];
+    var receivers = checked.concat(drivers).concat(extraNums);
+    var msg = document.getElementById('smsMsgContent').value.trim();
+
+    if (receivers.length === 0) { alert('수신자를 선택하거나 번호를 입력하세요.'); return; }
+    if (!msg) { alert('메시지 내용을 입력하세요.'); return; }
+    if (!confirm(receivers.length+'명에게 문자를 전송하시겠습니까?')) return;
+
+    var sendBtn = document.querySelector('#smsModal .btn-primary');
+    sendBtn.disabled = true; sendBtn.textContent = '전송중...';
+
+    fetch('/api/bus_sms_send', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ receivers: receivers, msg: msg })
+    })
+    .then(function(r){return r.json();})
+    .then(function(d){
+        sendBtn.disabled = false; sendBtn.textContent = '📨 전송';
+        if (d.ok) {
+            smsModalObj.hide();
+            alert('✅ '+d.sent+'명에게 전송 완료! (ID: '+d.msg_id+')');
+        } else {
+            alert('❌ 전송 실패: '+(d.error||'알 수 없는 오류'));
+        }
+    })
+    .catch(function(e){
+        sendBtn.disabled = false; sendBtn.textContent = '📨 전송';
+        alert('오류: '+e);
+    });
+}
+
+function printDispatch() {
+    var d = lastResult;
+    var title = document.getElementById('resultTitle').textContent;
+    var win = window.open('','_blank');
+    var html = '<html><head><title>배차조회</title>';
+    html += '<style>body{font-family:"Malgun Gothic",sans-serif;padding:30px;} h2{margin-bottom:20px;} h3{margin-top:25px;border-bottom:1px solid #ccc;padding-bottom:5px;} .bus-section{margin:10px 0;} .bus-title{font-weight:bold;font-size:1.1em;margin-bottom:5px;} .names{font-size:1em;}</style></head><body>';
+    html += '<h2>'+esc(title)+'</h2>';
+    function pShift(s, label) {
+        var h='';
+        if(label) h+='<h3>'+(s.shift==='주간'?'☀️':'🌙')+' '+s.shift+'</h3>';
+        h+='<div class="bus-section"><div class="bus-title">1호차 ('+s.bus1.length+'명)</div><div class="names">'+esc(s.bus1.join(', ')||'없음')+'</div></div>';
+        h+='<div class="bus-section"><div class="bus-title">2호차 ('+s.bus2.length+'명)</div><div class="names">'+esc(s.bus2.join(', ')||'없음')+'</div></div>';
+        return h;
+    }
+    if (d.shift==='전체'&&d.shifts) {
+        d.shifts.forEach(function(s){ html+=pShift(isEditMode?applyOv(s):s,true); });
+    } else {
+        html+=pShift(isEditMode?applyOv(d):d,false);
+    }
+    if (d.is_pre_holiday&&d.extra_dispatches) {
+        d.extra_dispatches.forEach(function(ex){
+            if(ex.bus1.length+ex.bus2.length>0){
+                html+='<hr><h3>'+esc(ex.date)+' '+esc(ex.shift)+'</h3>';
+                html+='<div class="bus-section"><div class="bus-title">1호차 ('+ex.bus1.length+'명)</div><div class="names">'+esc(ex.bus1.join(', ')||'없음')+'</div></div>';
+                html+='<div class="bus-section"><div class="bus-title">2호차 ('+ex.bus2.length+'명)</div><div class="names">'+esc(ex.bus2.join(', ')||'없음')+'</div></div>';
+            }
+        });
+    }
+    html+='</body></html>';
+    win.document.write(html); win.document.close();
+    win.onload=function(){ win.print(); };
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+{#
+  단일 질문 렌더 파셜.
+  Context: q (dict with id, qtype, title, description, required, options, branch_src_qid, branch_src_value)
+  조건부 표시는 JS에서 .hidden 클래스 토글.
+#}
+<div class="q-tile" data-qid="{{ q.id }}">
+    <div class="q-t">{{ q.title or '(제목 없음)' }}{% if q.required %}<span class="req">*</span>{% endif %}</div>
+    {% if q.description %}<div class="q-d">{{ q.description }}</div>{% endif %}
+
+    <div class="q-input">
+    {% if q.qtype == 'short' %}
+        <input type="text" class="form-control form-control-sm" name="q_{{ q.id }}" placeholder="단답형 답변">
+    {% elif q.qtype == 'long' %}
+        <textarea class="form-control form-control-sm" name="q_{{ q.id }}" rows="3" placeholder="장문형 답변"></textarea>
+    {% elif q.qtype == 'radio' %}
+        {% for o in q.options %}
+        <div class="opt-row">
+            <input type="radio" name="q_{{ q.id }}" id="q_{{ q.id }}_{{ o.id }}" value="{{ o.label }}" class="form-check-input">
+            <label for="q_{{ q.id }}_{{ o.id }}" class="ms-1">{{ o.label }}</label>
+        </div>
+        {% endfor %}
+    {% elif q.qtype == 'checkbox' %}
+        {% for o in q.options %}
+        <div class="opt-row">
+            <input type="checkbox" name="q_{{ q.id }}" id="q_{{ q.id }}_{{ o.id }}" value="{{ o.label }}" class="form-check-input">
+            <label for="q_{{ q.id }}_{{ o.id }}" class="ms-1">{{ o.label }}</label>
+        </div>
+        {% endfor %}
+    {% elif q.qtype == 'select' %}
+        <select name="q_{{ q.id }}" class="form-select form-select-sm" style="max-width:320px;">
+            <option value="">선택하세요</option>
+            {% for o in q.options %}
+            <option value="{{ o.label }}">{{ o.label }}</option>
+            {% endfor %}
+        </select>
+    {% elif q.qtype == 'rating' %}
+        <div class="rating-scale">
+            {% for n in range(1,6) %}
+            <input type="radio" name="q_{{ q.id }}" id="q_{{ q.id }}_r{{ n }}" value="{{ n }}">
+            <label for="q_{{ q.id }}_r{{ n }}">{{ n }}점</label>
+            {% endfor %}
+        </div>
+    {% elif q.qtype == 'date' %}
+        <input type="date" class="form-control form-control-sm" name="q_{{ q.id }}" style="max-width:220px;">
+    {% elif q.qtype == 'file' %}
+        <input type="file" class="form-control form-control-sm" name="q_{{ q.id }}" style="max-width:420px;">
+    {% endif %}
+    </div>
+</div>

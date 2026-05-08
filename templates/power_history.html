@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>기간별 전력 조회 — 태인관리시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+.power-card { border-radius:10px; border:none; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+</style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main-content">
+
+{% if demo %}
+<div class="alert alert-warning d-flex align-items-center mb-3 py-2" style="font-size:0.85rem;">
+  <span class="me-2">⚠️</span><strong>데모 모드</strong>&nbsp;— 샘플 데이터입니다.
+</div>
+{% endif %}
+
+<!-- 헤더 + 날짜 선택 -->
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <h5 class="mb-0 fw-bold">📊 기간별 전력 조회</h5>
+  <div class="d-flex align-items-center gap-2">
+    <a href="/power_dashboard" class="btn btn-outline-secondary btn-sm">← 대시보드</a>
+  </div>
+</div>
+
+<form method="get" class="card power-card p-3 mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-auto">
+      <label class="form-label small mb-1">시작일</label>
+      <input type="date" name="start" class="form-control form-control-sm" value="{{ start_date }}">
+    </div>
+    <div class="col-auto">
+      <label class="form-label small mb-1">종료일</label>
+      <input type="date" name="end"   class="form-control form-control-sm" value="{{ end_date }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary btn-sm">조회</button>
+    </div>
+    <div class="col-auto">
+      <!-- 빠른 선택 -->
+      <div class="btn-group btn-group-sm">
+        <button type="button" class="btn btn-outline-secondary" onclick="setRange(1)">오늘</button>
+        <button type="button" class="btn btn-outline-secondary" onclick="setRange(7)">7일</button>
+        <button type="button" class="btn btn-outline-secondary" onclick="setRange(30)">30일</button>
+      </div>
+    </div>
+  </div>
+</form>
+
+{% if hist %}
+
+<!-- 15분 단위 line chart -->
+{% if hist.line_labels %}
+<div class="card power-card mb-3">
+  <div class="card-header py-2 fw-bold border-bottom" style="font-size:0.85rem;">
+    ⚡ 15분 단위 전력 추이 (kW)
+    <span class="text-muted fw-normal ms-2" style="font-size:0.78rem;">{{ start_date }} ~ {{ end_date }}</span>
+  </div>
+  <div class="card-body p-2">
+    <canvas id="chartLine" height="100"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<!-- 일별 집계 테이블 -->
+{% if hist.daily_rows %}
+<div class="card power-card mb-3">
+  <div class="card-header py-2 fw-bold border-bottom" style="font-size:0.85rem;">
+    📋 일별 집계
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;">
+        <thead class="table-light">
+          <tr>
+            <th class="px-3">날짜</th>
+            <th class="text-end px-3">사용량 (kWh)</th>
+            <th class="text-end px-3">최대전력 (kW)</th>
+            <th class="text-end px-3">피크시각</th>
+            <th class="text-end px-3">평균전력 (kW)</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in hist.daily_rows %}
+          <tr>
+            <td class="px-3">{{ r.date }}</td>
+            <td class="text-end px-3">{{ "{:,.1f}".format(r.total_kwh) }}</td>
+            <td class="text-end px-3">{{ r.peak_kw }}</td>
+            <td class="text-end px-3">{{ r.peak_time }}</td>
+            <td class="text-end px-3">{{ r.avg_kw }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td class="px-3">합계</td>
+            <td class="text-end px-3">{{ "{:,.1f}".format(hist.daily_rows | sum(attribute='total_kwh')) }}</td>
+            <td class="text-end px-3">{{ (hist.daily_rows | max(attribute='peak_kw')).peak_kw }}</td>
+            <td class="text-end px-3">-</td>
+            <td class="text-end px-3">-</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="text-center text-muted py-5">조회 결과가 없습니다.</div>
+{% endif %}
+
+</div><!-- /main-content -->
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    {% if hist and hist.line_labels %}
+    var labels = {{ hist.line_labels | tojson }};
+    var dataKw = {{ hist.line_kw    | tojson }};
+
+    new Chart(document.getElementById('chartLine'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'kW',
+                data: dataKw,
+                borderColor: 'rgba(0,113,227,1)',
+                backgroundColor: 'rgba(0,113,227,.08)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+                borderWidth: 1.5,
+            }]
+        },
+        options: {
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: function(c){ return c.raw + ' kW'; } } }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(0,0,0,.05)' },
+                    ticks: { font: { size: 9 }, maxTicksLimit: 20, maxRotation: 0 }
+                },
+                y: {
+                    grid: { color: 'rgba(0,0,0,.05)' },
+                    ticks: { font: { size: 10 } },
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    {% endif %}
+});
+
+function setRange(days) {
+    var end   = new Date();
+    var start = new Date();
+    start.setDate(start.getDate() - (days - 1));
+    var fmt = function(d){ return d.toISOString().slice(0,10); };
+    document.querySelector('[name=start]').value = fmt(start);
+    document.querySelector('[name=end]').value   = fmt(end);
+    document.querySelector('form').submit();
+}
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

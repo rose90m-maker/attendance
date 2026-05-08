@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MES 리포트 — 태인관리시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+.mes-card { border-radius:10px; border:none; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+.mode-tab { font-size:0.85rem; }
+</style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main-content">
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h5 class="mb-0 fw-bold">📊 MES 생산 리포트</h5>
+  <div class="d-flex gap-2">
+    <a href="/mes/realtime" class="btn btn-outline-secondary btn-sm">← 실시간</a>
+  </div>
+</div>
+
+<!-- 조회 조건 -->
+<div class="card mes-card p-3 mb-3">
+  <form method="get" class="row g-2 align-items-end">
+    <!-- 모드 탭 -->
+    <div class="col-auto">
+      <div class="btn-group btn-group-sm mode-tab">
+        <a href="?mode=daily&date={{ sel_date }}&device={{ device_filter }}"
+           class="btn {{ 'btn-primary' if mode=='daily' else 'btn-outline-secondary' }}">일별</a>
+        <a href="?mode=monthly&month={{ sel_month }}&device={{ device_filter }}"
+           class="btn {{ 'btn-primary' if mode=='monthly' else 'btn-outline-secondary' }}">월별</a>
+      </div>
+    </div>
+
+    {% if mode == 'daily' %}
+    <div class="col-auto">
+      <label class="form-label small mb-1">날짜</label>
+      <input type="hidden" name="mode" value="daily">
+      <input type="date" name="date" class="form-control form-control-sm" value="{{ sel_date }}">
+    </div>
+    {% else %}
+    <div class="col-auto">
+      <label class="form-label small mb-1">월</label>
+      <input type="hidden" name="mode" value="monthly">
+      <input type="month" name="month" class="form-control form-control-sm" value="{{ sel_month }}">
+    </div>
+    {% endif %}
+
+    <div class="col-auto">
+      <label class="form-label small mb-1">장치 필터</label>
+      <select name="device" class="form-select form-select-sm" style="min-width:130px;">
+        <option value="">전체</option>
+        {% for d in devices %}
+        <option value="{{ d.device_id }}" {{ 'selected' if d.device_id == device_filter }}>
+          {{ d.name }}{% if d.line_name %} ({{ d.line_name }}){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary btn-sm">조회</button>
+    </div>
+  </form>
+</div>
+
+{% if rows %}
+<!-- 요약 카드 -->
+<div class="row g-3 mb-3">
+  {% set total_sum = rows | sum(attribute='total') %}
+  {% set peak_max  = rows | max(attribute='peak') %}
+  <div class="col-6 col-md-3">
+    <div class="card mes-card h-100 text-center p-3">
+      <div style="font-size:0.75rem; color:#888;">총 생산량</div>
+      <div class="fw-bold text-primary" style="font-size:1.4rem;">{{ "{:,}".format(total_sum) }}</div>
+      <div style="font-size:0.72rem; color:#aaa;">개</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card mes-card h-100 text-center p-3">
+      <div style="font-size:0.75rem; color:#888;">집계 장치 수</div>
+      <div class="fw-bold text-success" style="font-size:1.4rem;">{{ rows | length }}</div>
+      <div style="font-size:0.72rem; color:#aaa;">대</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card mes-card h-100 text-center p-3">
+      <div style="font-size:0.75rem; color:#888;">최대 피크</div>
+      <div class="fw-bold text-warning" style="font-size:1.4rem;">{{ "{:,}".format(peak_max.peak) }}</div>
+      <div style="font-size:0.72rem; color:#aaa;">개 ({{ peak_max.name }})</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card mes-card h-100 text-center p-3">
+      <div style="font-size:0.75rem; color:#888;">장치당 평균</div>
+      <div class="fw-bold" style="font-size:1.4rem;">{{ "{:,}".format((total_sum / rows|length)|int) }}</div>
+      <div style="font-size:0.72rem; color:#aaa;">개</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- 차트 -->
+{% if chart_labels %}
+<div class="card mes-card mb-3">
+  <div class="card-header py-2 fw-bold border-bottom" style="font-size:0.85rem;">
+    {% if mode == 'daily' %}⏰ 시간대별 생산량 ({{ sel_date }})
+    {% else %}📅 일별 생산량 추이 ({{ sel_month }}){% endif %}
+  </div>
+  <div class="card-body p-2">
+    <canvas id="chartMes" height="{{ '80' if mode=='monthly' else '100' }}"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<!-- 집계 테이블 -->
+{% if rows %}
+<div class="card mes-card mb-3">
+  <div class="card-header py-2 fw-bold border-bottom" style="font-size:0.85rem;">
+    📋 장치별 집계
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0" style="font-size:0.83rem;">
+        <thead class="table-light">
+          <tr>
+            <th class="px-3">라인</th>
+            <th>장치명</th>
+            <th class="text-end px-3">총 생산량</th>
+            <th class="text-end px-3">피크</th>
+            <th class="text-end px-3">비율</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% set total_sum = rows | sum(attribute='total') %}
+        {% for r in rows | sort(attribute='total', reverse=True) %}
+          {% set pct = ((r.total / total_sum * 100) | round(1)) if total_sum else 0 %}
+          <tr>
+            <td class="px-3 text-muted" style="font-size:0.78rem;">{{ r.line or '-' }}</td>
+            <td class="fw-bold">{{ r.name }}</td>
+            <td class="text-end px-3">{{ "{:,}".format(r.total) }}</td>
+            <td class="text-end px-3">{{ "{:,}".format(r.peak) }}</td>
+            <td class="text-end px-3">
+              <div class="d-flex align-items-center justify-content-end gap-2">
+                <div style="width:60px; height:6px; background:#e9ecef; border-radius:3px; overflow:hidden;">
+                  <div style="width:{{ pct }}%; height:100%; background:#0071e3; border-radius:3px;"></div>
+                </div>
+                <span style="font-size:0.78rem; color:#888; min-width:35px;">{{ pct }}%</span>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td colspan="2" class="px-3">합계</td>
+            <td class="text-end px-3">{{ "{:,}".format(rows | sum(attribute='total')) }}</td>
+            <td class="text-end px-3">-</td>
+            <td class="text-end px-3">100%</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="text-center text-muted py-5 card mes-card">해당 기간 데이터가 없습니다.</div>
+{% endif %}
+
+</div><!-- /main-content -->
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    {% if chart_labels %}
+    var labels   = {{ chart_labels | tojson }};
+    var datasets = {{ chart_datasets | tojson }};
+
+    datasets = datasets.map(function(ds) {
+        return Object.assign(ds, { borderRadius: 3, borderSkipped: false });
+    });
+
+    new Chart(document.getElementById('chartMes'), {
+        type: 'bar',
+        data: { labels: labels, datasets: datasets },
+        options: {
+            plugins: {
+                legend: { display: datasets.length > 1, position: 'bottom',
+                          labels: { font: { size: 11 }, boxWidth: 12, padding: 10 } },
+                tooltip: { callbacks: { label: function(c){ return c.dataset.label + ': ' + c.raw.toLocaleString() + '개'; } } }
+            },
+            scales: {
+                x: { grid: { color: 'rgba(0,0,0,.05)' },
+                     ticks: { font: { size: 10 }, maxRotation: 0, maxTicksLimit: 24 },
+                     stacked: {{ 'true' if chart_datasets|length > 1 else 'false' }} },
+                y: { grid: { color: 'rgba(0,0,0,.05)' },
+                     ticks: { font: { size: 10 } },
+                     beginAtZero: true,
+                     stacked: {{ 'true' if chart_datasets|length > 1 else 'false' }} }
+            }
+        }
+    });
+    {% endif %}
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

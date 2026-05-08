@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Flask App (app_maria.py)",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["app_maria.py"],
+      "port": 5050
+    },
+    {
+      "name": "RAG Server (FastAPI)",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["rag_server.py"],
+      "port": 8765
+    }
+  ]
+}

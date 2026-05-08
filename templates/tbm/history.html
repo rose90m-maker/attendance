@@ -1,0 +1,39 @@
+{% extends "tbm/base.html" %}
+{% block title %}TBM 제출 내역{% endblock %}
+{% block content %}
+<div class="page-header mb-3">
+  <h4>📋 TBM 제출 내역</h4>
+  <a href="/tbm/sign" class="btn btn-tbm-primary btn-sm">이번 주 TBM 서명</a>
+</div>
+
+{% if not history %}
+<div class="text-center py-5 text-muted">
+  <div style="font-size:3rem">📭</div>
+  <p class="mt-2">제출 내역이 없습니다.</p>
+</div>
+{% else %}
+<div class="row g-3">
+{% for h in history %}
+<div class="col-12 col-md-6 col-lg-4">
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between mb-1">
+        <span class="fw-700">{{ h.label }}</span>
+        <span class="dept-badge-{{ 'elec' if '전기' in h.dept else 'electronic' }}">
+          {{ h.dept[:2] }}사업부
+        </span>
+      </div>
+      <div class="text-muted" style="font-size:.8rem">TBM 날짜: {{ h.tbm_date }}</div>
+      {% if h.job_name %}
+      <div class="mt-1" style="font-size:.85rem">작업명: <span class="fw-600">{{ h.job_name }}</span></div>
+      {% endif %}
+      <div class="mt-2" style="font-size:.78rem;color:#6b7280">
+        서명일시: {{ h.signed_at[:16] if h.signed_at else '—' }}
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

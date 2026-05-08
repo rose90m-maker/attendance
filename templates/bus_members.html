@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>탑승자 명단 — 태인관리시스템</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+<style>
+.bus-table { font-size:0.82rem; }
+.bus-table th { background:#f1f5f9; position:sticky; top:0; z-index:2; }
+.bus-badge-1 { background:#3b82f6; color:#fff; padding:2px 8px; border-radius:10px; font-size:0.75rem; }
+.bus-badge-2 { background:#f59e0b; color:#fff; padding:2px 8px; border-radius:10px; font-size:0.75rem; }
+.upload-zone { border:2px dashed #cbd5e1; border-radius:8px; padding:20px; text-align:center; cursor:pointer; transition:0.2s; }
+.upload-zone:hover { border-color:#3b82f6; background:#eff6ff; }
+.upload-zone.drag-over { border-color:#3b82f6; background:#eff6ff; }
+</style>
+</head>
+<body>
+{% set active_page = 'bus_members' %}
+{% include '_sidebar.html' %}
+
+<main class="main-content">
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">🚌 버스 탑승자 명단</h5>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary btn-sm" onclick="document.getElementById('excelFile').click()">📥 엑셀 업로드</button>
+            <input type="file" id="excelFile" accept=".xlsx,.xls" style="display:none" onchange="uploadExcel(this)">
+            <button class="btn btn-primary btn-sm" onclick="openAddModal()">➕ 추가</button>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- 1호차 -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                    <span><span class="bus-badge-1">1호차</span> <span class="ms-2 text-muted small" id="bus1Count">0명</span></span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover bus-table mb-0">
+                        <thead><tr><th style="width:40px">#</th><th>이름</th><th>부서</th><th style="width:80px">관리</th></tr></thead>
+                        <tbody id="bus1Body">
+                        {% for m in members if m.bus_no == 1 and m.active %}
+                        <tr data-id="{{ m.id }}">
+                            <td>{{ loop.index }}</td>
+                            <td>{{ m.user_name }}</td>
+                            <td>{{ m.dept }}</td>
+                            <td>
+                                <button class="btn btn-outline-warning btn-sm py-0 px-1" style="font-size:0.7rem" onclick="changeBus({{ m.id }},'{{ m.user_name }}',2)">→2호</button>
+                                <button class="btn btn-outline-danger btn-sm py-0 px-1" style="font-size:0.7rem" onclick="deleteMember({{ m.id }},'{{ m.user_name }}')">삭제</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <!-- 2호차 -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header py-2">
+                    <span><span class="bus-badge-2">2호차</span> <span class="ms-2 text-muted small" id="bus2Count">0명</span></span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover bus-table mb-0">
+                        <thead><tr><th style="width:40px">#</th><th>이름</th><th>부서</th><th style="width:80px">관리</th></tr></thead>
+                        <tbody id="bus2Body">
+                        {% for m in members if m.bus_no == 2 and m.active %}
+                        <tr data-id="{{ m.id }}">
+                            <td>{{ loop.index }}</td>
+                            <td>{{ m.user_name }}</td>
+                            <td>{{ m.dept }}</td>
+                            <td>
+                                <button class="btn btn-outline-primary btn-sm py-0 px-1" style="font-size:0.7rem" onclick="changeBus({{ m.id }},'{{ m.user_name }}',1)">→1호</button>
+                                <button class="btn btn-outline-danger btn-sm py-0 px-1" style="font-size:0.7rem" onclick="deleteMember({{ m.id }},'{{ m.user_name }}')">삭제</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</main>
+
+<!-- 추가 모달 -->
+<div class="modal fade" id="addModal" tabindex="-1">
+<div class="modal-dialog modal-sm modal-dialog-centered">
+<div class="modal-content">
+    <div class="modal-header py-2"><h6 class="modal-title">탑승자 추가</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+        <div class="mb-2">
+            <label class="form-label small mb-1">부서 필터</label>
+            <select class="form-select form-select-sm" id="deptFilter" onchange="filterUsers()">
+                <option value="">전체 부서</option>
+                {% for d in dept_list %}
+                <option value="{{ d }}">{{ d }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-2">
+            <label class="form-label small mb-1">사원 검색</label>
+            <input type="text" class="form-control form-control-sm" id="searchUser" placeholder="이름 검색..." oninput="filterUsers()">
+            <select class="form-select form-select-sm mt-1" id="userSelect" size="8" style="font-size:0.8rem;">
+                {% for u in all_users %}
+                <option value="{{ u.id }}" data-name="{{ u.name }}" data-dept="{{ u.dept }}">{{ u.name }} ({{ u.dept }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-2">
+            <label class="form-label small mb-1">호차</label>
+            <select class="form-select form-select-sm" id="busNoSelect">
+                <option value="1">1호차</option>
+                <option value="2">2호차</option>
+            </select>
+        </div>
+    </div>
+    <div class="modal-footer py-1">
+        <button class="btn btn-primary btn-sm" onclick="addMember()">추가</button>
+    </div>
+</div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+var addModalObj;
+var ALL_USERS = [
+    {% for u in all_users %}
+    {id:{{ u.id }}, name:"{{ u.name }}", dept:"{{ u.dept }}", sub_dept:"{{ u.sub_dept }}"},
+    {% endfor %}
+];
+
+document.addEventListener('DOMContentLoaded', function() {
+    addModalObj = new bootstrap.Modal(document.getElementById('addModal'));
+    updateCounts();
+});
+
+function updateCounts() {
+    document.getElementById('bus1Count').textContent = document.querySelectorAll('#bus1Body tr').length + '명';
+    document.getElementById('bus2Count').textContent = document.querySelectorAll('#bus2Body tr').length + '명';
+}
+
+function openAddModal() { addModalObj.show(); }
+
+function filterUsers() {
+    var q = document.getElementById('searchUser').value.trim().toLowerCase();
+    var deptF = document.getElementById('deptFilter').value;
+    var sel = document.getElementById('userSelect');
+    sel.innerHTML = '';
+    ALL_USERS.forEach(function(u) {
+        var nameMatch = !q || u.name.toLowerCase().indexOf(q) >= 0 || u.dept.toLowerCase().indexOf(q) >= 0;
+        var deptMatch = !deptF || u.dept === deptF || u.sub_dept === deptF;
+        if (nameMatch && deptMatch) {
+            var opt = document.createElement('option');
+            opt.value = u.id;
+            opt.dataset.name = u.name;
+            opt.dataset.dept = u.dept;
+            opt.textContent = u.name + ' (' + u.dept + ')';
+            sel.appendChild(opt);
+        }
+    });
+}
+
+function addMember() {
+    var sel = document.getElementById('userSelect');
+    var opt = sel.selectedOptions[0];
+    if (!opt) { alert('사원을 선택하세요.'); return; }
+    var busNo = parseInt(document.getElementById('busNoSelect').value);
+    fetch('/api/bus_member_save', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({user_id: parseInt(opt.value), user_name: opt.dataset.name, dept: opt.dataset.dept, bus_no: busNo})
+    }).then(function(r){return r.json();}).then(function(d){
+        if (d.ok) { addModalObj.hide(); location.reload(); }
+        else alert('저장 실패: '+(d.error||''));
+    });
+}
+
+function changeBus(id, name, newBus) {
+    fetch('/api/bus_member_save', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({user_name: name, bus_no: newBus, dept:''})
+    }).then(function(r){return r.json();}).then(function(d){
+        if(d.ok) location.reload();
+    });
+}
+
+function deleteMember(id, name) {
+    if (!confirm(name + ' 님을 삭제하시겠습니까?')) return;
+    fetch('/api/bus_member_delete', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id: id})
+    }).then(function(r){return r.json();}).then(function(d){
+        if(d.ok) location.reload();
+    });
+}
+
+function uploadExcel(input) {
+    if (!input.files.length) return;
+    var fd = new FormData();
+    fd.append('file', input.files[0]);
+    fetch('/api/bus_member_upload', {method:'POST', body:fd})
+    .then(function(r){return r.json();})
+    .then(function(d){
+        if(d.ok) { alert(d.added + '명 업로드 완료'); location.reload(); }
+        else alert('업로드 실패: '+(d.error||''));
+    });
+    input.value = '';
+}
+</script>
+</body>
+</html>

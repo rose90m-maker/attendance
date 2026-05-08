@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>월별 근무표</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        .scroll-wrap { overflow-x: auto; max-width: 100%; }
+        .ws-table { font-size: 0.82rem; border-collapse: collapse; white-space: nowrap; width: 100%; table-layout: auto; }
+        .ws-table th, .ws-table td { text-align: center; vertical-align: middle; padding: 2px 3px; border: 1px solid #cbd5e1; }
+        .ws-table thead th { background: #e2e8f0; position: sticky; top: 0; z-index: 2; font-weight: 600; font-size: 0.78rem; }
+        .bg-sat { background: #dbeafe !important; }
+        .bg-sun { background: #fee2e2 !important; }
+        .emp-first td { border-top: 2px solid #475569 !important; }
+        .r-ot td.day-cell { color: #dc2626; }
+        .r-ni td.day-cell { color: #2563eb; }
+        .r-etc td.day-cell { color: #64748b; }
+        .sum-col { background: #f1f5f9 !important; font-weight: 600; min-width: 30px; }
+        .day-cell { min-width: 22px; }
+        .meta { min-width: 35px; background: #f8fafc; }
+        .meta a:hover { text-decoration: underline !important; }
+        @media (max-width: 767.98px) {
+            .ws-table { font-size: 0.6rem; }
+            .ws-table th, .ws-table td { padding: 1px 0px; }
+            .meta { min-width: 20px; font-size: 0.55rem; }
+            .day-cell { min-width: 14px; }
+            .sum-col { min-width: 20px; font-size: 0.55rem; }
+            .filter-bar { padding: 8px !important; }
+            .filter-bar .form-label { font-size: 0.78rem; margin-bottom: 2px; }
+            .page-title { font-size: 1rem !important; }
+            .card-header { font-size: 0.82rem !important; padding: 6px 10px !important; }
+            .meta-hide { display: none; }
+        }
+        .editable { cursor: pointer; position: relative; transition: background 0.15s; }
+        .editable:hover { background: #fefce8 !important; }
+        .overridden { background: #fef9c3 !important; font-weight: 600; }
+        .has-memo { position: relative; }
+        .has-memo::after {
+            content: ''; position: absolute; top: 2px; right: 2px;
+            width: 5px; height: 5px; background: #f59e0b; border-radius: 50%;
+        }
+        .edit-input {
+            width: 52px; padding: 1px 3px; font-size: 0.92rem;
+            border: 2px solid var(--c-primary); border-radius: 4px; text-align: center;
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'work_schedule' %}
+{% include '_sidebar.html' %}
+{% set can_edit = can_edit if can_edit is defined else (session.get('role') == 'admin') %}
+
+<div class="container-fluid mt-4">
+    <div class="page-title mb-3">
+        <span class="title-icon">📊</span>
+        <span>월별 근무표</span>
+    </div>
+    <div class="filter-bar">
+        <div class="row g-3 align-items-end">
+            {% if can_edit %}
+            <div class="col-md-3">
+                <form method="GET">
+                    <label class="form-label">🔍 이름 / 사번 검색</label>
+                    <div class="input-group">
+                        <input type="text" name="search" value="{{ search }}" class="form-control" placeholder="이름 또는 사번">
+                        {% if sel_month %}<input type="hidden" name="month" value="{{ sel_month }}">{% endif %}
+                        {% if sel_dept %}<input type="hidden" name="dept" value="{{ sel_dept }}">{% endif %}
+                        <button type="submit" class="btn btn-primary">검색</button>
+                    </div>
+                </form>
+            </div>
+            <div class="col-md-3">
+                <form method="GET">
+                    <label class="form-label">🏢 부서 선택</label>
+                    <select name="dept" class="form-select" onchange="this.form.submit()">
+                        <option value="">전체 부서</option>
+                        {% for d in dept_list %}
+                        <option value="{{ d }}" {% if sel_dept == d %}selected{% endif %}>{{ d }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if sel_month %}<input type="hidden" name="month" value="{{ sel_month }}">{% endif %}
+                    {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
+                </form>
+            </div>
+            {% endif %}
+            <div class="col-md-3">
+                <form method="GET">
+                    <label class="form-label">📅 연월 선택</label>
+                    <input type="month" name="month" value="{{ sel_month }}" class="form-control" onchange="this.form.submit()">
+                    {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
+                    {% if sel_dept %}<input type="hidden" name="dept" value="{{ sel_dept }}">{% endif %}
+                </form>
+            </div>
+            {% if not can_edit %}
+            <div class="col-md-3">
+                <form method="GET">
+                    <label class="form-label">🏢 부서 선택</label>
+                    <select name="dept" class="form-select" onchange="this.form.submit()">
+                        <option value="">전체 부서</option>
+                        {% for d in dept_list %}
+                        <option value="{{ d }}" {% if sel_dept == d %}selected{% endif %}>{{ d }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if sel_month %}<input type="hidden" name="month" value="{{ sel_month }}">{% endif %}
+                </form>
+            </div>
+            {% endif %}
+            {% if can_edit %}
+            <div class="col-md-3 d-flex gap-2">
+                {% if search or sel_month %}
+                <a href="/work_schedule" class="btn btn-outline-secondary">초기화</a>
+                {% endif %}
+                {% if employees %}
+                <button onclick="exportExcel()" class="btn btn-success">📥 Excel</button>
+                <a href="/work_schedule?export=salary&search={{ search }}&month={{ sel_month }}&dept={{ sel_dept }}" class="btn btn-warning">💰 급여출력</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if employees %}
+    {% if can_edit %}
+    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <label class="form-label mb-0 small fw-bold" style="white-space:nowrap;">페이지당</label>
+            <select class="form-select form-select-sm" style="width:80px;" onchange="location.href='/work_schedule?month={{ sel_month }}&search={{ search }}&dept={{ sel_dept }}&per_page='+this.value">
+                <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+                <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                <option value="0" {% if per_page == 0 %}selected{% endif %}>전체</option>
+            </select>
+        </div>
+        <span class="small text-muted fw-bold">총 {{ total_emp }}명</span>
+    </div>
+    {% endif %}
+    <div class="card mb-4">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="border-radius: 10px 10px 0 0;">
+            <span class="fw-bold">📊 {{ month_label }} 근무표</span>
+            <span class="fw-normal" style="font-size:0.85rem">총 {{ total_emp }}명{% if total_pages > 1 %} ({{ page }}/{{ total_pages }}페이지){% endif %}</span>
+        </div>
+        <div class="card-body p-0 scroll-wrap">
+        <div style="display:inline-block; min-width:100%;">
+            <table class="ws-table" id="ws-table">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="meta meta-hide">No</th>
+                        <th rowspan="2" class="meta meta-hide">사번</th>
+                        <th rowspan="2" class="meta meta-hide">부서</th>
+                        <th rowspan="2" class="meta">이름</th>
+                        <th rowspan="2" class="meta">근태</th>
+                        {% for d in day_info %}
+                        <th class="day-cell {% if d.is_sun or d.is_holiday %}bg-sun{% elif d.is_sat %}bg-sat{% endif %}">{{ d.day }}</th>
+                        {% endfor %}
+                        <th rowspan="2" class="sum-col" style="line-height:1.3;font-size:0.7rem">전월연장<br>전월야간<br>전월휴일<br>전월휴연</th>
+                        <th rowspan="2" class="sum-col" style="line-height:1.3;font-size:0.7rem">평일연장<br>야간근로<br>휴일근로<br>휴일연장</th>
+                        <th rowspan="2" class="sum-col" style="line-height:1.3;font-size:0.7rem">조퇴외출<br>무급<br>&nbsp;<br>휴일시간</th>
+                    </tr>
+                    <tr>
+                        {% for d in day_info %}
+                        <th class="day-cell {% if d.is_sun or d.is_holiday %}bg-sun{% elif d.is_sat %}bg-sat{% endif %}" style="font-size:0.7rem;color:{% if d.is_sun or d.is_holiday %}#dc3545{% elif d.is_sat %}#0d6efd{% else %}#333{% endif %}">{{ d.wd_name }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in employees %}
+                    <!-- 기본 -->
+                    <tr class="emp-first">
+                        <td rowspan="4" class="meta text-center meta-hide">{{ (page-1)*20 + loop.index }}</td>
+                        <td rowspan="4" class="meta fw-bold meta-hide"><a href="/attendance?search={{ emp.emp_no }}" class="text-decoration-none text-dark">{{ emp.emp_no }}</a></td>
+                        <td rowspan="4" class="meta meta-hide">{{ emp.dept }}</td>
+                        <td rowspan="4" class="meta fw-bold"><a href="/attendance?search={{ emp.name }}" class="text-decoration-none text-primary">{{ emp.name }}</a></td>
+                        <td class="meta fw-bold">기본</td>
+                        {% for i in range(days_in_month) %}
+                        {% set dstr = sel_month|replace('-','') + '%02d'|format(i+1) %}
+                        <td class="day-cell {% if can_edit %}editable{% endif %} {% if emp.basic_ov[i] %}overridden{% endif %} {% if emp.basic_memo[i] %}has-memo{% endif %} {% if day_info[i].is_sun or day_info[i].is_holiday %}bg-sun{% elif day_info[i].is_sat %}bg-sat{% endif %}"
+                            data-eid="{{ emp.id }}" data-date="{{ dstr }}" data-col="basic" data-memo="{{ emp.basic_memo[i] }}" data-name="{{ emp.name }}">
+                            {% if emp.basic[i] and emp.basic[i] > 0 %}{{ "%g"|format(emp.basic[i]) }}{% else %}-{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="sum-col {% if can_edit %}editable{% endif %} {% if emp.sum_ov.sum_ot %}overridden{% endif %} {% if emp.sum_memo.sum_ot %}has-memo{% endif %}"
+                            data-eid="{{ emp.id }}" data-date="{{ sel_month|replace('-','') }}00" data-col="sum_ot" data-memo="{{ emp.sum_memo.sum_ot }}" data-name="{{ emp.name }}">{{ emp.sum_ot if emp.sum_ot else '-' }}</td>
+                        <td class="sum-col">{{ emp.wd_ot }}</td>
+                        <td class="sum-col">-</td>
+                    </tr>
+                    <!-- 연장 -->
+                    <tr class="r-ot">
+                        <td class="meta fw-bold" style="color:#dc3545">연장</td>
+                        {% for i in range(days_in_month) %}
+                        {% set dstr = sel_month|replace('-','') + '%02d'|format(i+1) %}
+                        <td class="day-cell {% if can_edit %}editable{% endif %} {% if emp.overtime_ov[i] %}overridden{% endif %} {% if emp.overtime_memo[i] %}has-memo{% endif %} {% if day_info[i].is_sun or day_info[i].is_holiday %}bg-sun{% elif day_info[i].is_sat %}bg-sat{% endif %}"
+                            data-eid="{{ emp.id }}" data-date="{{ dstr }}" data-col="overtime" data-memo="{{ emp.overtime_memo[i] }}" data-name="{{ emp.name }}">
+                            {% if emp.overtime[i] and emp.overtime[i] > 0 %}{{ "%g"|format(emp.overtime[i]) }}{% else %}-{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="sum-col {% if can_edit %}editable{% endif %} {% if emp.sum_ov.sum_night %}overridden{% endif %} {% if emp.sum_memo.sum_night %}has-memo{% endif %}"
+                            data-eid="{{ emp.id }}" data-date="{{ sel_month|replace('-','') }}00" data-col="sum_night" data-memo="{{ emp.sum_memo.sum_night }}" data-name="{{ emp.name }}">{{ emp.sum_night if emp.sum_night else '-' }}</td>
+                        <td class="sum-col text-primary">{{ emp.night_work }}</td>
+                        <td class="sum-col">{{ emp.unpaid if emp.unpaid else '-' }}</td>
+                    </tr>
+                    <!-- 야간 -->
+                    <tr class="r-ni">
+                        <td class="meta fw-bold" style="color:#0d6efd">야간</td>
+                        {% for i in range(days_in_month) %}
+                        {% set dstr = sel_month|replace('-','') + '%02d'|format(i+1) %}
+                        <td class="day-cell {% if can_edit %}editable{% endif %} {% if emp.night_ov[i] %}overridden{% endif %} {% if emp.night_memo[i] %}has-memo{% endif %} {% if day_info[i].is_sun or day_info[i].is_holiday %}bg-sun{% elif day_info[i].is_sat %}bg-sat{% endif %}"
+                            data-eid="{{ emp.id }}" data-date="{{ dstr }}" data-col="night" data-memo="{{ emp.night_memo[i] }}" data-name="{{ emp.name }}">
+                            {% if emp.night[i] and emp.night[i] > 0 %}{{ "%g"|format(emp.night[i]) }}{% else %}-{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="sum-col {% if can_edit %}editable{% endif %} {% if emp.sum_ov.hol_work %}overridden{% endif %} {% if emp.sum_memo.hol_work %}has-memo{% endif %}"
+                                 data-eid="{{ emp.id }}" data-date="{{ sel_month|replace('-','') }}00" data-col="hol_work" data-memo="{{ emp.sum_memo.hol_work }}" data-name="{{ emp.name }}">{{ emp.hol_work if emp.hol_work else '-' }}</td>
+                            <td class="sum-col text-danger">{{ emp.calc_hw }}</td>
+                            <td class="sum-col">-</td>
+                    </tr>
+                    <!-- 기타 -->
+                    <tr class="r-etc">
+                        <td class="meta fw-bold" style="color:#6c757d">기타</td>
+                        {% for i in range(days_in_month) %}
+                        {% set dstr = sel_month|replace('-','') + '%02d'|format(i+1) %}
+                        <td class="day-cell {% if can_edit %}editable{% endif %} {% if emp.other_ov[i] %}overridden{% endif %} {% if emp.other_memo[i] %}has-memo{% endif %} {% if day_info[i].is_sun or day_info[i].is_holiday %}bg-sun{% elif day_info[i].is_sat %}bg-sat{% endif %}"
+                            data-eid="{{ emp.id }}" data-date="{{ dstr }}" data-col="other" data-memo="{{ emp.other_memo[i] }}" data-name="{{ emp.name }}">
+                            {% if emp.other[i] is string %}{{ emp.other[i] }}{% elif emp.other[i] and emp.other[i] > 0 %}{{ "%g"|format(emp.other[i]) }}{% else %}-{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="sum-col {% if can_edit %}editable{% endif %} {% if emp.sum_ov.hol_ot %}overridden{% endif %} {% if emp.sum_memo.hol_ot %}has-memo{% endif %}"
+                                 data-eid="{{ emp.id }}" data-date="{{ sel_month|replace('-','') }}00" data-col="hol_ot" data-memo="{{ emp.sum_memo.hol_ot }}" data-name="{{ emp.name }}">{{ emp.hol_ot if emp.hol_ot else '-' }}</td>
+                            <td class="sum-col text-danger">{{ emp.calc_ho }}</td>
+                        <td class="sum-col fw-bold">{{ emp.hol_time }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% if not can_edit and employees|length == 1 %}
+            {% set e = employees[0] %}
+            <div class="mt-3 p-3" style="background:#f8fafc; border-radius:8px;">
+                <h6 class="fw-bold mb-2" style="font-size:0.9rem;">📋 {{ month_label }} 근무 요약</h6>
+                <div class="row g-2" style="font-size:0.85rem;">
+                    <div class="col-6 col-md-3"><div class="p-2 bg-white rounded border text-center"><div class="text-muted" style="font-size:0.75rem;">평일연장</div><div class="fw-bold text-danger">{{ e.wd_ot }}시간</div></div></div>
+                    <div class="col-6 col-md-3"><div class="p-2 bg-white rounded border text-center"><div class="text-muted" style="font-size:0.75rem;">야간근로</div><div class="fw-bold text-primary">{{ e.night_work }}시간</div></div></div>
+                    <div class="col-6 col-md-3"><div class="p-2 bg-white rounded border text-center"><div class="text-muted" style="font-size:0.75rem;">휴일근로</div><div class="fw-bold" style="color:#dc3545;">{{ e.calc_hw }}시간</div></div></div>
+                    <div class="col-6 col-md-3"><div class="p-2 bg-white rounded border text-center"><div class="text-muted" style="font-size:0.75rem;">휴일연장</div><div class="fw-bold" style="color:#dc3545;">{{ e.calc_ho }}시간</div></div></div>
+                    <div class="col-6 col-md-3"><div class="p-2 bg-white rounded border text-center"><div class="text-muted" style="font-size:0.75rem;">무급</div><div class="fw-bold">{{ e.unpaid }}일</div></div></div>
+                    <div class="col-6 col-md-3"><div class="p-2 bg-white rounded border text-center"><div class="text-muted" style="font-size:0.75rem;">휴일시간</div><div class="fw-bold">{{ e.hol_time }}시간</div></div></div>
+                </div>
+                <div class="mt-2 text-muted text-center" style="font-size:0.75rem;">※ 이 자료는 근태기록기 자료를 바탕으로 자동생성되었기 때문에 실제와 다를 수 있습니다. 참고만 하세요.</div>
+            </div>
+            {% endif %}
+            {% if override_log %}
+            <div class="mt-3">
+                <h6 class="mb-2" style="font-size:0.9rem;">📝 수정 이력 <span class="badge bg-secondary">{{ override_log|length }}</span></h6>
+                <table class="ws-table table table-bordered mb-0" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th style="min-width:70px;">이름</th>
+                            <th style="min-width:50px;">날짜</th>
+                            <th style="min-width:50px;">구분</th>
+                            <th style="min-width:55px;">수정값</th>
+                            <th>메모</th>
+                            <th style="min-width:90px;">수정일시</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for log in override_log %}
+                        <tr>
+                            <td class="fw-bold">{{ log.name }}</td>
+                            <td>{{ log.date }}</td>
+                            <td><span class="badge {% if log.col == '기본' %}bg-dark{% elif log.col == '연장' %}bg-danger{% elif log.col == '야간' %}bg-primary{% else %}bg-secondary{% endif %}">{{ log.col }}</span></td>
+                            <td class="fw-bold">{{ log.value }}</td>
+                            <td style="text-align:left;">{{ log.memo }}</td>
+                            <td class="text-muted">{{ log.updated }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+        </div>
+    </div>
+    {% if total_pages > 1 %}
+    <nav class="mt-3 mb-4">
+        <ul class="pagination justify-content-center flex-wrap">
+            <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                <a class="page-link" href="/work_schedule?page={{ page-1 }}&month={{ sel_month }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if sel_dept %}&dept={{ sel_dept }}{% endif %}">◀ 이전</a>
+            </li>
+            {% for p in range(1, total_pages+1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="/work_schedule?page={{ p }}&month={{ sel_month }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if sel_dept %}&dept={{ sel_dept }}{% endif %}">{{ p }}</a>
+            </li>
+            {% endfor %}
+            <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                <a class="page-link" href="/work_schedule?page={{ page+1 }}&month={{ sel_month }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if sel_dept %}&dept={{ sel_dept }}{% endif %}">다음 ▶</a>
+            </li>
+        </ul>
+    </nav>
+    {% endif %}
+    {% elif search %}
+    <div class="alert alert-info">'{{ search }}'에 해당하는 기록이 없습니다.</div>
+    {% else %}
+    <div class="alert alert-secondary text-center">해당 월에 근무 기록이 없습니다.</div>
+    {% endif %}
+</div>
+
+<!-- 수정 모달 -->
+{% if can_edit %}
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title" id="editModalTitle">수정</h6>
+                <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-2">
+                <input type="hidden" id="editEid"><input type="hidden" id="editDate"><input type="hidden" id="editCol">
+                <label class="form-label mb-1" style="font-size:0.85rem;">값</label>
+                <input id="editValue" class="form-control form-control-sm mb-2">
+                <label class="form-label mb-1" style="font-size:0.85rem;">메모 <span class="text-danger">*</span></label>
+                <textarea id="editMemo" class="form-control form-control-sm" rows="2" placeholder="수정 사유를 입력하세요"></textarea>
+                <div id="editMemoErr" class="text-danger mt-1" style="display:none; font-size:0.8rem;">⚠ 메모를 입력하세요.</div>
+            </div>
+            <div class="modal-footer py-1">
+                <button type="button" class="btn btn-outline-danger btn-sm" id="editDelBtn">삭제</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary btn-sm" id="editSaveBtn">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function exportExcel(){
+    const t=document.getElementById('ws-table');
+    /* rowspan을 풀어서 순수 2D 배열로 변환 */
+    const rows=t.querySelectorAll('tr');
+    const grid=[];
+    const spanMap={};
+    rows.forEach((tr,ri)=>{
+        if(!grid[ri]) grid[ri]=[];
+        let ci=0;
+        tr.querySelectorAll('th,td').forEach(cell=>{
+            while(spanMap[ri+'_'+ci]){ grid[ri][ci]=spanMap[ri+'_'+ci]; ci++; }
+            const val=cell.innerText.trim();
+            const rs=parseInt(cell.getAttribute('rowspan'))||1;
+            const cs=parseInt(cell.getAttribute('colspan'))||1;
+            for(let r=0;r<rs;r++){
+                for(let c=0;c<cs;c++){
+                    if(r===0&&c===0){ grid[ri][ci]=val; }
+                    else{
+                        const key=(ri+r)+'_'+(ci+c);
+                        spanMap[key]=val;
+                    }
+                }
+            }
+            ci++;
+        });
+        /* 남은 spanMap 채우기 */
+        while(spanMap[ri+'_'+ci]){ grid[ri][ci]=spanMap[ri+'_'+ci]; ci++; }
+    });
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet(grid);
+    XLSX.utils.book_append_sheet(wb,ws,'근무표');
+    XLSX.writeFile(wb,'근무표_{{month_label}}.xlsx');
+}
+</script>
+<script>
+/* 합계 재계산 */
+function recalcSums(cell){
+    let row=cell.closest('tr');
+    /* emp-first 행 찾기 (위로 올라감) */
+    while(row && !row.classList.contains('emp-first')) row=row.previousElementSibling;
+    if(!row) return;
+    const rows=[row];
+    let nr=row.nextElementSibling;
+    for(let i=0;i<3&&nr;i++){ rows.push(nr); nr=nr.nextElementSibling; }
+    if(rows.length<4) return;
+    const pv=c=>{ const v=parseFloat(c.textContent); return isNaN(v)?0:v; };
+    const bCells=rows[0].querySelectorAll('.day-cell');
+    const oCells=rows[1].querySelectorAll('.day-cell');
+    const nCells=rows[2].querySelectorAll('.day-cell');
+    const eCells=rows[3].querySelectorAll('.day-cell');
+    let sOt=0,sNi=0,wdOt=0,hw=0,ho=0,holTime=0,unpaid=0;
+    bCells.forEach((bc,i)=>{
+        const bv=pv(bc), ov=pv(oCells[i]), nv=pv(nCells[i]);
+        const isHol=bc.classList.contains('bg-sun')||bc.classList.contains('bg-sat');
+        sOt+=ov; sNi+=nv;
+        if(isHol){ hw+=bv+nv; ho+=ov; } else { wdOt+=ov; }
+        if(eCells[i]){
+            const et=eCells[i].textContent.trim();
+            if(et.includes('무급')){ holTime+=8; unpaid++; }
+            else if(et.includes('연차'));
+            else { const ev=parseFloat(et); if(!isNaN(ev)&&ev>0) holTime+=ev; }
+        }
+    });
+    const s0=rows[0].querySelectorAll('.sum-col');
+    const s1=rows[1].querySelectorAll('.sum-col');
+    const s2=rows[2].querySelectorAll('.sum-col');
+    const s3=rows[3].querySelectorAll('.sum-col');
+    /* 1열(0)=관리자 입력 → 건드리지 않음, 2열(1)=일별합산+1열값 */
+    const v0=pv(s0[0]), v1=pv(s1[0]), v2=pv(s2[0]), v3=pv(s3[0]);
+    s0[1].textContent=Math.round(wdOt+v0);
+    s1[1].textContent=Math.round(sNi+v1);
+    s1[2].textContent=unpaid||'-';
+    s2[1].textContent=Math.round(hw+v2);
+    s3[1].textContent=Math.round(ho+v3);
+    s3[2].textContent=Math.round(holTime);
+}
+/* 모달 편집 (관리자 전용) */
+if(document.querySelectorAll('.editable').length > 0) {
+const colNames={basic:'기본',overtime:'연장',night:'야간',other:'기타',sum_ot:'연장',sum_night:'야간',hol_work:'휴일',hol_ot:'휴연'};
+let _editCell=null;
+document.querySelectorAll('.editable').forEach(cell=>{
+    cell.addEventListener('click', function(){
+        _editCell=this;
+        const eid=this.dataset.eid, date=this.dataset.date, col=this.dataset.col;
+        const name=this.dataset.name||'';
+        const memo=this.dataset.memo||'';
+        const cur=this.textContent.trim();
+        const val=(cur==='-')?'':cur;
+        const day=parseInt(date.slice(6));
+        const dateLabel=day===0?'합산':day+'일';
+        document.getElementById('editModalTitle').textContent=name+' '+dateLabel+' '+(colNames[col]||col)+' 수정';
+        const inp=document.getElementById('editValue');
+        if(col==='other'){ inp.type='text'; } else { inp.type='number'; inp.step='1'; }
+        inp.value=val;
+        document.getElementById('editMemo').value=memo;
+        document.getElementById('editEid').value=eid;
+        document.getElementById('editDate').value=date;
+        document.getElementById('editCol').value=col;
+        document.getElementById('editMemoErr').style.display='none';
+        new bootstrap.Modal(document.getElementById('editModal')).show();
+        setTimeout(()=>inp.focus(),300);
+    });
+});
+document.getElementById('editSaveBtn').addEventListener('click', function(){
+    const eid=document.getElementById('editEid').value;
+    const date=document.getElementById('editDate').value;
+    const col=document.getElementById('editCol').value;
+    const nv=document.getElementById('editValue').value.trim();
+    const memo=document.getElementById('editMemo').value.trim();
+    if(nv!=='' && nv!=='0' && !memo){
+        document.getElementById('editMemoErr').style.display='block';
+        document.getElementById('editMemo').focus();
+        return;
+    }
+    const cell=_editCell;
+    const cur=cell.textContent.trim();
+    fetch('/save_override',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({e_id:eid, e_date:date, col_type:col, value:nv, memo:memo})
+    }).then(r=>r.json()).then(d=>{
+        if(d.ok){
+            if(nv===''||nv==='0'){
+                cell.textContent='-';
+                cell.classList.remove('overridden','has-memo');
+                cell.dataset.memo='';
+            } else {
+                cell.textContent=(col==='other'&&isNaN(nv))?nv:parseFloat(nv).toFixed(1);
+                cell.classList.add('overridden');
+                if(memo){ cell.classList.add('has-memo'); cell.dataset.memo=memo; }
+            }
+            recalcSums(cell);
+            bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+        } else {
+            alert('저장 실패: '+(d.error||''));
+        }
+    }).catch(()=>{ alert('네트워크 오류'); });
+});
+document.getElementById('editDelBtn').addEventListener('click', function(){
+    const eid=document.getElementById('editEid').value;
+    const date=document.getElementById('editDate').value;
+    const col=document.getElementById('editCol').value;
+    const cell=_editCell;
+    fetch('/save_override',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({e_id:eid, e_date:date, col_type:col, value:'', memo:''})
+    }).then(r=>r.json()).then(d=>{
+        if(d.ok){
+            cell.textContent='-';
+            cell.classList.remove('overridden','has-memo');
+            cell.dataset.memo='';
+            recalcSums(cell);
+            bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+        }
+    });
+});
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+</body>
+</html>

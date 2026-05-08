@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TBM 로그인 — ㈜ 태인</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body{background:linear-gradient(135deg,#6d28d9 0%,#4f46e5 100%);min-height:100vh;
+  display:flex;align-items:center;justify-content:center;}
+.login-card{background:#fff;border-radius:18px;padding:40px 36px;width:100%;max-width:400px;
+  box-shadow:0 20px 60px rgba(109,40,217,.3);}
+.brand-icon{font-size:2.6rem;display:block;text-align:center;margin-bottom:8px;}
+.brand-title{font-size:1.4rem;font-weight:800;color:#6d28d9;text-align:center;margin-bottom:4px;}
+.brand-sub{font-size:.85rem;color:#6b7280;text-align:center;margin-bottom:28px;}
+.form-label{font-weight:600;font-size:.85rem;color:#374151;}
+.form-control{border-radius:9px;border-color:#d1d5db;padding:.55rem .9rem;}
+.form-control:focus{border-color:#6d28d9;box-shadow:0 0 0 3px rgba(109,40,217,.18);}
+.btn-login{background:linear-gradient(135deg,#6d28d9,#7c3aed);color:#fff;border:none;
+  width:100%;padding:.65rem;border-radius:9px;font-weight:700;font-size:1rem;margin-top:8px;}
+.btn-login:hover{background:linear-gradient(135deg,#5b21b6,#6d28d9);color:#fff;}
+</style>
+</head>
+<body>
+<div class="login-card">
+  <span class="brand-icon">🛠️</span>
+  <div class="brand-title">TBM 관리 시스템</div>
+  <div class="brand-sub">㈜ 태인 Tool Box Meeting</div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+    <div class="alert alert-{{ cat }} py-2 mb-3" style="font-size:.85rem">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <form method="POST">
+    <div class="mb-3">
+      <label class="form-label">아이디</label>
+      <input type="text" name="login_id" class="form-control" placeholder="로그인 아이디" required autofocus>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">비밀번호</label>
+      <input type="password" name="password" class="form-control" placeholder="비밀번호" required>
+    </div>
+    <button type="submit" class="btn btn-login">로그인</button>
+  </form>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

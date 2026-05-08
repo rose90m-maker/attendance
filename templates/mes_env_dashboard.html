@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>온습도 현황 — 태인관리시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+.env-header {
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: #fff; padding: 14px 20px; border-radius: 12px;
+    margin-bottom: 14px; display: flex; justify-content: space-between;
+    align-items: center; flex-wrap: wrap; gap: 8px;
+}
+.env-header .title { font-size: 1.25rem; font-weight: 800; }
+.env-header .sub   { font-size: 0.82rem; opacity: .9; margin-top: 2px; }
+.env-header-right {
+    display: flex; flex-direction: column; gap: 5px; align-items: flex-end;
+}
+.env-ctrl-row {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
+}
+@media (max-width: 576px) {
+    .env-header { padding: 12px 14px; }
+    .env-header .title { font-size: 1.05rem; }
+    .env-header-right { align-items: flex-start; width: 100%; }
+    .env-ctrl-row { justify-content: flex-start; }
+    #deviceSelect { flex: 1; min-width: 0; }
+    #weatherInfo  { font-size: 0.72rem !important; }
+}
+.kpi-box {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 16px 20px; height: 100%;
+    transition: box-shadow .2s;
+}
+.kpi-box:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+.kpi-box .lbl  { font-size: 0.78rem; color: #64748b; }
+.kpi-box .val  { font-size: 2rem; font-weight: 800; color: #1e293b; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+.kpi-box .unit { font-size: 0.9rem; color: #64748b; margin-left: 3px; }
+.kpi-box.temp  { border-left: 4px solid #ef4444; }
+.kpi-box.humi  { border-left: 4px solid #3b82f6; }
+.kpi-box.tmin  { border-left: 4px solid #f97316; }
+.kpi-box.tmax  { border-left: 4px solid #dc2626; }
+.kpi-box.hmin  { border-left: 4px solid #60a5fa; }
+.kpi-box.hmax  { border-left: 4px solid #1d4ed8; }
+.panel {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 14px;
+}
+.panel-title { font-size: 0.98rem; font-weight: 700; color: #1e293b; margin-bottom: 14px; }
+.status-dot {
+    display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px;
+}
+.status-live { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+.status-warn { background: #f59e0b; }
+.status-off  { background: #94a3b8; }
+.log-table { font-size: 0.84rem; }
+.log-table th { background: #f8fafc; font-weight: 700; color: #475569; padding: 7px 10px; }
+.log-table td { padding: 7px 10px; vertical-align: middle; }
+.env-badge {
+    display: inline-block; padding: 2px 10px; border-radius: 20px;
+    font-size: 0.72rem; font-weight: 700; margin-top: 5px;
+}
+.env-badge.good { background: #dcfce7; color: #16a34a; }
+.env-badge.warn { background: #fef9c3; color: #ca8a04; }
+.env-badge.bad  { background: #fee2e2; color: #dc2626; }
+.env-summary {
+    font-size: 0.8rem; font-weight: 700; padding: 4px 12px;
+    border-radius: 20px; white-space: nowrap;
+}
+.env-summary.good { background: rgba(34,197,94,.25); color: #f0fff4; }
+.env-summary.warn { background: rgba(245,158,11,.25); color: #fffbeb; }
+.env-summary.bad  { background: rgba(239,68,68,.25);  color: #fff1f2; }
+</style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main-content">
+
+<!-- 헤더 -->
+<div class="env-header">
+  <div>
+    <div class="title">🌡️ 온습도 현황</div>
+    <div class="sub">DHT11 센서 실시간 모니터링 &nbsp;<span id="kStatus" style="font-size:0.8rem;opacity:.95;"></span></div>
+  </div>
+  <div class="env-header-right">
+    <div class="env-ctrl-row">
+      <span id="envSummary"></span>
+      <span id="weatherInfo" style="font-size:0.78rem;opacity:.88;">날씨 불러오는 중...</span>
+    </div>
+    <div class="env-ctrl-row">
+      <select id="deviceSelect" class="form-select form-select-sm" style="width:150px;background:#fff;color:#1e293b;border:none;font-weight:600;" onchange="changeDevice()">
+      </select>
+      <span style="font-size:0.8rem;opacity:.85;" id="tsLabel">--:--:--</span>
+    </div>
+  </div>
+</div>
+
+<!-- KPI 카드 -->
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-2">
+    <div class="kpi-box temp">
+      <div class="lbl">현재 온도</div>
+      <div class="val" id="kTmp">--<span class="unit">°C</span></div>
+      <div id="kTmpBadge"></div>
+      <div style="font-size:0.72rem;color:#64748b;margin-top:4px;" id="kAge">-</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="kpi-box humi">
+      <div class="lbl">현재 습도</div>
+      <div class="val" id="kHum">--<span class="unit">%</span></div>
+      <div id="kHumBadge"></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="kpi-box tmin">
+      <div class="lbl">오늘 최저 온도</div>
+      <div class="val" id="kTmpMin">--<span class="unit">°C</span></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="kpi-box tmax">
+      <div class="lbl">오늘 최고 온도</div>
+      <div class="val" id="kTmpMax">--<span class="unit">°C</span></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="kpi-box hmin">
+      <div class="lbl">오늘 최저 습도</div>
+      <div class="val" id="kHumMin">--<span class="unit">%</span></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="kpi-box hmax">
+      <div class="lbl">오늘 최고 습도</div>
+      <div class="val" id="kHumMax">--<span class="unit">%</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- 차트 -->
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="panel">
+      <div class="panel-title">🌡️ 오늘 시간대별 온도</div>
+      <canvas id="chartTemp" height="140"></canvas>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="panel">
+      <div class="panel-title">💧 오늘 시간대별 습도</div>
+      <canvas id="chartHumi" height="140"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- 일별 차트 -->
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="panel">
+      <div class="panel-title">📅 최근 30일 일별 평균 온도</div>
+      <canvas id="chartDailyTemp" height="140"></canvas>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="panel">
+      <div class="panel-title">📅 최근 30일 일별 평균 습도</div>
+      <canvas id="chartDailyHumi" height="140"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- 최근 로그 -->
+<div class="panel">
+  <div class="panel-title">📋 최근 수신 로그</div>
+  <div class="table-responsive">
+    <table class="table log-table mb-0">
+      <thead>
+        <tr><th>시각</th><th>온도 (°C)</th><th>습도 (%)</th></tr>
+      </thead>
+      <tbody id="logBody">
+        <tr><td colspan="3" class="text-center text-muted py-3">데이터 불러오는 중...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div><!-- /main-content -->
+
+<script>
+const HOURS = Array.from({length:24}, (_,i) => `${String(i).padStart(2,'0')}시`);
+let chartTemp = null, chartHumi = null;
+let chartDailyTemp = null, chartDailyHumi = null;
+let currentDevice = '';
+
+function tempStatus(t) {
+  if (t == null) return null;
+  if (t >= 18 && t <= 26) return {label: '쾌적', cls: 'good', range: '정상 18~26°C'};
+  if (t >= 14 && t <= 30) return {label: '주의', cls: 'warn', range: '정상 18~26°C'};
+  return {label: '위험', cls: 'bad', range: '정상 18~26°C'};
+}
+function humiStatus(h) {
+  if (h == null) return null;
+  if (h >= 40 && h <= 60) return {label: '쾌적', cls: 'good', range: '정상 40~60%'};
+  if (h >= 30 && h <= 70) return {label: '주의', cls: 'warn', range: '정상 40~60%'};
+  return {label: '위험', cls: 'bad', range: '정상 40~60%'};
+}
+
+function initCharts() {
+  const baseOpts = (label, color) => ({
+    type: 'line',
+    data: { labels: HOURS, datasets: [{
+      label, data: Array(24).fill(null),
+      borderColor: color, backgroundColor: color + '22',
+      borderWidth: 2, pointRadius: 2, fill: true, tension: 0.4,
+      spanGaps: true,
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 10 }, maxRotation: 0 } },
+        y: { ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+  chartTemp = new Chart(document.getElementById('chartTemp'), baseOpts('온도 °C', '#ef4444'));
+  chartHumi = new Chart(document.getElementById('chartHumi'), baseOpts('습도 %',  '#3b82f6'));
+
+  const dailyOpts = (label, color) => ({
+    type: 'bar',
+    data: { labels: [], datasets: [{
+      label, data: [],
+      backgroundColor: color + 'bb',
+      borderColor: color,
+      borderWidth: 1,
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 15 } },
+        y: { ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+  chartDailyTemp = new Chart(document.getElementById('chartDailyTemp'), dailyOpts('일평균 온도 °C', '#ef4444'));
+  chartDailyHumi = new Chart(document.getElementById('chartDailyHumi'), dailyOpts('일평균 습도 %',  '#3b82f6'));
+}
+
+function changeDevice() {
+  currentDevice = document.getElementById('deviceSelect').value;
+  loadData();
+}
+
+async function loadData() {
+  try {
+    const res = await fetch(`/mes/api/env?device_id=${encodeURIComponent(currentDevice)}`);
+    const d = await res.json();
+    if (!d.ok) return;
+
+    // 장치 목록 동기화
+    const sel = document.getElementById('deviceSelect');
+    if (d.devices && sel.options.length !== d.devices.length) {
+      sel.innerHTML = d.devices.map(dev =>
+        `<option value="${dev.device_id}"${dev.device_id === currentDevice ? ' selected':''}>${dev.label}</option>`
+      ).join('');
+    }
+
+    document.getElementById('tsLabel').textContent = d.ts;
+
+    // KPI
+    if (d.latest && d.latest.temperature !== undefined) {
+      document.getElementById('kTmp').innerHTML = `${d.latest.temperature}<span class="unit">°C</span>`;
+      document.getElementById('kHum').innerHTML = `${d.latest.humidity}<span class="unit">%</span>`;
+      document.getElementById('kAge').textContent = d.latest.age;
+      const st = d.latest.status;
+      const dotClass = st === 'live' ? 'status-live' : st === 'warn' ? 'status-warn' : 'status-off';
+      const stLabel  = st === 'live' ? '정상 수신' : st === 'warn' ? '수신 지연' : '수신 없음';
+      document.getElementById('kStatus').innerHTML =
+        `<span class="status-dot ${dotClass}"></span>${stLabel}`;
+
+      // 상태 뱃지
+      const ts = tempStatus(d.latest.temperature);
+      const hs = humiStatus(d.latest.humidity);
+      document.getElementById('kTmpBadge').innerHTML = ts ?
+        `<span class="env-badge ${ts.cls}">${ts.label}</span><span style="font-size:0.68rem;color:#94a3b8;margin-left:5px;">${ts.range}</span>` : '';
+      document.getElementById('kHumBadge').innerHTML = hs ?
+        `<span class="env-badge ${hs.cls}">${hs.label}</span><span style="font-size:0.68rem;color:#94a3b8;margin-left:5px;">${hs.range}</span>` : '';
+
+      // 헤더 전체 요약
+      const worstCls = (ts && ts.cls === 'bad') || (hs && hs.cls === 'bad') ? 'bad'
+                     : (ts && ts.cls === 'warn') || (hs && hs.cls === 'warn') ? 'warn' : 'good';
+      const summaryLabel = worstCls === 'bad' ? '⚠️ 환경 위험'
+                         : worstCls === 'warn' ? '🟡 환경 주의' : '✅ 환경 쾌적';
+      document.getElementById('envSummary').innerHTML =
+        `<span class="env-summary ${worstCls}">${summaryLabel}</span>`;
+    }
+
+    // 오늘 통계
+    if (d.stats) {
+      document.getElementById('kTmpMin').innerHTML = d.stats.temp_min != null ? `${d.stats.temp_min}<span class="unit">°C</span>` : '--';
+      document.getElementById('kTmpMax').innerHTML = d.stats.temp_max != null ? `${d.stats.temp_max}<span class="unit">°C</span>` : '--';
+      document.getElementById('kHumMin').innerHTML = d.stats.humi_min != null ? `${d.stats.humi_min}<span class="unit">%</span>` : '--';
+      document.getElementById('kHumMax').innerHTML = d.stats.humi_max != null ? `${d.stats.humi_max}<span class="unit">%</span>` : '--';
+    }
+
+    // 시간대별 차트
+    chartTemp.data.datasets[0].data = d.hourly_temp;
+    chartTemp.update('none');
+    chartHumi.data.datasets[0].data = d.hourly_humi;
+    chartHumi.update('none');
+
+    // 일별 차트
+    if (d.daily_labels) {
+      chartDailyTemp.data.labels = d.daily_labels;
+      chartDailyTemp.data.datasets[0].data = d.daily_temp;
+      chartDailyTemp.update('none');
+      chartDailyHumi.data.labels = d.daily_labels;
+      chartDailyHumi.data.datasets[0].data = d.daily_humi;
+      chartDailyHumi.update('none');
+    }
+
+    // 로그 테이블
+    const tbody = document.getElementById('logBody');
+    if (d.recent && d.recent.length) {
+      tbody.innerHTML = d.recent.map(r =>
+        `<tr><td>${r.time}</td><td>${r.temperature}°C</td><td>${r.humidity}%</td></tr>`
+      ).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">아직 데이터가 없습니다.</td></tr>';
+    }
+  } catch(e) { console.error(e); }
+}
+
+async function initDevices() {
+  const res = await fetch('/mes/api/env');
+  const d = await res.json();
+  const sel = document.getElementById('deviceSelect');
+  if (d.devices && d.devices.length) {
+    const preferred = '전산실';
+    const hasPreferred = d.devices.some(dev => dev.device_id === preferred);
+    currentDevice = hasPreferred ? preferred : d.devices[0].device_id;
+    sel.innerHTML = d.devices.map(dev =>
+      `<option value="${dev.device_id}"${dev.device_id === currentDevice ? ' selected' : ''}>${dev.label}</option>`
+    ).join('');
+  } else {
+    sel.innerHTML = '<option value="전산실">전산실</option>';
+    currentDevice = '전산실';
+  }
+}
+
+async function loadWeather() {
+  const WMO_DESC = {
+    0:'맑음', 1:'대체로 맑음', 2:'구름 조금', 3:'흐림',
+    45:'안개', 48:'안개',
+    51:'이슬비', 53:'이슬비', 55:'이슬비',
+    61:'비', 63:'비', 65:'강한 비',
+    71:'눈', 73:'눈', 75:'강한 눈',
+    80:'소나기', 81:'소나기', 82:'강한 소나기',
+    95:'뇌우', 96:'우박 동반 뇌우', 99:'우박 동반 뇌우'
+  };
+  const WMO_ICON = {
+    0:'☀️', 1:'🌤️', 2:'⛅', 3:'☁️',
+    45:'🌫️', 48:'🌫️',
+    51:'🌦️', 53:'🌦️', 55:'🌧️',
+    61:'🌧️', 63:'🌧️', 65:'🌧️',
+    71:'🌨️', 73:'🌨️', 75:'❄️',
+    80:'🌦️', 81:'🌦️', 82:'⛈️',
+    95:'⛈️', 96:'⛈️', 99:'⛈️'
+  };
+  try {
+    const res = await fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=36.6424&longitude=127.4890' +
+      '&current=temperature_2m,relative_humidity_2m,weather_code' +
+      '&timezone=Asia/Seoul&forecast_days=1'
+    );
+    const d = await res.json();
+    const c = d.current;
+    const code = c.weather_code;
+    const icon = WMO_ICON[code] || '🌡️';
+    const desc = WMO_DESC[code] || '';
+    document.getElementById('weatherInfo').textContent =
+      `🏙️ 청주 외부 ${icon} ${desc}  ${c.temperature_2m}°C  습도 ${c.relative_humidity_2m}%`;
+  } catch(e) {
+    document.getElementById('weatherInfo').textContent = '';
+  }
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  initCharts();
+  await initDevices();
+  await loadData();
+  loadWeather();
+  setInterval(loadData, 30000);
+  setInterval(loadWeather, 600000);
+});
+</script>
+</body>
+</html>

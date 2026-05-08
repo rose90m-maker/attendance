@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>복지혜택</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+    <style>
+        /* ── 공통 ── */
+        .welfare-section { background: #fff; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.07); padding: 28px 28px 22px; margin-bottom: 28px; }
+        .welfare-section h5 { font-size: 1.05rem; font-weight: 700; color: #1e40af; margin-bottom: 4px; }
+        .welfare-section .section-sub { font-size: 0.8rem; color: #64748b; margin-bottom: 18px; }
+        .welfare-note { font-size: 0.8rem; color: #475569; margin-top: 14px; line-height: 1.7; background: #f8fafc; border-left: 3px solid #2563eb; padding: 10px 14px; border-radius: 0 8px 8px 0; }
+        .badge-check { display: inline-block; width: 20px; height: 20px; background: #2563eb; border-radius: 50%; color: #fff; font-size: 0.7rem; line-height: 20px; text-align: center; }
+
+        /* ── PC 테이블 ── */
+        .welfare-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        .welfare-table th { background: linear-gradient(135deg, #1e3a5f, #2563eb); color: #fff; padding: 10px 12px; text-align: center; font-weight: 600; font-size: 0.85rem; }
+        .welfare-table td { padding: 10px 14px; border-bottom: 1px solid #e9ecef; vertical-align: middle; }
+        .welfare-table tr:last-child td { border-bottom: none; }
+        .welfare-table tbody tr:hover { background: #f0f7ff; }
+        .welfare-table .cat-cell { background: #e8f0fe; font-weight: 700; color: #1e40af; text-align: center; white-space: nowrap; }
+        .welfare-table .amount { font-weight: 700; color: #1e40af; text-align: center; }
+        .welfare-table .center { text-align: center; }
+
+        /* ── 모바일 카드 ── */
+        .wf-card {
+            border: 1px solid #e2e8f0; border-radius: 12px;
+            margin-bottom: 10px; overflow: hidden;
+        }
+        .wf-card-head {
+            background: linear-gradient(135deg, #1e3a5f, #2563eb);
+            color: #fff; font-weight: 700; font-size: 0.82rem;
+            padding: 7px 14px; display: flex; align-items: center; gap: 6px;
+        }
+        .wf-card-head .cat-badge {
+            background: rgba(255,255,255,0.22); border-radius: 20px;
+            padding: 2px 10px; font-size: 0.75rem;
+        }
+        .wf-card-body { padding: 12px 14px; background: #fff; }
+        .wf-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px dashed #f1f5f9; font-size: 0.82rem; }
+        .wf-row:last-child { border-bottom: none; }
+        .wf-label { color: #64748b; flex-shrink: 0; margin-right: 8px; }
+        .wf-value { font-weight: 600; color: #1e293b; text-align: right; }
+        .wf-value.amount { color: #1e40af; }
+
+
+        /* ── 반응형 전환 ── */
+        .pc-only  { display: block; }
+        .mob-only { display: none; }
+        @media (max-width: 640px) {
+            .pc-only  { display: none; }
+            .mob-only { display: block; }
+            .welfare-section { padding: 18px 14px 16px; border-radius: 10px; }
+            .welfare-section h5 { font-size: 0.97rem; }
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'welfare' %}
+{% include '_sidebar.html' %}
+
+<div class="main-content">
+    <div class="page-header">
+        <h4>🎁 복지혜택</h4>
+        <p class="text-muted" style="font-size:0.85rem; margin:0;">태인 임직원 복지 규정 안내</p>
+    </div>
+
+    <!-- 사내 복지 -->
+    <div class="welfare-section">
+        <h5>🏢 사내 복지 (복리후생)</h5>
+        <p class="section-sub">태인 임직원 복리후생 지원 안내</p>
+
+        <!-- PC 테이블 -->
+        <div class="pc-only table-responsive">
+            <table class="welfare-table">
+                <thead>
+                    <tr>
+                        <th style="width:10%">구분</th>
+                        <th style="width:25%">지원사항</th>
+                        <th style="width:30%">지원금</th>
+                        <th style="width:12%">지급시점</th>
+                        <th>비고</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="cat-cell" rowspan="11">복리후생</td>
+                        <td>자녀대학입학 축하금 <small class="text-muted">(최대 2자녀)</small></td>
+                        <td class="amount">40만원/인</td>
+                        <td class="center">3월</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>대학수학능력시험 응원선물</td>
+                        <td class="amount">4만원/인</td>
+                        <td class="center">11월</td>
+                        <td>최초 1회</td>
+                    </tr>
+                    <tr>
+                        <td>설날 선물</td>
+                        <td class="amount">공산품</td>
+                        <td class="center">설날</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>추석 선물</td>
+                        <td class="amount">공산품</td>
+                        <td class="center">추석</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>창립기념일 선물</td>
+                        <td class="amount">기념품</td>
+                        <td class="center">5월</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>문화 행사 (상/하반기)</td>
+                        <td class="amount">3.5만원/인</td>
+                        <td class="center">5월/9월</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>송년회 행사</td>
+                        <td class="amount">3.5만원/인</td>
+                        <td class="center">12월</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>생일 축하금</td>
+                        <td class="amount">3만원/인 (상품권)</td>
+                        <td class="center">즉시</td>
+                        <td>본인 신청시 지급</td>
+                    </tr>
+                    <tr>
+                        <td>동아리 지원</td>
+                        <td class="amount">10만원</td>
+                        <td class="center">매월</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>우수사원 해외연수</td>
+                        <td class="amount">해외여행</td>
+                        <td class="center">2분기</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>안전보건의식 우수자</td>
+                        <td class="amount">음료카드 (2만원)</td>
+                        <td class="center">매월</td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 모바일 카드 -->
+        <div class="mob-only">
+            <div class="wf-card">
+                <div class="wf-card-head">🏢 복리후생</div>
+                <div class="wf-card-body">
+                    <div class="wf-row"><span class="wf-label">자녀대학입학 축하금</span><span class="wf-value amount">40만원/인 · 3월 <small>(최대 2자녀)</small></span></div>
+                    <div class="wf-row"><span class="wf-label">수능 응원선물</span><span class="wf-value amount">4만원/인 · 11월 <small>(최초 1회)</small></span></div>
+                    <div class="wf-row"><span class="wf-label">설날 선물</span><span class="wf-value">공산품 · 설날</span></div>
+                    <div class="wf-row"><span class="wf-label">추석 선물</span><span class="wf-value">공산품 · 추석</span></div>
+                    <div class="wf-row"><span class="wf-label">창립기념일 선물</span><span class="wf-value">기념품 · 5월</span></div>
+                    <div class="wf-row"><span class="wf-label">문화 행사</span><span class="wf-value amount">3.5만원/인 · 5월/9월</span></div>
+                    <div class="wf-row"><span class="wf-label">송년회 행사</span><span class="wf-value amount">3.5만원/인 · 12월</span></div>
+                    <div class="wf-row"><span class="wf-label">생일 축하금</span><span class="wf-value amount">3만원 상품권 · 즉시</span></div>
+                    <div class="wf-row"><span class="wf-label">동아리 지원</span><span class="wf-value amount">10만원 · 매월</span></div>
+                    <div class="wf-row"><span class="wf-label">우수사원 해외연수</span><span class="wf-value">해외여행 · 2분기</span></div>
+                    <div class="wf-row"><span class="wf-label">안전보건의식 우수자</span><span class="wf-value amount">음료카드 2만원 · 매월</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 경조금 규정 -->
+    <div class="welfare-section" id="section-welfare">
+        <h5>🎊 경조금 규정 (2025년 변경사항)</h5>
+        <p class="section-sub">ERP(모바일 앱)을 통한 자발적 신청</p>
+
+        <!-- PC 테이블 -->
+        <div class="pc-only table-responsive">
+            <table class="welfare-table">
+                <thead>
+                    <tr>
+                        <th style="width:12%">구분</th>
+                        <th style="width:22%">대상</th>
+                        <th style="width:18%">경조금</th>
+                        <th style="width:12%">휴가</th>
+                        <th style="width:10%">화환</th>
+                        <th>비고</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="cat-cell" rowspan="3">결혼</td>
+                        <td>본인</td>
+                        <td class="amount">300,000원</td>
+                        <td class="center">5일</td>
+                        <td class="center"><span class="badge-check">V</span></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>자녀</td>
+                        <td class="amount">200,000원</td>
+                        <td class="center">1일</td>
+                        <td class="center"><span class="badge-check">V</span></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>형제/자매</td>
+                        <td class="amount">100,000원</td>
+                        <td class="center">1일</td>
+                        <td class="center">-</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td class="cat-cell" rowspan="5">기복</td>
+                        <td>배우자</td>
+                        <td class="amount">300,000원</td>
+                        <td class="center">5일</td>
+                        <td class="center"><span class="badge-check">V</span></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>부모 / 배우자부모</td>
+                        <td class="amount">200,000원</td>
+                        <td class="center">5일</td>
+                        <td class="center"><span class="badge-check">V</span></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>조부모 / 외조부모</td>
+                        <td class="amount">100,000원</td>
+                        <td class="center">3일</td>
+                        <td class="center">-</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>자녀</td>
+                        <td class="amount">200,000원</td>
+                        <td class="center">5일</td>
+                        <td class="center"><span class="badge-check">V</span></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>형제 / 자매</td>
+                        <td class="amount">100,000원</td>
+                        <td class="center">3일</td>
+                        <td class="center"><span class="badge-check">V</span></td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 모바일 카드 -->
+        <div class="mob-only">
+            <!-- 결혼 -->
+            <div class="wf-card">
+                <div class="wf-card-head">🎊 결혼</div>
+                <div class="wf-card-body">
+                    <div class="wf-row"><span class="wf-label">본인</span><span class="wf-value amount">300,000원 · 휴가 5일 · 화환 ✅</span></div>
+                    <div class="wf-row"><span class="wf-label">자녀</span><span class="wf-value amount">200,000원 · 휴가 1일 · 화환 ✅</span></div>
+                    <div class="wf-row"><span class="wf-label">형제/자매</span><span class="wf-value amount">100,000원 · 휴가 1일</span></div>
+                </div>
+            </div>
+            <!-- 기복 -->
+            <div class="wf-card">
+                <div class="wf-card-head">🙏 기복</div>
+                <div class="wf-card-body">
+                    <div class="wf-row"><span class="wf-label">배우자</span><span class="wf-value amount">300,000원 · 휴가 5일 · 화환 ✅</span></div>
+                    <div class="wf-row"><span class="wf-label">부모/배우자부모</span><span class="wf-value amount">200,000원 · 휴가 5일 · 화환 ✅</span></div>
+                    <div class="wf-row"><span class="wf-label">조부모/외조부모</span><span class="wf-value amount">100,000원 · 휴가 3일</span></div>
+                    <div class="wf-row"><span class="wf-label">자녀</span><span class="wf-value amount">200,000원 · 휴가 5일 · 화환 ✅</span></div>
+                    <div class="wf-row"><span class="wf-label">형제/자매</span><span class="wf-value amount">100,000원 · 휴가 3일 · 화환 ✅</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LSE 복지기금 -->
+    <div class="welfare-section">
+        <h5>💰 LSE 복지기금 운영안내</h5>
+        <p class="section-sub">LSE 복지기금 변경 내용 및 세부 운영안내</p>
+
+        <!-- PC 테이블 -->
+        <div class="pc-only table-responsive">
+            <table class="welfare-table">
+                <thead>
+                    <tr>
+                        <th style="width:13%">구분</th>
+                        <th style="width:28%">지원사항</th>
+                        <th style="width:25%">지원금</th>
+                        <th style="width:14%">지급시점</th>
+                        <th>비고</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="cat-cell">장례지원</td>
+                        <td>조화 및 용품 지원</td>
+                        <td class="amount">장례용품 150인분 2set, 근조</td>
+                        <td class="center">수시</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td class="cat-cell">학자금</td>
+                        <td>중/고등 자녀 학자금<br><small class="text-muted">최대 2자녀</small></td>
+                        <td class="amount">60만원/인</td>
+                        <td class="center">분기</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td class="cat-cell">건강검진</td>
+                        <td>본인 건강검진비<br><small class="text-muted">만 35세 이상 (1회/2년)</small></td>
+                        <td class="amount">40만원/인</td>
+                        <td class="center">반기</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td class="cat-cell">문화</td>
+                        <td>근로자의 날 기념품 지원비</td>
+                        <td class="amount">10만원/인</td>
+                        <td class="center">5월</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td class="cat-cell">보육비</td>
+                        <td>만 0~7세<br><small class="text-muted">최대 1자녀</small></td>
+                        <td class="amount">30만원/인</td>
+                        <td class="center">분기</td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 모바일 카드 -->
+        <div class="mob-only">
+            <div class="wf-card">
+                <div class="wf-card-head">⚰️ 장례지원</div>
+                <div class="wf-card-body">
+                    <div class="wf-row"><span class="wf-label">지원내용</span><span class="wf-value">조화 및 용품 지원</span></div>
+                    <div class="wf-row"><span class="wf-label">지원금</span><span class="wf-value amount">장례용품 150인분 2set, 근조</span></div>
+                    <div class="wf-row"><span class="wf-label">지급시점</span><span class="wf-value">수시</span></div>
+                </div>
+            </div>
+            <div class="wf-card">
+                <div class="wf-card-head">📚 학자금</div>
+                <div class="wf-card-body">
+                    <div class="wf-row"><span class="wf-label">지원내용</span><span class="wf-value">중/고등 자녀 학자금 (최대 2자녀)</span></div>
+                    <div class="wf-row"><span class="wf-label">지원금</span><span class="wf-value amount">60만원/인</span></div>
+                    <div class="wf-row"><span class="wf-label">지급시점</span><span class="wf-value">분기</span></div>
+                </div>
+            </div>
+            <div class="wf-card">
+                <div class="wf-card-head">🏥 건강검진</div>
+                <div class="wf-card-body">
+                    <div class="wf-row"><span class="wf-label">지원내용</span><span class="wf-value">본인 건강검진비 (만 35세 이상, 1회/2년)</span></div>
+                    <div class="wf-row"><span class="wf-label">지원금</span><span class="wf-value amount">40만원/인</span></div>
+                    <div class="wf-row"><span class="wf-label">지급시점</span><span class="wf-value">반기</span></div>
+                </div>
+            </div>
+            <div class="wf-card">
+                <div class="wf-card-head">🎭 문화</div>
+                <div class="wf-card-body">
+                    <div class="wf-row"><span class="wf-label">지원내용</span><span class="wf-value">근로자의 날 기념품 지원비</span></div>
+                    <div class="wf-row"><span class="wf-label">지원금</span><span class="wf-value amount">10만원/인</span></div>
+                    <div class="wf-row"><span class="wf-label">지급시점</span><span class="wf-value">5월</span></div>
+                </div>
+            </div>
+            <div class="wf-card">
+                <div class="wf-card-head">👶 보육비</div>
+                <div class="wf-card-body">
+                    <div class="wf-row"><span class="wf-label">지원내용</span><span class="wf-value">만 0~7세 (최대 1자녀)</span></div>
+                    <div class="wf-row"><span class="wf-label">지원금</span><span class="wf-value amount">30만원/인</span></div>
+                    <div class="wf-row"><span class="wf-label">지급시점</span><span class="wf-value">분기</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="welfare-note">
+            <strong>* 건강검진 세부내역</strong><br>
+            &nbsp;- 인원 선발 공지 계획 운영<br>
+            &nbsp;- 협약기관 : 청주메디체크, 효성병원, 프라임병원<br>
+            &nbsp;&nbsp;※ 협약기관 외 모든 병원 검진 목적 지원 가능.<br>
+            <strong>* 장례지원</strong> : 근로자본인 및 배우자, 근로자의 부모상, 배우자 부모상
+        </div>
+    </div>
+
+
+    <!-- 문의처 -->
+    <div class="welfare-section" style="padding: 20px 28px;">
+        <h5 style="margin-bottom: 12px;">📞 문의처</h5>
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span style="font-size:0.92rem; color:#334155;">추가 문의사항 담당 &nbsp;|&nbsp; <strong>총무팀</strong></span>
+            <span style="font-size:0.9rem; color:#334155;">노지수 주임 <a href="tel:1101" class="btn btn-outline-primary btn-sm" style="font-size:0.85rem; border-radius:20px; padding:4px 14px; margin-left:6px;">📞 내선 1101</a></span>
+            <span style="font-size:0.9rem; color:#334155;">이민영 사원 <a href="tel:1102" class="btn btn-outline-primary btn-sm" style="font-size:0.85rem; border-radius:20px; padding:4px 14px; margin-left:6px;">📞 내선 1102</a></span>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

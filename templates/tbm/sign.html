@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TBM 서명 — 태인관리시스템</title>
+<link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="{{ url_for('static', filename='style.css') }}?v=2" rel="stylesheet">
+<style>
+body{background:#f4f6f9;font-size:.92rem}
+.top-bar{background:#1e40af;color:#fff;padding:12px 16px;border-radius:4px;margin:10px 12px 0}
+.top-bar h5{margin:0;font-weight:700;font-size:1rem}
+.top-bar .sub{font-size:.8rem;opacity:.85}
+.info-card{background:#fff;border-radius:12px;padding:16px;margin:12px;
+  box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.hazard-item{background:#fef2f2;border-left:3px solid #dc2626;
+  border-radius:0 8px 8px 0;padding:8px 12px;margin-bottom:6px;font-size:.85rem}
+.hazard-measure{color:#059669;font-size:.82rem;margin-top:3px}
+.sig-pad-wrap{position:relative;margin:0 12px}
+#sigCanvas{width:100%;height:160px;border:2px solid #6d28d9;border-radius:12px;
+  display:block;background:#fff;touch-action:none;cursor:crosshair}
+.agree-check{background:#fff;border-radius:12px;padding:14px 16px;margin:12px;
+  box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.agree-check label{font-weight:600;font-size:.9rem;cursor:pointer}
+.btn-sign{background:linear-gradient(135deg,#6d28d9,#7c3aed);color:#fff;border:none;
+  width:100%;padding:.7rem;border-radius:10px;font-weight:700;font-size:1rem}
+.btn-sign:disabled{background:#9ca3af;cursor:not-allowed}
+.btn-clear{background:#f3f4f6;color:#374151;border:1px solid #d1d5db;
+  width:100%;padding:.55rem;border-radius:10px;font-size:.85rem}
+.done-screen{display:none;text-align:center;padding:40px 20px}
+.done-screen .icon{font-size:4rem}
+.section-lbl{font-size:.78rem;font-weight:700;color:#6b7280;text-transform:uppercase;
+  letter-spacing:.5px;padding:0 12px;margin-top:12px;margin-bottom:4px}
+</style>
+</head>
+<body>
+{% set active_page = 'tbm_sign' %}
+{% include '_sidebar.html' %}
+<div class="top-bar">
+  <h5>🛠️ TBM 서명</h5>
+  <div class="sub">{{ user_name }}님 | {{ session_data.dept if session_data else '' }}</div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="mx-3 mt-2 alert alert-{{ cat }} py-2" style="font-size:.83rem">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+{% if not session_data %}
+<div class="info-card text-center py-4">
+  <div style="font-size:2.5rem">📭</div>
+  <p class="mt-2 text-muted">현재 참여 가능한 TBM이 없습니다.</p>
+  <a href="/tbm/sign/history" class="btn btn-outline-secondary btn-sm mt-1">제출 내역 보기</a>
+</div>
+
+{% elif already_signed %}
+<div class="done-screen" style="display:block">
+  <div class="icon">✅</div>
+  <h5 class="mt-3 fw-700">서명 완료</h5>
+  <p class="text-muted">{{ session_data.week_label }}<br>{{ signed_at }}</p>
+  <a href="/tbm/sign/history" class="btn btn-outline-secondary btn-sm mt-2">제출 내역 보기</a>
+</div>
+
+{% elif is_excluded %}
+<div class="info-card text-center py-4">
+  <div style="font-size:2.5rem">🚫</div>
+  <p class="mt-2 text-muted">이번 주 TBM 대상에서 제외됐습니다.</p>
+  <a href="/tbm/sign/history" class="btn btn-outline-secondary btn-sm mt-1">제출 내역 보기</a>
+</div>
+
+{% else %}
+<!-- TBM 기본 정보 -->
+<div class="section-lbl">이번 주 TBM 정보</div>
+<div class="info-card" style="margin-top:4px">
+  <div class="d-flex justify-content-between mb-2">
+    <span class="fw-700">{{ session_data.week_label }}</span>
+    <span class="text-muted" style="font-size:.8rem">{{ session_data.tbm_date }}</span>
+  </div>
+  <table class="table table-sm mb-0" style="font-size:.85rem">
+    <tr>
+      <td class="text-muted" style="width:5.5rem;white-space:nowrap">시작 시간</td>
+      <td>{{ session_data.time_start or '—' }}</td>
+      <td class="text-muted" style="white-space:nowrap">종료 시간</td>
+      <td>{{ session_data.time_end or '—' }}</td>
+    </tr>
+    <tr><td class="text-muted">작업명</td><td colspan="3" class="fw-600">{{ session_data.job_name or '—' }}</td></tr>
+    <tr><td class="text-muted">작업내용</td><td colspan="3">{{ session_data.job_content or '—' }}</td></tr>
+    <tr><td class="text-muted">TBM 장소</td><td colspan="3">{{ session_data.location or '—' }}</td></tr>
+    <tr>
+      <td class="text-muted">위험성평가</td>
+      <td colspan="3">{{ '예' if session_data.risk_assessed == 'Y' else '아니오' }}</td>
+    </tr>
+  </table>
+</div>
+
+<!-- 잠재 위험 요인 -->
+{% if session_data.hazards %}
+<div class="section-lbl">잠재 위험 요인 및 대책</div>
+<div class="px-3">
+  {% for h in session_data.hazards %}
+  <div class="hazard-item">
+    <div>⚠️ {{ h.hazard }}</div>
+    {% if h.measure %}<div class="hazard-measure">→ {{ h.measure }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 중점 위험 요인 -->
+{% if session_data.key_hazard_select %}
+<div class="section-lbl">중점 위험 요인</div>
+<div class="px-3">
+  <div class="hazard-item" style="border-color:#dc2626;background:#fef2f2">
+    <div class="fw-700">🔴 {{ session_data.key_hazard_select }}</div>
+    {% if session_data.key_hazard_measure %}
+    <div class="hazard-measure">→ {{ session_data.key_hazard_measure }}</div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- TBM 리더 확인 -->
+{% if session_data.leader_name %}
+<div class="section-lbl">TBM 리더 확인</div>
+<div class="info-card" style="margin-top:4px">
+  <table class="table table-sm mb-0" style="font-size:.85rem">
+    <tr><td class="text-muted" style="width:4rem">소속</td><td>{{ session_data.leader_dept or '—' }}</td></tr>
+    <tr><td class="text-muted">성명</td><td class="fw-600">{{ session_data.leader_name }}</td></tr>
+    <tr><td class="text-muted">직책</td><td>{{ session_data.leader_position or '—' }}</td></tr>
+  </table>
+</div>
+{% endif %}
+
+<!-- 작업 전 안전 조치 확인 -->
+<div class="section-lbl">작업 전 안전 조치 확인</div>
+<div class="info-card" style="margin-top:4px">
+  {% set checks = [session_data.safety_check1, session_data.safety_check2, session_data.safety_check3] %}
+  {% for item in safety_items %}
+  <div class="d-flex justify-content-between align-items-center py-1{% if not loop.last %} border-bottom{% endif %}" style="font-size:.85rem">
+    <span>{{ item }}</span>
+    <span class="{% if checks[loop.index0] == 'Y' %}text-success fw-700{% else %}text-danger fw-700{% endif %}">
+      {{ '예' if checks[loop.index0] == 'Y' else '아니오' }}
+    </span>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- 지시사항 -->
+{% if session_data.tmpl_instruction or session_data.safety_instruction %}
+<div class="section-lbl">작업 전 안전 점검 결과 / 지시사항</div>
+<div class="info-card" style="margin-top:4px;background:#eff6ff">
+  {% if session_data.tmpl_instruction %}
+  <div style="font-size:.82rem;color:#374151;white-space:pre-wrap;{% if session_data.safety_instruction %}border-bottom:1px solid #bfdbfe;margin-bottom:6px;padding-bottom:6px{% endif %}">{{ session_data.tmpl_instruction }}</div>
+  {% endif %}
+  {% if session_data.safety_instruction %}
+  <div style="font-size:.85rem">{{ session_data.safety_instruction }}</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- 동의 체크박스 -->
+<div class="section-lbl">동의 및 서명</div>
+<div class="agree-check">
+  <div class="form-check">
+    <input class="form-check-input" type="checkbox" id="agreeCheck">
+    <label class="form-check-label" for="agreeCheck">
+      위 TBM 교육내용을 숙지하였으며 이에 동의합니다.
+    </label>
+  </div>
+</div>
+
+<!-- 서명 패드 -->
+<div id="signSection" style="display:none">
+  <div class="section-lbl">서명</div>
+  <div class="sig-pad-wrap">
+    <canvas id="sigCanvas" height="160"></canvas>
+  </div>
+  <div class="d-flex gap-2 px-3 mt-2">
+    <button class="btn-clear" id="clearBtn" type="button">지우기</button>
+    <button class="btn-sign" id="submitBtn" type="button">✅ TBM 서명 제출</button>
+  </div>
+  <p class="text-center text-muted mt-2 mb-0" style="font-size:.78rem">
+    위 서명란에 손가락이나 터치펜으로 서명하세요
+  </p>
+</div>
+
+<div id="doneScreen" class="done-screen mt-3">
+  <div class="icon">✅</div>
+  <h5 class="mt-3 fw-700">서명 완료!</h5>
+  <p class="text-muted">TBM 서명이 제출됐습니다.</p>
+  <a href="/tbm/sign/history" class="btn btn-outline-secondary btn-sm mt-1">제출 내역 보기</a>
+</div>
+
+<div style="height:40px"></div>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% if session_data and not already_signed and not is_excluded %}
+<script>
+const SESSION_ID = {{ session_data.id }};
+const canvas = document.getElementById('sigCanvas');
+const ctx = canvas.getContext('2d');
+let drawing = false, hasStroke = false;
+
+// 동의 체크 → 서명패드 표시
+document.getElementById('agreeCheck').addEventListener('change', e => {
+  const sec = document.getElementById('signSection');
+  sec.style.display = e.target.checked ? 'block' : 'none';
+  if (e.target.checked) {
+    // display:none 상태에서 초기화됐기 때문에 보인 후 크기 재계산
+    resizeCanvas();
+  }
+});
+
+// Canvas 크기 맞춤
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.strokeStyle = '#1f2937';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const src = e.touches ? e.touches[0] : e;
+  return {x: src.clientX - rect.left, y: src.clientY - rect.top};
+}
+
+canvas.addEventListener('mousedown', e => { drawing = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); });
+canvas.addEventListener('mousemove', e => { if (!drawing) return; const p = getPos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); hasStroke=true; });
+canvas.addEventListener('mouseup', () => drawing = false);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); drawing = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); }, {passive:false});
+canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!drawing) return; const p = getPos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); hasStroke=true; }, {passive:false});
+canvas.addEventListener('touchend', () => drawing = false);
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  const rect = canvas.getBoundingClientRect();
+  ctx.clearRect(0, 0, rect.width, rect.height);
+  hasStroke = false;
+});
+
+document.getElementById('submitBtn').addEventListener('click', async () => {
+  if (!hasStroke) { alert('서명을 입력하세요.'); return; }
+  if (!document.getElementById('agreeCheck').checked) { alert('동의 체크박스를 체크하세요.'); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '제출중...';
+
+  const sigData = canvas.toDataURL('image/png');
+
+  try {
+    const res = await fetch('/tbm/sign/submit', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({session_id: SESSION_ID, signature_data: sigData, agreed: true})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.querySelectorAll('.section-lbl, .info-card, .agree-check, #signSection, .px-3').forEach(el => el.style.display='none');
+      document.getElementById('doneScreen').style.display = 'block';
+    } else {
+      alert('오류: ' + data.error);
+      btn.disabled = false;
+      btn.textContent = '✅ TBM 서명 제출';
+    }
+  } catch(e) {
+    alert('제출 실패. 다시 시도하세요.');
+    btn.disabled = false;
+    btn.textContent = '✅ TBM 서명 제출';
+  }
+});
+</script>
+{% endif %}
+</body>
+</html>
