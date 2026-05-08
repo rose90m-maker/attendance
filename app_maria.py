@@ -6265,9 +6265,20 @@ def dev_history():
     try:
         json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "dev_history.json")
         with open(json_path, encoding="utf-8") as f:
-            commits = _json.load(f)
+            raw = _json.load(f)
+        commits = []
+        for c in raw:
+            msg = c.get("msg", "")
+            if msg.startswith("[") and "]" in msg:
+                idx = msg.index("]")
+                cat = msg[1:idx]
+                body = msg[idx+2:]
+            else:
+                cat = ""
+                body = msg
+            commits.append({"sha": c.get("sha",""), "date": c.get("date",""), "msg": msg, "cat": cat, "body": body})
     except Exception as e:
-        commits = [{"sha": "-", "date": "-", "msg": f"이력 파일 없음: {e}"}]
+        commits = [{"sha": "-", "date": "-", "msg": f"이력 파일 없음: {e}", "cat": "", "body": f"이력 파일 없음: {e}"}]
     return render_template("dev_history.html", commits=commits, active_page="dev_history")
 
 

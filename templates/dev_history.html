@@ -121,23 +121,15 @@
     <!-- 타임라인 -->
     <div class="timeline" id="timeline">
         {% for c in commits %}
-        {% if c.msg.startswith('[') and ']' in c.msg %}
-            {% set bracket_end = c.msg.index(']') %}
-            {% set cat_name = c.msg[1:bracket_end] %}
-            {% set body = c.msg[bracket_end+2:] %}
-        {% else %}
-            {% set cat_name = '' %}
-            {% set body = c.msg %}
-        {% endif %}
         <div class="tl-item" data-msg="{{ c.msg }}">
             <div class="tl-dot"></div>
             <div class="tl-card">
                 <div class="tl-top">
-                    {% if cat_name %}<span class="cat cat-{{ cat_name }}">{{ cat_name }}</span>{% endif %}
+                    {% if c.cat %}<span class="cat cat-{{ c.cat }}">{{ c.cat }}</span>{% endif %}
                     {% if loop.first %}<span class="badge-new">최신</span>{% endif %}
                     <span class="tl-date">{{ c.date }}</span>
                 </div>
-                <div class="tl-msg">{{ body }}</div>
+                <div class="tl-msg">{{ c.body }}</div>
             </div>
         </div>
         {% endfor %}
