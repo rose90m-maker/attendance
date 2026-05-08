@@ -75,21 +75,49 @@ def init_edu_db(app):
                 INDEX `idx_ec_name` (`employee_name`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+        # penalty 컬럼 추가 (없으면)
+        try:
+            cur.execute("ALTER TABLE edu_courses ADD COLUMN `penalty` TEXT AFTER `note`")
+            conn.commit()
+        except Exception:
+            pass  # 이미 존재
+
         # 기본 법정교육 데이터
         cur.execute("SELECT COUNT(*) FROM edu_courses")
         if cur.fetchone()[0] == 0:
             defaults = [
-                ("산업안전보건교육", "quarter", 6.0, "all", 1, "분기별 6시간 (사무직 3시간)"),
-                ("성희롱 예방교육", "year", 1.0, "all", 1, "연 1회 이상"),
-                ("개인정보보호교육", "year", 1.0, "all", 1, "연 1회 이상"),
-                ("소방훈련/교육", "half", 1.0, "all", 1, "연 2회 이상"),
-                ("직장 내 장애인 인식개선교육", "year", 1.0, "all", 1, "연 1회 이상"),
-                ("퇴직연금교육", "year", 1.0, "all", 1, "연 1회 이상"),
-                ("직장 내 괴롭힘 예방교육", "year", 1.0, "all", 1, "연 1회 이상"),
+                ("산업안전보건교육", "quarter", 6.0, "all", 1, "분기별 6시간 (사무직 3시간)",
+                 "미실시 시 500만원 이하 과태료 (산업안전보건법 제175조). 상시근로자 1인 이상 사업장 의무."),
+                ("성희롱 예방교육", "year", 1.0, "all", 1, "연 1회 이상",
+                 "미실시 시 500만원 이하 과태료 (남녀고용평등법 제39조). 전 사업장 의무 실시."),
+                ("개인정보보호교육", "year", 1.0, "all", 1, "연 1회 이상",
+                 "미실시 시 최대 3,000만원 이하 과태료 (개인정보보호법 제75조). 개인정보 취급자 대상."),
+                ("소방훈련/교육", "half", 1.0, "all", 1, "연 2회 이상",
+                 "미실시 시 200만원 이하 과태료 (화재예방법 제52조). 상시 10인 이상 사업장 의무."),
+                ("직장 내 장애인 인식개선교육", "year", 1.0, "all", 1, "연 1회 이상",
+                 "미실시 시 300만원 이하 과태료 (장애인고용촉진법 제86조). 상시 1인 이상 사업장 의무."),
+                ("퇴직연금교육", "year", 1.0, "all", 1, "연 1회 이상",
+                 "미실시 시 1,000만원 이하 과태료 (근로자퇴직급여보장법 제48조). 퇴직연금 가입 사업장 의무."),
+                ("직장 내 괴롭힘 예방교육", "year", 1.0, "all", 1, "연 1회 이상",
+                 "미실시 시 직접 과태료 규정은 없으나 예방 의무 위반으로 손해배상 책임 발생 가능 (근로기준법 제76조의3)."),
             ]
             for d in defaults:
-                cur.execute("""INSERT INTO edu_courses (name,cycle_type,required_hours,target,is_legal,note)
-                               VALUES (%s,%s,%s,%s,%s,%s)""", d)
+                cur.execute("""INSERT INTO edu_courses (name,cycle_type,required_hours,target,is_legal,note,penalty)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s)""", d)
+        else:
+            # 기존 데이터에 penalty 업데이트
+            penalties = {
+                "산업안전보건교육": "미실시 시 500만원 이하 과태료 (산업안전보건법 제175조). 상시근로자 1인 이상 사업장 의무.",
+                "성희롱 예방교육": "미실시 시 500만원 이하 과태료 (남녀고용평등법 제39조). 전 사업장 의무 실시.",
+                "개인정보보호교육": "미실시 시 최대 3,000만원 이하 과태료 (개인정보보호법 제75조). 개인정보 취급자 대상.",
+                "소방훈련/교육": "미실시 시 200만원 이하 과태료 (화재예방법 제52조). 상시 10인 이상 사업장 의무.",
+                "직장 내 장애인 인식개선교육": "미실시 시 300만원 이하 과태료 (장애인고용촉진법 제86조). 상시 1인 이상 사업장 의무.",
+                "퇴직연금교육": "미실시 시 1,000만원 이하 과태료 (근로자퇴직급여보장법 제48조). 퇴직연금 가입 사업장 의무.",
+                "직장 내 괴롭힘 예방교육": "미실시 시 직접 과태료 규정은 없으나 예방 의무 위반으로 손해배상 책임 발생 가능 (근로기준법 제76조의3).",
+            }
+            for name, penalty in penalties.items():
+                cur.execute("UPDATE edu_courses SET penalty=%s WHERE name=%s AND (penalty IS NULL OR penalty='')",
+                            (penalty, name))
         conn.commit(); conn.close()
 
 
@@ -126,12 +154,12 @@ def edu_main():
     total_emp = len(employees)
 
     # 교육 과정 목록
-    cur.execute("SELECT id,name,cycle_type,required_hours,is_legal FROM edu_courses WHERE is_active=1 ORDER BY is_legal DESC,id")
+    cur.execute("SELECT id,name,cycle_type,required_hours,is_legal,COALESCE(penalty,'') FROM edu_courses WHERE is_active=1 ORDER BY is_legal DESC,id")
     courses = cur.fetchall()
 
     summary = []
     for c in courses:
-        cid, cname, cycle_type, req_hours, is_legal = c
+        cid, cname, cycle_type, req_hours, is_legal, penalty = c
         start, end = _get_year_range(cycle_type)
 
         # 해당 기간 이수자
@@ -153,7 +181,7 @@ def edu_main():
 
         summary.append({
             "id": cid, "name": cname, "cycle_type": cycle_type,
-            "is_legal": is_legal, "start": start, "end": end,
+            "is_legal": is_legal, "penalty": penalty, "start": start, "end": end,
             "completed": completed, "total": total_emp, "rate": rate,
             "not_completed": not_completed[:5],
             "not_completed_count": len(not_completed),

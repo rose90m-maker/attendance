@@ -98,6 +98,11 @@
                         </div>
                     </div>
                 </div>
+                {% if s.penalty %}
+                <div style="margin-top:4px;padding:5px 10px;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0;">
+                    <span style="font-size:0.73rem;color:#92400e;">⚠️ {{ s.penalty }}</span>
+                </div>
+                {% endif %}
                 {% if s.not_completed_count > 0 %}
                 <div>
                     <span style="font-size:0.75rem;color:#6b7280;">미이수:</span>
