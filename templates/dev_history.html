@@ -121,27 +121,23 @@
     <!-- 타임라인 -->
     <div class="timeline" id="timeline">
         {% for c in commits %}
-        {% set cat = c.msg | regex_search('\[([^\]]+)\]') %}
-        <div class="tl-item" data-msg="{{ c.msg }}" data-cat="{{ c.msg | regex_search('\[([^\]]+)\]') or '' }}">
+        {% if c.msg.startswith('[') and ']' in c.msg %}
+            {% set bracket_end = c.msg.index(']') %}
+            {% set cat_name = c.msg[1:bracket_end] %}
+            {% set body = c.msg[bracket_end+2:] %}
+        {% else %}
+            {% set cat_name = '' %}
+            {% set body = c.msg %}
+        {% endif %}
+        <div class="tl-item" data-msg="{{ c.msg }}">
             <div class="tl-dot"></div>
             <div class="tl-card">
                 <div class="tl-top">
-                    {% set bracket = c.msg.find('[') %}
-                    {% set bracket_end = c.msg.find(']') %}
-                    {% if bracket == 0 and bracket_end > 0 %}
-                    {% set cat_name = c.msg[1:bracket_end] %}
-                    <span class="cat cat-{{ cat_name }}">{{ cat_name }}</span>
-                    {% endif %}
+                    {% if cat_name %}<span class="cat cat-{{ cat_name }}">{{ cat_name }}</span>{% endif %}
                     {% if loop.first %}<span class="badge-new">최신</span>{% endif %}
                     <span class="tl-date">{{ c.date }}</span>
                 </div>
-                <div class="tl-msg">
-                    {% if bracket == 0 and bracket_end > 0 %}
-                    {{ c.msg[bracket_end+2:] }}
-                    {% else %}
-                    {{ c.msg }}
-                    {% endif %}
-                </div>
+                <div class="tl-msg">{{ body }}</div>
             </div>
         </div>
         {% endfor %}
