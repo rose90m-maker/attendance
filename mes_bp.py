@@ -200,11 +200,17 @@ def _start_mqtt_subscriber():
     delay = 5
     while True:
         try:
+            def _on_connect(client, userdata, flags, rc):
+                if rc == 0:
+                    client.subscribe([("mes/count", 0), ("mes/env", 0)])
+                    print("[MQTT] 구독 시작: mes/count, mes/env")
+                else:
+                    print(f"[MQTT] 브로커 연결 거부 rc={rc}")
+
             client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "mes_subscriber")
+            client.on_connect = _on_connect
             client.on_message = _mqtt_on_message
             client.connect("192.168.100.11", 1883, 60)
-            client.subscribe([("mes/count", 0), ("mes/env", 0)])
-            print("[MQTT] 구독 시작: mes/count, mes/env")
             delay = 5
             client.loop_forever()
             print("[MQTT] loop_forever 종료 — 재연결 시도")
