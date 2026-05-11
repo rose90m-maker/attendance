@@ -111,40 +111,42 @@ def _mqtt_save_count(device_id, count):
     try:
         with _mqtt_app.app_context():
             conn = _conn()
-            cur  = conn.cursor()
-            cur.execute("""
-                INSERT IGNORE INTO mes_devices (device_id, name)
-                VALUES (%s, %s)
-            """, (device_id, device_id))
-            cur.execute("""
-                INSERT INTO mes_label_count (device_id, count)
-                VALUES (%s, %s)
-            """, (device_id, count))
-            today = date.today().isoformat()
-            cur.execute("SELECT target_day FROM mes_devices WHERE device_id=%s LIMIT 1", (device_id,))
-            _trow = cur.fetchone()
-            _dev_target = (_trow[0] if _trow else 0) or 0
-            cur.execute("""
-                INSERT INTO mes_daily_summary (device_id, work_date, total_count, peak_count, peak_hour, target)
-                SELECT %s, %s,
-                       COALESCE(SUM(count), 0),
-                       COALESCE(MAX(count), 0),
-                       HOUR(recorded_at),
-                       %s
-                FROM mes_label_count
-                WHERE device_id=%s AND DATE(recorded_at)=%s
-                GROUP BY device_id, DATE(recorded_at), HOUR(recorded_at)
-                ORDER BY SUM(count) DESC LIMIT 1
-                ON DUPLICATE KEY UPDATE
-                    total_count = VALUES(total_count),
-                    peak_count  = VALUES(peak_count),
-                    peak_hour   = VALUES(peak_hour),
-                    target      = COALESCE(target, VALUES(target)),
-                    updated_at  = NOW()
-            """, (device_id, today, _dev_target, device_id, today))
-            conn.commit()
-            conn.close()
-            print(f"[MQTT] count 저장: {device_id} = {count}")
+            try:
+                cur  = conn.cursor()
+                cur.execute("""
+                    INSERT IGNORE INTO mes_devices (device_id, name)
+                    VALUES (%s, %s)
+                """, (device_id, device_id))
+                cur.execute("""
+                    INSERT INTO mes_label_count (device_id, count)
+                    VALUES (%s, %s)
+                """, (device_id, count))
+                today = date.today().isoformat()
+                cur.execute("SELECT target_day FROM mes_devices WHERE device_id=%s LIMIT 1", (device_id,))
+                _trow = cur.fetchone()
+                _dev_target = (_trow[0] if _trow else 0) or 0
+                cur.execute("""
+                    INSERT INTO mes_daily_summary (device_id, work_date, total_count, peak_count, peak_hour, target)
+                    SELECT %s, %s,
+                           COALESCE(SUM(count), 0),
+                           COALESCE(MAX(count), 0),
+                           HOUR(recorded_at),
+                           %s
+                    FROM mes_label_count
+                    WHERE device_id=%s AND DATE(recorded_at)=%s
+                    GROUP BY device_id, DATE(recorded_at), HOUR(recorded_at)
+                    ORDER BY SUM(count) DESC LIMIT 1
+                    ON DUPLICATE KEY UPDATE
+                        total_count = VALUES(total_count),
+                        peak_count  = VALUES(peak_count),
+                        peak_hour   = VALUES(peak_hour),
+                        target      = COALESCE(target, VALUES(target)),
+                        updated_at  = NOW()
+                """, (device_id, today, _dev_target, device_id, today))
+                conn.commit()
+                print(f"[MQTT] count 저장: {device_id} = {count}")
+            finally:
+                conn.close()
     except Exception as e:
         print(f"[MQTT] count 저장 오류: {e}")
 
@@ -165,16 +167,26 @@ def _mqtt_save_env(device_id, temperature, humidity):
     try:
         with _mqtt_app.app_context():
             conn = _conn()
-            cur  = conn.cursor()
-            cur.execute("""
-                INSERT INTO mes_env_log (device_id, temperature, humidity)
-                VALUES (%s, %s, %s)
-            """, (device_id, temperature, humidity))
-            conn.commit()
-            conn.close()
-            print(f"[MQTT] env 저장: {device_id} temp={temperature} humi={humidity}")
+            try:
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO mes_env_log (device_id, temperature, humidity)
+                    VALUES (%s, %s, %s)
+                """, (device_id, temperature, humidity))
+                conn.commit()
+                print(f"[MQTT] env 저장: {device_id} temp={temperature} humi={humidity}")
+            finally:
+                conn.close()
     except Exception as e:
         print(f"[MQTT] env 저장 오류: {e}")
+
+
+def _mqtt_on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        client.subscribe([("mes/count", 0), ("mes/env", 0)])
+        print("[MQTT] 구독 시작: mes/count, mes/env")
+    else:
+        print(f"[MQTT] 브로커 연결 거부 rc={rc}")
 
 
 def _mqtt_on_message(client, userdata, msg):
@@ -200,15 +212,8 @@ def _start_mqtt_subscriber():
     delay = 5
     while True:
         try:
-            def _on_connect(client, userdata, flags, rc):
-                if rc == 0:
-                    client.subscribe([("mes/count", 0), ("mes/env", 0)])
-                    print("[MQTT] 구독 시작: mes/count, mes/env")
-                else:
-                    print(f"[MQTT] 브로커 연결 거부 rc={rc}")
-
             client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "mes_subscriber")
-            client.on_connect = _on_connect
+            client.on_connect = _mqtt_on_connect
             client.on_message = _mqtt_on_message
             client.connect("192.168.100.11", 1883, 60)
             delay = 5
