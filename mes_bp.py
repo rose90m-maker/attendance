@@ -679,6 +679,10 @@ def api_status():
         rows = []
         for r in cur.fetchall():
             device_id, name, line_name, target, title, today_total, peak_count, peak_hour, latest, ltime = r
+            target      = int(target      or 0)
+            today_total = int(today_total or 0)
+            peak_count  = int(peak_count  or 0)
+            latest      = int(latest      or 0)
             pct = round(today_total / target * 100, 1) if target else 0
             rows.append({
                 "device_id":   device_id,
@@ -688,8 +692,8 @@ def api_status():
                 "target":      target,
                 "today_total": today_total,
                 "peak_count":  peak_count,
-                "peak_hour":   peak_hour,
-                "latest":      latest or 0,
+                "peak_hour":   int(peak_hour) if peak_hour is not None else -1,
+                "latest":      latest,
                 "latest_time": ltime.strftime("%H:%M:%S") if ltime else "-",
                 "pct":         min(pct, 100),
                 "over_target": pct >= 100,
