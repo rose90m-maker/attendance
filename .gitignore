@@ -1,12 +1,34 @@
-.venv/
+# Python
 __pycache__/
 *.pyc
-*.pyo
-chroma_db/
-uploads/
-*.tar.gz
-*.sql
+.venv/
+venv/
+*.egg-info/
+
+# 자동 수집 데이터 (Git에 넣지 않음)
+pp_downloads/
+pp_screenshots/
+
+# 로그 파일
 *.log
+nohup.out
+
+# 백업 폴더
+attendance_backup_*/
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*.log
+.idea/
+
+# 환경변수 (보안)
 .env
-deploy_and_restart.py
-backup.py
+*.key
+
+# 임시 파일
+*.tmp
+*.swp
