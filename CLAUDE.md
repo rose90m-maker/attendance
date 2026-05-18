@@ -1,74 +1,86 @@
-# Attendance Project — CLAUDE.md
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-Korean workplace attendance management system (근태관리). Runs as a Flask web app deployed on a Synology NAS.
+Korean workplace attendance management system (㈜태인 근태관리). Flask web app deployed as a Docker container on a Synology NAS. Includes adjacent subsystems: TBM (Tool Box Meeting), MES (제조실행), 위험물 관리, 교육 관리, RAG 문서 검색, Tuya 화재센서, KEPCO 전기요금 수집, CAPS 출입통제 동기화.
 
 ## Architecture
 
-| Component | Description |
-|---|---|
-| `app_maria.py` | Main Flask app (MariaDB version) — deployed to NAS as `app.py` |
-| `rag_server.py` | FastAPI RAG server on Mac Mini, port 8765 |
-| `rag_docs.py` | Document indexing + search (ChromaDB + FTS) |
-| `tuya_fire.py` | Tuya IoT fire/smoke sensor integration |
-| `tuya_poller_local.py` | Local Tuya device poller |
-| `deploy_and_restart.py` | SSH deploy + Flask restart script |
-| `chroma_db/` | ChromaDB vector store for RAG |
-| `templates/` | Jinja2 HTML templates |
-| `static/` | CSS, images, manifest |
-| `uploads/` | Uploaded documents |
+### Main Flask app (`app_maria.py`)
+- Single large monolith. Deployed to NAS as `app.py`.
+- Registers blueprints from `edu_bp.py`, `hazmat_bp.py`, `mes_bp.py`, `tbm_bp.py`. Each blueprint is self-contained: defines its own `_conn()`, `_login_required`, `_admin_required`, and an `init_*_db(app)` that creates tables on app startup. They share session keys (`user_id`, `role`, `e_id`, `user_name`) with the main app — effectively SSO.
+- `MARIA` dict at top of `app_maria.py` is the DB config. Blueprints either import it (`from app_maria import MARIA`) or read `current_app.config["MARIA"]` / env vars.
+- DB connection helper pattern: `pymysql.connect(**MARIA)` returned from `_conn()`.
+- Korean public holidays via `holidays.KR`.
 
-## Stack
+### Separate apps
+- **`tbm_app.py`** — standalone Flask on port 5051. Has the same TBM logic as `tbm_bp.py` but as a top-level app. Both share the same `attendance` DB. Runs as its own container `attendance-tbm` via `Dockerfile.tbm`.
+- **`rag_server.py`** — FastAPI on Mac Mini, port 8765. Uses `rag_docs.py` for ChromaDB+FTS document indexing. Started via `start_rag.sh` (watchdog: auto-restart on crash).
+- **`tuya_fire.py` / `tuya_poller_local.py`** — Tuya IoT fire/smoke sensor polling.
+- **`caps_sync.py`** — runs on a **Windows PC** at the access-control server. Reads `C:\Caps\ACServer\access.mdb` (`tenter` table) → pushes to NAS MariaDB. Has `--setup` mode that installs itself as a startup task with watchdog.
+- **`kepco_*.py`** — Scrapers for KEPCO (Korea Electric Power) electricity bill data.
+- **`backup.py`** — full-system backup to Mac local + NAS sidecar. See `MEMORY.md` for procedure.
 
-- **Backend**: Flask (Python), FastAPI (RAG server)
-- **Database**: MariaDB — `127.0.0.1:3307`, db: `attendance`
-- **Vector DB**: ChromaDB (local, `chroma_db/`)
-- **LLM APIs**: OpenAI, Groq, Gemini, Cohere (keys in `.env`)
-- **IoT**: Tuya cloud API (fire/smoke sensors)
-- **Notifications**: Telegram bot
+### Storage
+- **MariaDB** at `127.0.0.1:3307` on NAS (Synology MariaDB10 package — *not* a container). DB name: `attendance`.
+- **ChromaDB** in `chroma_db/` (RAG vectors) — lives on Mac Mini, not in main app.
+- **Uploads**: `uploads/` (bind-mounted into container as `/app/uploads`).
 
-## Deployment
+## Deployment — Docker
 
-- **Target**: Synology NAS at `192.168.100.11` (port 22, user: `admin`)
-- **App path on NAS**: `/volume1/web/attendance/`
-- **Flask port**: `5050`
-- **RAG server port**: `8765` (runs on Mac Mini, separate process)
-- **Deploy command**: `python deploy_and_restart.py`
-- **NAS Python**: `/opt/bin/python3`
-- **Logs on NAS**: `/var/log/attendance.log`
+**The Flask app runs as a Docker container on the NAS.** Direct `nohup python app.py` does not work because docker-proxy holds the port.
 
-## Key Conventions
+- NAS: `192.168.100.11`, user `rose90m` (or `admin`), SSH port 22
+- Containers: `attendance-app` (port 5050), `attendance-tbm` (port 5051)
+- Container app path: `/app/`
+- NAS staging path: `/volume1/web/attendance/`
+- Mounted volume: `/volume1/docker/attendance/uploads:/app/uploads` (uploads only)
+- Other files (templates/, static/, app_maria.py) live in the container's writable layer
+- `docker` binary on NAS: `/usr/local/bin/docker`
+- sudo password is the NAS password; sudo output is prefixed with `"Password: "` which must be stripped
 
-- All UI text and code comments are in Korean
-- `app_maria.py` is the local dev file — it gets deployed as `app.py`
-- DB connection via `_conn()` helper (returns `pymysql.connect(**MARIA)`)
-- Session key `e_id` = logged-in employee ID; `role == "admin"` = admin
-- Korean public holidays via `holidays.KR`
+**Deploy**: `python deploy_and_restart.py` (handles SCP → `docker cp` → `docker restart`, and auto-commits dirty git state with message `배포: <changed files>`, prepending to `static/dev_history.json`). Use `--rebuild` flag to rebuild the image (~3 min) instead of just restarting (~15 sec).
 
-## Sensitive Files — Do Not Commit
-
-- `.env` — API keys (OpenAI, Groq, Gemini, Cohere)
-- `deploy_and_restart.py` — contains NAS credentials in plaintext
-- `app_maria.py` — contains Telegram token and MariaDB password inline
+`docker-compose.yml` exists as a *future migration target* (different ports: app 5060/5080, db 3308). It is **not** the current production runtime — production still uses the NAS-package MariaDB on 3307.
 
 ## Running Locally
 
 ```bash
-# Activate venv
 source .venv/bin/activate
-
-# Run Flask app (local)
-python app_maria.py
-
-# Run RAG server
-bash start_rag.sh
-# or: uvicorn rag_server:app --host 0.0.0.0 --port 8765
+python app_maria.py              # main app
+python tbm_app.py                # TBM standalone (port 5051)
+bash start_rag.sh                # RAG server (Mac Mini)
+bash start_tbm.sh {start|stop|restart|status}
 ```
 
-## Database Schema Notes
+## Common Tasks
 
-Key tables (inferred from code):
-- `lp_group_members`, `lp_group_reviewers` — leave plan group membership
-- `leave_records` — employee leave (연차/반차)
-- `annual_leave` — annual leave balance per employee/year
+- **Backup** ("백업해"): just run `python3 backup.py`. No questions — memory says run immediately. Produces 5 artifacts (source tar.gz, DB dump, docker inspect JSON, crontab, LaunchAgents). Saves to `/Users/changkooji/` and NAS `/volume1/backup/attendance/` (keeps 14 most recent each).
+- **Deploy**: `python deploy_and_restart.py` (or `--rebuild`).
+- **Add a blueprint table**: edit the relevant `init_*_db(app)` in the blueprint — runs idempotently on app start.
+
+## Conventions
+
+- All UI text and most comments are **Korean**. Match that style when editing.
+- Session keys: `user_id` (login), `role` ("admin" gates), `e_id` (employee id), `user_name`.
+- Files prefixed `_check_*.py`, `_test_*.py`, `_run_*.py` at the repo root are **throwaway debug scratch** — not load-bearing, safe to ignore.
+- `app_maria.py.bak`, `nohup.out`, `rag_server.log` are local cruft.
+
+## Sensitive — Do Not Commit
+
+- `.env` — API keys (OpenAI, Groq, Gemini, Cohere)
+- `deploy_and_restart.py`, `backup.py`, `caps_sync.py` — NAS/DB credentials in plaintext
+- `app_maria.py`, `tbm_app.py`, `tbm_bp.py` — Telegram token, MariaDB password inline
+- `db-init/`, `db-slave/` — DB seed data and replication configs (gitignored)
+
+## Key DB Tables
+
+Discoverable via `init_*_db()` in each blueprint. Highlights:
+- `tuser`, `employee_roster` — users / employee master (joined for dept info)
+- `tenter` — access-control entry log (populated by `caps_sync.py`)
+- `lp_group_members`, `lp_group_reviewers`, `leave_records`, `annual_leave` — 휴가/연차
+- `edu_courses`, `edu_sessions` — 교육
+- `hazmat_items` — 위험물
+- `mes_devices`, `mes_env_log` + production count tables — MES
