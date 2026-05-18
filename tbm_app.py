@@ -9,19 +9,22 @@ from datetime import datetime, date, timedelta
 from functools import wraps
 
 import pymysql
+from dotenv import load_dotenv
 from flask import (Flask, render_template, request, flash, jsonify,
                    redirect, url_for, session, make_response)
 
+load_dotenv()
+
 # ── 앱 초기화 ────────────────────────────────────────────
 app = Flask(__name__, template_folder="templates/tbm", static_folder="static")
-app.secret_key = "tbm-taein-secret-2026"
+app.secret_key = os.environ["TBM_SECRET_KEY"]
 
 # ── DB 설정 ──────────────────────────────────────────────
 MARIA = {
     "host":     os.environ.get("DB_HOST", "127.0.0.1"),
     "port":     int(os.environ.get("DB_PORT", "3307")),
     "user":     os.environ.get("DB_USER", "root"),
-    "password": os.environ.get("DB_PASSWORD", "7602mr"),
+    "password": os.environ["DB_PASSWORD"],
     "db":       os.environ.get("DB_NAME", "attendance"),
     "charset":  "utf8mb4",
 }

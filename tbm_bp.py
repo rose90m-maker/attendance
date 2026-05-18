@@ -10,8 +10,11 @@ from datetime import datetime, date, timedelta
 from functools import wraps
 
 import pymysql
+from dotenv import load_dotenv
 from flask import (Blueprint, render_template, request, flash, jsonify,
                    redirect, url_for, session)
+
+load_dotenv()
 
 tbm_bp = Blueprint("tbm", __name__, url_prefix="/tbm")
 
@@ -21,7 +24,7 @@ MARIA = {
     "host":     os.environ.get("DB_HOST", "127.0.0.1"),
     "port":     int(os.environ.get("DB_PORT", "3307")),
     "user":     os.environ.get("DB_USER", "root"),
-    "password": os.environ.get("DB_PASSWORD", "7602mr"),
+    "password": os.environ["DB_PASSWORD"],
     "db":       os.environ.get("DB_NAME", "attendance"),
     "charset":  "utf8mb4",
 }
