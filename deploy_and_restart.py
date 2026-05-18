@@ -1,4 +1,7 @@
 import paramiko, time, base64, sys, tarfile, io, os, subprocess
+from dotenv import load_dotenv
+
+load_dotenv()
 
 REBUILD = "--rebuild" in sys.argv  # python deploy_and_restart.py --rebuild
 print(f"📦 배포 시작 — 예상 소요시간: {'약 3분 (이미지 재빌드)' if REBUILD else '약 15초'}")
@@ -130,10 +133,10 @@ files = [
     ("templates/tbm/templates_mgmt.html", "templates/tbm/templates_mgmt.html"),
 ]
 
-NAS_HOST = '192.168.100.11'
-NAS_USER = 'rose90m'
-NAS_PASS = '7602Mr123$$'
-NAS_SUDO = '7602Mr123$$'
+NAS_HOST = os.environ["NAS_HOST"]
+NAS_USER = os.environ["NAS_USER"]
+NAS_PASS = os.environ["NAS_PASS"]
+NAS_SUDO = os.environ["NAS_SUDO"]
 STAGE_DIR = "/volume1/web/attendance"
 DOCKER_MAIN = "attendance-app"
 DOCKER_TBM  = "attendance-tbm"

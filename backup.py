@@ -4,12 +4,15 @@
 백업 위치: /Users/changkooji/
 """
 import os, time, subprocess, base64, paramiko, json, urllib.request, urllib.parse
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ── 설정 ─────────────────────────────────────────────────
-NAS_HOST   = '192.168.100.11'
-NAS_USER   = 'rose90m'
-NAS_PASS   = '7602Mr123$$'
-NAS_SUDO   = '7602Mr123$$'
+NAS_HOST   = os.environ["NAS_HOST"]
+NAS_USER   = os.environ["NAS_USER"]
+NAS_PASS   = os.environ["NAS_PASS"]
+NAS_SUDO   = os.environ["NAS_SUDO"]
 DOCKER     = '/usr/local/bin/docker'
 MYSQLDUMP  = '/var/packages/MariaDB10/target/usr/local/mariadb10.11/bin/mysqldump'
 SOCKET     = '/run/mysqld/mysqld10.sock'
