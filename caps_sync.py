@@ -29,17 +29,22 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ─────────────────────── 설정 ───────────────────────
 MDB_PATH     = r"C:\Caps\ACServer\access.mdb"
-MDB_PWD      = "fdmsamho"
+MDB_PWD      = os.environ["CAPS_MDB_PWD"]
 MDB_TABLE    = "tenter"
 
-MARIA_HOST   = "192.168.100.11"
-MARIA_PORT   = 3307
-MARIA_USER   = "root"
-MARIA_PASS   = "7602Mr123$$"
-MARIA_DB     = "attendance"
+# === DB 연결 (메인 시스템과 동일한 .env 환경변수 공유) ===
+# 미래에 별도 DB 분리 필요 시 CAPS_DB_* 키 추가
+MARIA_HOST   = os.environ.get("DB_HOST", "127.0.0.1")
+MARIA_PORT   = int(os.environ.get("DB_PORT", "3307"))
+MARIA_USER   = os.environ.get("DB_USER", "root")
+MARIA_PASS   = os.environ["DB_PASSWORD"]
+MARIA_DB     = os.environ.get("DB_NAME", "attendance")
 MARIA_CHARSET = "utf8mb4"
 
 SYNC_INTERVAL_SEC  = 60        # 동기화 주기 (초)
