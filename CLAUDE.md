@@ -84,3 +84,75 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 - `edu_courses`, `edu_sessions` — 교육
 - `hazmat_items` — 위험물
 - `mes_devices`, `mes_env_log` + production count tables — MES
+
+---
+
+## 🚧 진행 중 작업: .env 자격증명 이관 (2026-05-18 시작)
+
+### 작업 목적
+하드코딩된 자격증명/토큰을 모두 `.env`로 이관. 값 변경은 **하지 않음** (이관만).
+
+### 오늘 완료 (2026-05-18)
+- ✅ **사전 작업**: 폴더 백업(`/Users/changkooji/attendance_snapshot_2026-05-18/`, 158MB) + git 스냅샷 커밋(`da3db5a`)
+- ✅ **디버그 정리**: `_check_*.py`/`_test_*.py`/`_run_*.py` 20개 → `_archive/`로 이관 (커밋 `76da180`)
+- ✅ **.env 백업**: `.env.backup_2026-05-18` (gitignore로 무시됨)
+- ✅ **.gitignore 보강**: `.env.backup_*`, `.env.local` 패턴 추가 (커밋 완료)
+- ✅ **자격증명 전수조사**: 11개 신규 .env 키 매핑 + 9개 코드 수정 대상 파일 확정
+
+### 🌅 내일 시작점
+**[B] 단계부터: `.env`에 11개 키의 실제 값 추가**
+
+작업 순서: `[B]` 값 입력 → `[C]` 검증 → `[D]` (.env는 어차피 git 무시 → 코드 수정 단계로 자연스럽게 연결)
+
+### 추가할 11개 .env 키 매핑
+
+| # | .env 키 | 소스 (파일:라인) | 비고 |
+|---|---|---|---|
+| 1 | `FLASK_SECRET_KEY` | app_maria.py:48 | Flask 세션 |
+| 2 | `TBM_SECRET_KEY` | tbm_app.py:17 | TBM 세션 |
+| 3 | `TELEGRAM_TOKEN` | app_maria.py:87 | 봇 토큰 |
+| 4 | `TELEGRAM_CHAT_ID` | app_maria.py:88 | 채팅방 ID |
+| 5 | `MAIL_USER` | app_maria.py:96 | O365 계정 |
+| 6 | `MAIL_PASS` | app_maria.py:97 | O365 비밀번호 |
+| 7 | `NAS_HOST` | backup.py:9 | 192.168.100.11 |
+| 8 | `NAS_USER` | backup.py:10 | NAS 계정 |
+| 9 | `NAS_PASS` | backup.py:11 | NAS SSH 비밀번호 |
+| 10 | `NAS_SUDO` | backup.py:12 | NAS sudo (동일값) |
+| 11 | `CAPS_MDB_PWD` | caps_sync.py:35 | CAPS Access DB |
+
+### 코드 수정 대상 9개 파일
+
+| # | 파일 | 수정 사항 | 사용할 .env 키 |
+|---|---|---|---|
+| 1 | `app_maria.py` | L48, L87-88, L96-97, L103 | FLASK_SECRET_KEY, TELEGRAM_*, MAIL_*, DB_PASSWORD |
+| 2 | `backup.py` | L9-12 NAS_* 4개 | NAS_* |
+| 3 | `deploy_and_restart.py` | L133-136 NAS_* | NAS_* (재사용) |
+| 4 | `caps_sync.py` | L35 MDB_PWD + L38-42 MARIA_* | CAPS_MDB_PWD + DB_* |
+| 5 | `tbm_bp.py` | L24 DB_PASSWORD 기본값 | DB_PASSWORD |
+| 6 | `tbm_app.py` | L17 secret_key + L24 DB_PASSWORD 기본값 | TBM_SECRET_KEY + DB_PASSWORD |
+| 7 | `kepco_collector.py` | L30 DB_PASSWORD 기본값 | DB_PASSWORD |
+| 8 | `tuya_poller_local.py` | L10-11 TUYA_* 하드코딩 | TUYA_ACCESS_ID/SECRET (기존 .env) |
+| 9 | `kepco_pp_scraper.py` | L33 DB_PASSWORD 기본값 | DB_PASSWORD |
+
+**[app.py](app.py) (배포본)은 수정하지 않음** — 다음 배포 시 자동 반영. 단 작업 완료 후 즉시 배포 필요.
+
+### caps_sync.py 수정 시 주석 추가 필수
+```python
+# caps_sync.py: 메인 시스템과 동일한 MariaDB 사용
+# 환경변수는 DB_HOST/DB_PORT/DB_USER/DB_PASSWORD 공유
+# 미래에 분리 필요 시 CAPS_DB_* 별도 키 추가
+```
+
+### 안전 수칙 (작업 재개 시 준수)
+1. 코드 백업 (git commit / 폴더 복사)
+2. DB 백업
+3. 운영 시간 회피
+4. .env 절대 커밋/공유 금지
+5. **값 변경 금지 — 이관만**
+
+### 롤백 지점
+- `da3db5a` — 작업 전 스냅샷
+- `76da180` — 디버그 정리 완료 시점
+- `/Users/changkooji/attendance_snapshot_2026-05-18/` — 파일 시스템 백업
+- `.env.backup_2026-05-18` — .env 원본
+
