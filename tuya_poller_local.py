@@ -3,12 +3,15 @@
 NAS Python 환경 의존성 없이 맥에서 직접 실행
 """
 import hmac, hashlib, time, requests, logging, os, signal, sys
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 logger = logging.getLogger(__name__)
 
-ACCESS_ID     = "ya8pgrtd4mpsdkm4n4tx"
-ACCESS_SECRET = "270ec0529a3d48bda2349fa9f949befa"
+ACCESS_ID     = os.environ["TUYA_ACCESS_ID"]
+ACCESS_SECRET = os.environ["TUYA_ACCESS_SECRET"]
 REGION        = "us"
 POLL_INTERVAL = 60  # 초 (Tuya API 쿼터 절약 — 감지기 자체 경보음은 즉시 울림)
 NAS_URL       = "http://192.168.100.11:5050"
