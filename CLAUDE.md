@@ -87,12 +87,12 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 
 ---
 
-## 🚧 진행 중 작업: .env 자격증명 이관 (2026-05-18 시작 / 2026-05-19 대부분 완료)
+## ✅ 완료된 작업: .env 자격증명 이관 (2026-05-18 ~ 2026-05-19) — 배포 대기
 
 ### 작업 목적
 하드코딩된 자격증명/토큰을 모두 `.env`로 이관. 값 변경은 **하지 않음** (이관만, fail-fast 적용).
 
-### 진행 현황 — 9단계 중 8단계 완료
+### 진행 현황 — 9/9 완료 (배포 대기)
 
 #### ✅ 사전 작업 (2026-05-18)
 - 폴더 백업: `/Users/changkooji/attendance_snapshot_2026-05-18/` (158MB)
@@ -119,6 +119,7 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 | 7 | `deploy_and_restart.py` (이관) | load_dotenv + NAS_* 4개 환경변수화 | `ef9a1f2` |
 | 8 | `caps_sync.py` | load_dotenv + CAPS_MDB_PWD + MARIA_* → DB_* 통합 (5개) | `5611621` |
 | **부가** | `deploy_and_restart.py` (보강) | `docker_files_tbm`에 .env 1줄 추가 (tbm 컨테이너에도 .env 전달) | `76ca1bb` |
+| **9** | `app_maria.py` | load_dotenv + 자격증명 6곳 fail-fast (옵션 C) — L51, L90, L91, L99, L100, L106 | `f9446a4` |
 
 #### ✅ NAS 컨테이너 사전 점검 (2026-05-19)
 - `attendance-app`: Up 6 days, python-dotenv 1.2.2 설치됨, `/app/.env` 존재 (969B, 옛 24줄 버전)
@@ -127,33 +128,27 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 - 컨테이너 환경변수: 둘 다 DB_* 5개만 존재. 신규 11개는 배포 시 `/app/.env`로 주입 예정 (`load_dotenv()` 또는 수동 파서가 읽음)
 - 점검 스크립트: `_archive/_nas_check.py` (보관)
 
-### 🌅 다음 시작점: 9단계 — `app_maria.py` 수정 (마지막)
+### ✅ 9단계 완료 (2026-05-19)
+- 옵션 C 적용 (load_dotenv + 기존 수동 파서 모두 유지)
+- 자격증명 6곳 fail-fast: L51(secret_key), L90(TELEGRAM_TOKEN), L91(TELEGRAM_CHAT_ID), L99(MAIL_USER), L100(MAIL_PASS), L106(DB_PASSWORD)
+- Edit 방식 B (7회 분할)로 안전하게 적용
+- 검증: ast.parse OK, py_compile OK (9,669줄)
+- 커밋: `f9446a4`
 
-**옵션 C 확정** (load_dotenv 추가 + 기존 수동 파서 유지 + 자격증명 6곳 fail-fast)
+### 🚀 배포 (별도 결정 — 사용자 활동 시간 회피 필수)
 
-**Edit 방식 B 확정**: 7회 분할 (load_dotenv 1회 + 자격증명 6회)
+**현재 상태**: 모든 로컬 수정 완료. 운영 컨테이너는 아직 옛 코드 사용 중.
 
-#### 변경 위치 (라인 grep 확정)
+**권장 순서**:
+1. `.env`의 `FLASK_SECRET_KEY`를 강한 값으로 교체
+   - 생성 예시: `python3 -c "import secrets; print(secrets.token_urlsafe(48))"` 또는 `secrets.token_hex(32)` (256bit+ 엔트로피)
+   - 현재는 placeholder 상태
+2. 사용자 활동 적은 시간 확보 (전 사용자 강제 재로그인 발생)
+3. `python deploy_and_restart.py` 실행 (rebuild 없이 ~15초 다운타임)
+4. 즉시 `https://app.taein.biz` 로그인/근태 등록 검증
+5. 모든 사용자에게 재로그인 안내 공지
 
-| # | 라인 | 변경 |
-|---|---|---|
-| 1 | L5 다음 | `+ from dotenv import load_dotenv` + `+ load_dotenv()` (수동 파서 L7-15 직전, 수동 파서는 그대로 유지) |
-| 2 | L48 | `app.secret_key = ...` → `os.environ["FLASK_SECRET_KEY"]` |
-| 3 | L87 | `TELEGRAM_TOKEN = ...` → `os.environ["TELEGRAM_TOKEN"]` |
-| 4 | L88 | `TELEGRAM_CHAT_ID = ...` → `os.environ["TELEGRAM_CHAT_ID"]` |
-| 5 | L96 | `MAIL_USER = os.environ.get(..., "...")` → `os.environ["MAIL_USER"]` |
-| 6 | L97 | `MAIL_PASS = os.environ.get(..., "...")` → `os.environ["MAIL_PASS"]` |
-| 7 | L103 | `"password": os.environ.get(..., "...")` → `os.environ["DB_PASSWORD"]` |
-
-#### 검증 방식
-- ✅ `ast.parse` + `py_compile` (마지막 1회)
-- ❌ `import app_maria` 절대 금지 — 9,666줄 톱레벨 실행 위험 (tuya 폴러 시작, Flask 초기화 등)
-
-### 🚀 배포 (별도 결정)
-- 9단계 완료 후 진행
-- `python deploy_and_restart.py` (rebuild 없이 일반 배포)
-- 사용자 활동 시간 회피
-- 배포 후 즉시 헬스체크 권장
+**배포 실행 시 Claude 사용 방식**: 9단계와 동일하게 **한 단계씩 권한 요청 가이드**로 진행 권장. 자동 실행 금지. 각 단계 결과 확인 후 다음 진행.
 
 ### `app.py` (배포본)
 - 수정 안 함 — 다음 배포 시 자동 반영
@@ -167,15 +162,25 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 6. 자격증명 값은 Claude가 직접 다루지 않음 (사용자가 .env에 직접 입력) — `feedback_credential_handling.md`
 
 ### 별도 처리 예정 (본 작업 끝난 후)
+
+#### 코드 정리 (선택)
 - `backup.py` 생성 tar.gz에서 `.env` 제외 검토 (보안)
-- `caps_sync.py:5` SyntaxWarning (`\C` escape) 정리 (선택)
-- `app_maria.py` IDE 힌트 (미사용 변수 등) 정리 (선택)
+- `caps_sync.py:5` SyntaxWarning (`\C` escape) 정리
+- `app_maria.py` IDE 힌트 (미사용 변수 등) 정리
+
+#### 🔐 자격증명 강도 점검 (배포 전/후 권장)
+1. **`FLASK_SECRET_KEY` 강화** — 현재 placeholder 수준의 짧은 문자열. `secrets.token_urlsafe(48)` 또는 `secrets.token_hex(32)`로 교체 권장 (256bit+ 엔트로피). 교체 시 **전 사용자 세션 무효화** → 운영 시간 회피 필수.
+2. **`MAIL_PASS` 형식 점검** — 현재 길이가 11자. O365 앱 비밀번호는 보통 16자 고정. MFA 환경이면 앱 비밀번호 사용 검토.
+3. **`DB_PASSWORD` 강도 점검** — 길이/복잡도 점검 권장.
+4. **git 히스토리 잔존 점검** — 과거 커밋에 평문 자격증명 잔존 가능. `git log --all -p -S "<검색어>"`로 영향 평가. 필요 시 `git filter-repo`로 히스토리 재작성 (외부 remote 없으므로 비교적 안전).
 
 ### 롤백 지점
 - `da3db5a` — 작업 전 스냅샷
 - `76da180` — 디버그 정리 완료
 - `cdde236` — 어제 작업 종료 시점
-- `76ca1bb` — 현재 시점 (8단계 완료, 9단계 진입 전)
+- `76ca1bb` — 8단계 완료, 9단계 진입 전
+- `ca08030` — 9단계 진입 직전 (CLAUDE.md 업데이트)
+- `f9446a4` — **9단계 완료 = 현재 시점** (모든 로컬 수정 완료, 배포 전)
 - 파일 시스템: `/Users/changkooji/attendance_snapshot_2026-05-18/`
 - .env 원본: `.env.backup_2026-05-18`, `.env.before_step_B_073559`
 - DB 백업: `attendance_db_FULL_20260519_073151.sql` (Mac 로컬 + NAS)
