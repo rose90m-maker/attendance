@@ -3,6 +3,9 @@ import os
 import re
 import json
 import time as _time
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ── .env 파일 수동 로딩 (python-dotenv 없이) ──────────────
 _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -45,7 +48,7 @@ for _y in range(2000, 2030):
 del _date, _y
 
 app = Flask(__name__)
-app.secret_key = "attendance-viewer"
+app.secret_key = os.environ["FLASK_SECRET_KEY"]
 
 # 리버스 프록시(Synology DSM) 뒤에서 HTTPS 헤더 신뢰
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -84,8 +87,8 @@ def inject_lp_member():
     except Exception:
         return {"is_lp_member": False, "today_date_str": today_str, "is_admin": is_admin}
 
-TELEGRAM_TOKEN = "8657100765:AAFKzTX4HWPXOnNZQW1EqbKb8p8y4CxYYmc"
-TELEGRAM_CHAT_ID = "-5273610470"
+TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
+TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 FIRE_API_TOKEN = os.environ.get("FIRE_API_TOKEN", "")
 SOLAPI_KEY    = os.environ.get("SOLAPI_KEY", "")
 SOLAPI_SECRET = os.environ.get("SOLAPI_SECRET", "")
@@ -93,14 +96,14 @@ SOLAPI_SENDER = os.environ.get("SOLAPI_SENDER", "")
 BASE_URL      = os.environ.get("BASE_URL", "http://192.168.100.11:5050").rstrip("/")
 MAIL_HOST = os.environ.get("MAIL_HOST", "smtp.office365.com")
 MAIL_PORT = int(os.environ.get("MAIL_PORT", "587"))
-MAIL_USER = os.environ.get("MAIL_USER", "rose90m@taein.biz")
-MAIL_PASS = os.environ.get("MAIL_PASS", "wlckdrn75$$")
+MAIL_USER = os.environ["MAIL_USER"]
+MAIL_PASS = os.environ["MAIL_PASS"]
 
 MARIA = {
     "host": os.environ.get("DB_HOST", "127.0.0.1"),
     "port": int(os.environ.get("DB_PORT", "3307")),
     "user": os.environ.get("DB_USER", "root"),
-    "password": os.environ.get("DB_PASSWORD", "7602Mr123$$"),
+    "password": os.environ["DB_PASSWORD"],
     "db": os.environ.get("DB_NAME", "attendance"),
     "charset": "utf8mb4",
 }
