@@ -87,61 +87,76 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 
 ---
 
-## 🚧 진행 중 작업: .env 자격증명 이관 (2026-05-18 시작)
+## 🚧 진행 중 작업: .env 자격증명 이관 (2026-05-18 시작 / 2026-05-19 대부분 완료)
 
 ### 작업 목적
-하드코딩된 자격증명/토큰을 모두 `.env`로 이관. 값 변경은 **하지 않음** (이관만).
+하드코딩된 자격증명/토큰을 모두 `.env`로 이관. 값 변경은 **하지 않음** (이관만, fail-fast 적용).
 
-### 오늘 완료 (2026-05-18)
-- ✅ **사전 작업**: 폴더 백업(`/Users/changkooji/attendance_snapshot_2026-05-18/`, 158MB) + git 스냅샷 커밋(`da3db5a`)
-- ✅ **디버그 정리**: `_check_*.py`/`_test_*.py`/`_run_*.py` 20개 → `_archive/`로 이관 (커밋 `76da180`)
-- ✅ **.env 백업**: `.env.backup_2026-05-18` (gitignore로 무시됨)
-- ✅ **.gitignore 보강**: `.env.backup_*`, `.env.local` 패턴 추가 (커밋 완료)
-- ✅ **자격증명 전수조사**: 11개 신규 .env 키 매핑 + 9개 코드 수정 대상 파일 확정
+### 진행 현황 — 9단계 중 8단계 완료
 
-### 🌅 내일 시작점
-**[B] 단계부터: `.env`에 11개 키의 실제 값 추가**
+#### ✅ 사전 작업 (2026-05-18)
+- 폴더 백업: `/Users/changkooji/attendance_snapshot_2026-05-18/` (158MB)
+- 디버그 스크립트 20개 → `_archive/` 이관 (커밋 `76da180`)
+- `.env` 백업: `.env.backup_2026-05-18`, `.env.before_step_B_073559` (gitignore 무시)
+- `.gitignore` 보강: `.env.backup_*`, `.env.local` (커밋 `97db34e`)
+- 자격증명 전수조사 완료
 
-작업 순서: `[B]` 값 입력 → `[C]` 검증 → `[D]` (.env는 어차피 git 무시 → 코드 수정 단계로 자연스럽게 연결)
+#### ✅ .env 키 추가 (2026-05-19)
+- DB 백업 실행 (`20260519_073151`)
+- `.env`에 11개 신규 키 추가 완료 (24줄 → 56줄, 사용자 직접 입력)
+- 추가 키: `FLASK_SECRET_KEY`, `TBM_SECRET_KEY`, `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`, `MAIL_USER`, `MAIL_PASS`, `NAS_HOST`, `NAS_USER`, `NAS_PASS`, `NAS_SUDO`, `CAPS_MDB_PWD`
 
-### 추가할 11개 .env 키 매핑
+#### ✅ 코드 수정 완료 8개 파일 (2026-05-19)
 
-| # | .env 키 | 소스 (파일:라인) | 비고 |
+| # | 파일 | 변경 요약 | 커밋 |
 |---|---|---|---|
-| 1 | `FLASK_SECRET_KEY` | app_maria.py:48 | Flask 세션 |
-| 2 | `TBM_SECRET_KEY` | tbm_app.py:17 | TBM 세션 |
-| 3 | `TELEGRAM_TOKEN` | app_maria.py:87 | 봇 토큰 |
-| 4 | `TELEGRAM_CHAT_ID` | app_maria.py:88 | 채팅방 ID |
-| 5 | `MAIL_USER` | app_maria.py:96 | O365 계정 |
-| 6 | `MAIL_PASS` | app_maria.py:97 | O365 비밀번호 |
-| 7 | `NAS_HOST` | backup.py:9 | 192.168.100.11 |
-| 8 | `NAS_USER` | backup.py:10 | NAS 계정 |
-| 9 | `NAS_PASS` | backup.py:11 | NAS SSH 비밀번호 |
-| 10 | `NAS_SUDO` | backup.py:12 | NAS sudo (동일값) |
-| 11 | `CAPS_MDB_PWD` | caps_sync.py:35 | CAPS Access DB |
+| 1 | `tuya_poller_local.py` | TUYA_ACCESS_ID/SECRET → os.environ, load_dotenv 추가 | `f0a0d1c` |
+| 2 | `kepco_collector.py` | DB_PASSWORD 기본값 제거 (fail-fast) | `e7059f1` |
+| 3 | `kepco_pp_scraper.py` | DB_PASSWORD 기본값 제거 (fail-fast) | `e7059f1` |
+| 4 | `tbm_bp.py` | load_dotenv 추가 + DB_PASSWORD fail-fast | `f0d1f32` |
+| 5 | `tbm_app.py` | load_dotenv + TBM_SECRET_KEY + DB_PASSWORD fail-fast | `f0d1f32` |
+| 6 | `backup.py` | load_dotenv + NAS_* 4개 환경변수화 | `ef9a1f2` |
+| 7 | `deploy_and_restart.py` (이관) | load_dotenv + NAS_* 4개 환경변수화 | `ef9a1f2` |
+| 8 | `caps_sync.py` | load_dotenv + CAPS_MDB_PWD + MARIA_* → DB_* 통합 (5개) | `5611621` |
+| **부가** | `deploy_and_restart.py` (보강) | `docker_files_tbm`에 .env 1줄 추가 (tbm 컨테이너에도 .env 전달) | `76ca1bb` |
 
-### 코드 수정 대상 9개 파일
+#### ✅ NAS 컨테이너 사전 점검 (2026-05-19)
+- `attendance-app`: Up 6 days, python-dotenv 1.2.2 설치됨, `/app/.env` 존재 (969B, 옛 24줄 버전)
+- `attendance-tbm`: Up 6 days, python-dotenv 1.2.2 설치됨, `/app/.env` **없음** (deploy 보강으로 다음 배포부터 들어감)
+- `docker` 명령은 NAS에서 **sudo 필수**
+- 컨테이너 환경변수: 둘 다 DB_* 5개만 존재. 신규 11개는 배포 시 `/app/.env`로 주입 예정 (`load_dotenv()` 또는 수동 파서가 읽음)
+- 점검 스크립트: `_archive/_nas_check.py` (보관)
 
-| # | 파일 | 수정 사항 | 사용할 .env 키 |
-|---|---|---|---|
-| 1 | `app_maria.py` | L48, L87-88, L96-97, L103 | FLASK_SECRET_KEY, TELEGRAM_*, MAIL_*, DB_PASSWORD |
-| 2 | `backup.py` | L9-12 NAS_* 4개 | NAS_* |
-| 3 | `deploy_and_restart.py` | L133-136 NAS_* | NAS_* (재사용) |
-| 4 | `caps_sync.py` | L35 MDB_PWD + L38-42 MARIA_* | CAPS_MDB_PWD + DB_* |
-| 5 | `tbm_bp.py` | L24 DB_PASSWORD 기본값 | DB_PASSWORD |
-| 6 | `tbm_app.py` | L17 secret_key + L24 DB_PASSWORD 기본값 | TBM_SECRET_KEY + DB_PASSWORD |
-| 7 | `kepco_collector.py` | L30 DB_PASSWORD 기본값 | DB_PASSWORD |
-| 8 | `tuya_poller_local.py` | L10-11 TUYA_* 하드코딩 | TUYA_ACCESS_ID/SECRET (기존 .env) |
-| 9 | `kepco_pp_scraper.py` | L33 DB_PASSWORD 기본값 | DB_PASSWORD |
+### 🌅 다음 시작점: 9단계 — `app_maria.py` 수정 (마지막)
 
-**[app.py](app.py) (배포본)은 수정하지 않음** — 다음 배포 시 자동 반영. 단 작업 완료 후 즉시 배포 필요.
+**옵션 C 확정** (load_dotenv 추가 + 기존 수동 파서 유지 + 자격증명 6곳 fail-fast)
 
-### caps_sync.py 수정 시 주석 추가 필수
-```python
-# caps_sync.py: 메인 시스템과 동일한 MariaDB 사용
-# 환경변수는 DB_HOST/DB_PORT/DB_USER/DB_PASSWORD 공유
-# 미래에 분리 필요 시 CAPS_DB_* 별도 키 추가
-```
+**Edit 방식 B 확정**: 7회 분할 (load_dotenv 1회 + 자격증명 6회)
+
+#### 변경 위치 (라인 grep 확정)
+
+| # | 라인 | 변경 |
+|---|---|---|
+| 1 | L5 다음 | `+ from dotenv import load_dotenv` + `+ load_dotenv()` (수동 파서 L7-15 직전, 수동 파서는 그대로 유지) |
+| 2 | L48 | `app.secret_key = ...` → `os.environ["FLASK_SECRET_KEY"]` |
+| 3 | L87 | `TELEGRAM_TOKEN = ...` → `os.environ["TELEGRAM_TOKEN"]` |
+| 4 | L88 | `TELEGRAM_CHAT_ID = ...` → `os.environ["TELEGRAM_CHAT_ID"]` |
+| 5 | L96 | `MAIL_USER = os.environ.get(..., "...")` → `os.environ["MAIL_USER"]` |
+| 6 | L97 | `MAIL_PASS = os.environ.get(..., "...")` → `os.environ["MAIL_PASS"]` |
+| 7 | L103 | `"password": os.environ.get(..., "...")` → `os.environ["DB_PASSWORD"]` |
+
+#### 검증 방식
+- ✅ `ast.parse` + `py_compile` (마지막 1회)
+- ❌ `import app_maria` 절대 금지 — 9,666줄 톱레벨 실행 위험 (tuya 폴러 시작, Flask 초기화 등)
+
+### 🚀 배포 (별도 결정)
+- 9단계 완료 후 진행
+- `python deploy_and_restart.py` (rebuild 없이 일반 배포)
+- 사용자 활동 시간 회피
+- 배포 후 즉시 헬스체크 권장
+
+### `app.py` (배포본)
+- 수정 안 함 — 다음 배포 시 자동 반영
 
 ### 안전 수칙 (작업 재개 시 준수)
 1. 코드 백업 (git commit / 폴더 복사)
@@ -149,10 +164,19 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 3. 운영 시간 회피
 4. .env 절대 커밋/공유 금지
 5. **값 변경 금지 — 이관만**
+6. 자격증명 값은 Claude가 직접 다루지 않음 (사용자가 .env에 직접 입력) — `feedback_credential_handling.md`
+
+### 별도 처리 예정 (본 작업 끝난 후)
+- `backup.py` 생성 tar.gz에서 `.env` 제외 검토 (보안)
+- `caps_sync.py:5` SyntaxWarning (`\C` escape) 정리 (선택)
+- `app_maria.py` IDE 힌트 (미사용 변수 등) 정리 (선택)
 
 ### 롤백 지점
 - `da3db5a` — 작업 전 스냅샷
-- `76da180` — 디버그 정리 완료 시점
-- `/Users/changkooji/attendance_snapshot_2026-05-18/` — 파일 시스템 백업
-- `.env.backup_2026-05-18` — .env 원본
+- `76da180` — 디버그 정리 완료
+- `cdde236` — 어제 작업 종료 시점
+- `76ca1bb` — 현재 시점 (8단계 완료, 9단계 진입 전)
+- 파일 시스템: `/Users/changkooji/attendance_snapshot_2026-05-18/`
+- .env 원본: `.env.backup_2026-05-18`, `.env.before_step_B_073559`
+- DB 백업: `attendance_db_FULL_20260519_073151.sql` (Mac 로컬 + NAS)
 
