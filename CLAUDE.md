@@ -185,3 +185,48 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 - .env 원본: `.env.backup_2026-05-18`, `.env.before_step_B_073559`
 - DB 백업: `attendance_db_FULL_20260519_073151.sql` (Mac 로컬 + NAS)
 
+---
+
+## 🚨 배포 후 사고 + 복구 (2026-05-19)
+
+### 사고 개요
+9단계 완료 후 배포(`python deploy_and_restart.py`) 실행 → `attendance-app` 재시작 루프 (23회), `pymysql.err.OperationalError: (1045, "Access denied for user 'root'@...")`. `attendance-tbm`은 HTTP 200처럼 보였으나 실제로는 DB init 동시 실패. **다운타임 약 2.5시간** (사용자가 사고 인지부터 복구 완료까지).
+
+### 근본 원인
+1. **컨테이너 env 우선순위 > /app/.env** — 컨테이너 최초 생성 시 `docker run --env-file`로 박힌 옛 DB_PASSWORD(11자)가 `os.environ`에 잔존. 9단계의 `load_dotenv()` / 수동 파서는 `override=False`/`setdefault` 정책이라 새 .env(32자)를 무시.
+2. **이미지 baseline 코드 vs docker cp 의존성 (구조 이슈)** — `python deploy_and_restart.py`(no --rebuild)는 `docker cp`로 최신 코드를 컨테이너에 푸시 + `docker restart`만 수행. 컨테이너 자체는 이미지 baseline 코드(빌드 시점 상태) 위에 docker cp로 패치된 상태. **컨테이너 재생성(`docker stop && rm && run`) 시 docker cp 변경분 전부 손실**.
+
+### 복구 흐름 (4단계, 일회용 진단 스크립트로 진행)
+1. **진단** (`_recovery_diag.py`): 양 컨테이너 env DB_PASSWORD 길이/.env sha256/로그 확인 → 양쪽 다 옛 비번 사용 확정
+2. **인증 검증** (`_recovery_auth_check.py`): Mac → NAS:3307 새 비번으로 직접 인증 성공 + mysql.user 6개 root 엔트리 해시 일치 확인
+3. **재생성** (`_recovery_recreate.py`): docker stop && rm && run `--env-file /volume1/web/attendance/.env` (32자 비번 .env)로 양 컨테이너 재생성 → app 복구, **tbm은 command 인자 빠뜨려 이미지 default CMD(`python app_maria.py`) 사용 → port 5050에 listening → 5051 매핑과 불일치**
+4. **tbm-fix** (`_recovery_tbm_fix.py`): tbm 재재생성 + 마지막 인자에 `python tbm_app.py` 명시 → 5051 listening 정상화
+
+### 최종 결과
+- attendance-app: HTTP 5050 → **302** ✅
+- attendance-tbm: HTTP 5051 → **404** ✅ (Flask 응답, root path 없을 뿐)
+- 양 컨테이너 모두 DB 인증 정상 (1045 에러 0건)
+- 일회용 진단 스크립트 6개는 `_archive/`에 보관 (gitignore `_archive/_recovery_*.py` 패턴으로 추적 X)
+
+### 후속 과제 5건 (별도 작업으로)
+
+#### A. 구조 개선 (높음)
+1. **이미지 정기 재빌드 정책 수립** — 현재 `docker cp + restart` 방식은 컨테이너 재생성 시 모든 변경 손실. 주기적(주/월 단위) `python deploy_and_restart.py --rebuild`로 이미지 baseline을 최신화하거나, CI/CD로 이미지 빌드 파이프라인 구축 검토.
+2. **`Dockerfile.tbm` CMD 점검** — 이미지 default CMD가 `python app_maria.py`로 잘못 박혀있을 가능성. `CMD ["python", "tbm_app.py"]`로 명시되어 있는지 확인. 안 그러면 재빌드 시 또 같은 사고.
+
+#### B. 보안/운영 (중간)
+3. **`docker-compose.yml` 평문 비번 정리** (이전 합의) — L32/L56/L75의 `DB_PASSWORD: "..."` 평문 + L83 healthcheck의 평문 비번. compose도 `--env-file` 또는 `${VAR}` 참조로 통일.
+4. **마스킹 정규식 강화** — 일회용 진단 도구에서 YAML/JSON quoted value(`KEY: "VALUE"`) 마스킹 누락 발견. 정규식 패턴: `["\']?[^\s"\'\n]+["\']?` 보강 (이미 `_recovery_tbm_fix.py`엔 적용됨).
+
+#### C. 운영 모니터링 (낮음)
+5. **Tuya API quota 초과** — `attendance-tbm` 로그에 반복 발생: `[Tuya] smoke-001 상태 조회 실패: code=28841004, msg='Please upgrade to the official version: Your quota of Trial Edition is used up.'`. **IoT 화재 알람 기능 영향 가능** — Tuya 유료 전환 또는 폴링 간격 조정 검토.
+
+### 교훈 (재발 방지)
+- `docker run` 명령 작성 시 **CMD/ENTRYPOINT 인자 명시 필수** (이미지 default가 의도와 다를 수 있음)
+- 컨테이너 재생성 = 이미지 baseline으로 회귀. docker cp로 패치된 부분은 별도 보존 필요
+- `load_dotenv()` `override=False` 기본값 인지 — `--env-file`로 주입된 옛 env가 있으면 .env 파일이 무시됨. 재생성하지 않는 한 환경변수 갱신 안 됨
+
+### 복구 사용 커밋
+- 추가 변경 없음 (모든 작업이 `docker run` / `docker cp` / `docker restart` 만으로 진행, 로컬 코드 수정 없음)
+- `.gitignore`에 `_archive/_recovery_*.py` 추가는 deploy의 _git_auto_commit으로 함께 처리됨
+
