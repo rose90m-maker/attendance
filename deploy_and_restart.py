@@ -216,6 +216,7 @@ for ext in ["*.css", "*.GIF", "*.gif", "*.json", "*.png", "*.js"]:
         ))
 docker_files_tbm = [
     (f"{STAGE_DIR}/tbm_app.py",    f"{DOCKER_APP_DIR}/tbm_app.py"),
+    (f"{STAGE_DIR}/.env",          f"{DOCKER_APP_DIR}/.env"),
 ]
 for local, remote in files:
     if local.startswith("templates/tbm"):
