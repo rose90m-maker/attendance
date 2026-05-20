@@ -136,9 +136,9 @@ body { background: #0d1117; color: #e6edf3; }
 }
 .panel-title { font-size:0.88rem; font-weight:700; color:#c9d1d9; margin-bottom:10px; }
 
-/* 시간대별 차트 — 높이 축소 + 배경 가이드라인 */
+/* 시간대별 차트 — 발생 시점 시작 + 높이 확대 */
 .hourly-chart {
-    display:flex; align-items:stretch; gap:2px; height:280px; padding:6px 4px 0;
+    display:flex; align-items:stretch; gap:4px; height:420px; padding:8px 6px 0;
     background:
       linear-gradient(to top, transparent 0%, transparent 24%, rgba(255,255,255,.03) 25%, rgba(255,255,255,.03) 25.5%, transparent 26%),
       linear-gradient(to top, transparent 0%, transparent 49%, rgba(255,255,255,.03) 50%, rgba(255,255,255,.03) 50.5%, transparent 51%),
@@ -159,8 +159,8 @@ body { background: #0d1117; color: #e6edf3; }
     box-shadow:0 0 10px rgba(240,180,41,.5);
 }
 .hourly-bar.zero { background:#21262d; box-shadow:none; opacity:.5; }
-.hourly-val { font-size:0.62rem; color:#c9d1d9; margin-bottom:2px; font-variant-numeric:tabular-nums; font-weight:700; }
-.hourly-lbl { font-size:0.6rem; color:#6e7681; margin-top:3px; text-align:center; white-space:nowrap; }
+.hourly-val { font-size:0.78rem; color:#c9d1d9; margin-bottom:3px; font-variant-numeric:tabular-nums; font-weight:700; }
+.hourly-lbl { font-size:0.72rem; color:#6e7681; margin-top:4px; text-align:center; white-space:nowrap; }
 
 /* 주간 합계 — 가로 막대 차트 방식 */
 .weekly-chart { display:flex; flex-direction:column; gap:5px; }
@@ -692,22 +692,30 @@ function render(d) {
     kpiStatus.className = 'val ' + statCls;
     document.getElementById('kpiLast').textContent = '마지막 수신: ' + (d.kpi.last_recv_rel || '-');
 
-    // 시간대별 차트 — 빈 시간대도 최소 가시 막대로
+    // 시간대별 차트 — 첫 생산 발생 시점부터 표시
     var hChart = document.getElementById('hourlyChart');
     var max = Math.max.apply(null, d.hourly.concat([1]));
     var curH = new Date().getHours();
+    // 첫 비제로 시간 찾기 (없으면 0시부터)
+    var startH = 0;
+    for (var i = 0; i < d.hourly.length; i++) {
+        if (d.hourly[i] > 0) { startH = i; break; }
+        if (i === d.hourly.length - 1) startH = 0;
+    }
+    // 종료: 현재 시간 + 1 (최소 startH+6 보장, 최대 23)
+    var endH = Math.min(23, Math.max(curH + 1, startH + 5));
     var chartHtml = '';
-    d.hourly.forEach(function(v, h) {
+    for (var h = startH; h <= endH; h++) {
+        var v = d.hourly[h];
         var pct = v > 0 ? Math.max(Math.round(v / max * 100), 8) : 0;
-        var showLbl = (h % 3 === 0);
         var cls = (v === 0) ? 'zero' : ((h === curH) ? 'current' : '');
         var heightStyle = v > 0 ? ('height:' + pct + '%;') : 'height:4px;';
         chartHtml += '<div class="hourly-bar-wrap">' +
             (v > 0 ? '<div class="hourly-val">' + v + '</div>' : '') +
             '<div class="hourly-bar ' + cls + '" style="' + heightStyle + '"></div>' +
-            (showLbl ? '<div class="hourly-lbl">' + h + '시</div>' : '<div class="hourly-lbl">&nbsp;</div>') +
+            '<div class="hourly-lbl">' + h + '시</div>' +
             '</div>';
-    });
+    }
     hChart.innerHTML = chartHtml;
 
     // 주간 — 가로 막대 차트
