@@ -32,9 +32,9 @@
     --toolbar-h: 44px;
     --footer-h: 28px;
 
-    /* 컨테이너 폭 — 풀폭 우선 */
-    --main-max-w: none;
-    --detail-max-w: none;
+    /* 컨테이너 폭 — TAMS 스타일 중앙정렬 */
+    --main-max-w: 1240px;       /* 본문 max-width */
+    --detail-max-w: 1240px;
     --form-max-w: 960px;
     --settings-max-w: 800px;
 
@@ -745,17 +745,20 @@ body.login-bg::after { display: none; }
 .modal-dialog.modal-fullscreen,
 .modal-dialog.modal-full { max-width: 90vw; max-height: 90vh; margin: 5vh auto; }
 
-/* ── container 패딩 spec (max-width는 페이지 유형별 클래스로 분리) ── */
-/* spec: 테이블/대시보드 = Full Width, 상세=1280, 폼=1120, 설정=960 */
+/* ── container — 본문 max-width 1240, 사이드바 이후 영역 중앙 정렬 ── */
 .container-fluid {
+    max-width: var(--main-max-w);
+    margin-left: auto;
+    margin-right: auto;
     padding-left: var(--pad-content);
     padding-right: var(--pad-content);
-    /* max-width 없음 → Full Width (Bootstrap default 유지) */
 }
 .container {
+    max-width: var(--main-max-w);
+    margin-left: auto;
+    margin-right: auto;
     padding-left: var(--pad-content);
     padding-right: var(--pad-content);
-    /* .container는 Bootstrap 반응형 max-width 유지 */
 }
 @media (max-width: 1023px) {
     .container, .container-fluid {
