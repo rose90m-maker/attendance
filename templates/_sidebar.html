@@ -59,22 +59,22 @@
 .sidebar .nav-group-toggle {
     display:flex; align-items:center; justify-content:space-between;
     width:100%; background:transparent; border:none;
-    padding:8px 14px; margin:0;
-    font-size:0.78rem; font-weight:600; color:#ffffff;
-    cursor:pointer;
+    padding:11px 18px; margin:0;
+    font-size:0.78rem; font-weight:600; color:rgba(255,255,255,0.72);
+    cursor:pointer; transition:background .15s, color .15s;
     text-align:left;
 }
-/* hover 효과 제거 */
-.sidebar .nav-group-toggle .ng-icon { font-size:0.95rem; width:22px; text-align:center; flex-shrink:0; margin-right:10px; color:#fff; }
+.sidebar .nav-group-toggle:hover { background:rgba(255,255,255,0.05); color:#fff; }
+.sidebar .nav-group-toggle .ng-icon { font-size:0.95rem; width:22px; text-align:center; flex-shrink:0; margin-right:10px; }
 .sidebar .nav-group-toggle .ng-label { flex:1; }
 .sidebar .nav-group-toggle .ng-arrow {
-    font-size:0.65rem; color:rgba(255,255,255,0.7);
+    font-size:0.65rem; color:rgba(255,255,255,0.4);
     transition:transform .25s;
     display:inline-block; width:12px; text-align:center;
 }
-.sidebar .nav-group-toggle.open .ng-arrow { transform:rotate(90deg); }
-.sidebar .nav-group-toggle.has-active { color:#16a34a; font-weight:700; }
-.sidebar .nav-group-toggle.has-active .ng-arrow { color:#16a34a; }
+.sidebar .nav-group-toggle.open .ng-arrow { transform:rotate(90deg); color:rgba(255,255,255,0.7); }
+.sidebar .nav-group-toggle.has-active { color:#fff; }
+.sidebar .nav-group-toggle.has-active .ng-arrow { color:#58a6ff; }
 
 .sidebar .nav-group-items {
     overflow:hidden; max-height:0;
