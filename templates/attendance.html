@@ -15,7 +15,18 @@
         th.sortable { cursor: pointer; user-select: none; }
         th.sortable:hover { opacity: 0.85; }
         th .sort-icon { margin-left: 4px; font-size: 0.75em; }
-        .table-responsive { max-height: 75vh; }
+
+        /* 테이블 스크롤 + sticky 헤더 (ERP 표준) */
+        .table-responsive { max-height: 75vh; overflow-y: auto; }
+        #attendTable thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: #f8fafc;
+            box-shadow: 0 2px 0 rgba(0,0,0,0.04);
+        }
+        #attendTable tbody tr { height: var(--row-h); }
+        #attendTable tbody td { padding: var(--cell-pad-y) var(--cell-pad-x); }
         .late { color: var(--c-primary); font-weight: 600; }
         .on-time { color: var(--c-success); }
         .no-record { color: var(--c-muted); font-style: italic; }

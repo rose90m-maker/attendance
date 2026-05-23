@@ -223,7 +223,7 @@
 
 {% with messages = get_flashed_messages(with_categories=true) %}
 {% if messages %}
-<div style="position:fixed;top:calc(var(--navbar-h)+8px);left:230px;right:10px;z-index:9000;">
+<div style="position:fixed;top:calc(var(--navbar-h) + 8px);left:calc(var(--sidebar-w) + 10px);right:10px;z-index:9000;">
 {% for category, message in messages %}
 <div class="alert alert-{{ category }} alert-dismissible fade show mb-1" role="alert">
     {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
