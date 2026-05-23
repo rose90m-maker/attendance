@@ -14,4 +14,12 @@ COPY . .
 
 EXPOSE 5050
 
-CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:5050", "--timeout", "120", "--access-logfile", "-", "app_maria:app"]
+CMD ["gunicorn", \
+     "--workers", "4", \
+     "--worker-class", "gthread", \
+     "--threads", "2", \
+     "--bind", "0.0.0.0:5050", \
+     "--timeout", "120", \
+     "--keep-alive", "5", \
+     "--access-logfile", "-", \
+     "app_maria:app"]

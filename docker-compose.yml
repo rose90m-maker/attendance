@@ -73,6 +73,14 @@ services:
       MARIADB_DATABASE: attendance
       MARIADB_CHARACTER_SET_SERVER: utf8mb4
       MARIADB_COLLATION_SERVER: utf8mb4_general_ci
+    # 성능 최적화: 버퍼풀 1GB + 슬로우 쿼리 로그 ON
+    command: >
+      --innodb-buffer-pool-size=1G
+      --slow-query-log=1
+      --long-query-time=1.0
+      --max-connections=200
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_general_ci
     volumes:
       - attendance-db:/var/lib/mysql
       - ./db-init:/docker-entrypoint-initdb.d
