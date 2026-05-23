@@ -21,13 +21,15 @@
         }
         body { background:var(--erp-bg); color:var(--erp-text); font-size:13px; }
 
-        /* ── 100vh 그리드 레이아웃 ── */
+        /* ── 100vh 그리드 레이아웃 — TAMS 스타일 1240 중앙 정렬 ── */
         .dash-viewport {
             height: calc(100vh - var(--navbar-h));
+            max-width: var(--main-max-w);
+            margin: 0 auto;
             display: grid;
             grid-template-rows: 1fr;
-            gap: 10px;
-            padding: 10px 16px;
+            gap: 8px;
+            padding: 10px 12px;
             box-sizing: border-box;
             overflow: hidden;
         }
