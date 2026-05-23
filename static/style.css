@@ -20,11 +20,55 @@
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-lg: 16px;
-    --navbar-h: 56px;
+
+    /* ===== 레이아웃 토큰 (ERP 표준) ===== */
+    --navbar-h: 56px;          /* 기존 호환 */
+    --header-h: 60px;          /* 신규 표준 */
+    --header-h-mobile: 56px;
+    --sidebar-w: 240px;        /* 240 (기존 220에서 확장) */
+    --sidebar-w-collapsed: 72px;
+    --sidebar-w-mobile: 280px;
+    --breadcrumb-h: 40px;
+    --toolbar-h: 56px;
+    --footer-h: 32px;
+
+    /* 컨테이너 max-width */
+    --main-max-w: 1600px;
+    --detail-max-w: 1280px;
+    --form-max-w: 1120px;
+    --settings-max-w: 960px;
+
+    /* 콘텐츠 패딩 */
+    --pad-content: 24px;
+    --pad-content-md: 16px;
+    --pad-content-sm: 12px;
+
+    /* 테이블 */
+    --row-h: 44px;
+    --row-header-h: 48px;
+    --cell-pad-x: 12px;
+    --cell-pad-y: 8px;
+
+    /* 폼 */
+    --label-w: 140px;
+    --input-h: 40px;
+    --field-gap-y: 16px;
+    --field-gap-x: 24px;
+
+    /* 터치 */
+    --touch-min: 44px;
+
+    /* z-index */
+    --z-header: 1040;
+    --z-sidebar: 1030;
+    --z-overlay: 1025;
+    --z-modal: 1050;
+    --z-toast: 1080;
 }
 
 * { font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif; }
-body { background: var(--c-bg); color: #1e293b; padding-top: var(--navbar-h); padding-left: 220px; }
+*, *::before, *::after { box-sizing: border-box; }
+body { background: var(--c-bg); color: #1e293b; padding-top: var(--navbar-h); padding-left: var(--sidebar-w); }
 
 /* ───── 네비게이션 바 (상단 헤더) ───── */
 .navbar-custom {
@@ -74,9 +118,9 @@ body { background: var(--c-bg); color: #1e293b; padding-top: var(--navbar-h); pa
     top: var(--navbar-h);
     left: 0;
     bottom: 0;
-    width: 220px;
+    width: var(--sidebar-w);
     background: #0f172a;
-    z-index: 1030;
+    z-index: var(--z-sidebar);
     overflow-y: auto;
     transition: transform 0.25s ease;
     padding-top: 12px;
@@ -379,4 +423,237 @@ body.login-bg::after { display: none; }
     color: #94a3b8;
     font-size: 0.78rem;
     margin-top: 40px;
+}
+
+/* ════════════════════════════════════════════════════════════
+   ERP 레이아웃 표준 — 신규 유틸리티
+   (기존 클래스와 충돌 없음. 점진 적용 가능)
+   ════════════════════════════════════════════════════════════ */
+
+/* ───── 메인 콘텐츠 컨테이너 ───── */
+.main-content {
+    max-width: var(--main-max-w);
+    margin: 0 auto;
+    padding: var(--pad-content);
+    width: 100%;
+}
+.detail-content {
+    max-width: var(--detail-max-w);
+    margin: 0 auto;
+    padding: var(--pad-content);
+    width: 100%;
+}
+.form-content {
+    max-width: var(--form-max-w);
+    margin: 0 auto;
+    padding: var(--pad-content);
+    width: 100%;
+}
+.settings-content {
+    max-width: var(--settings-max-w);
+    margin: 0 auto;
+    padding: var(--pad-content);
+    width: 100%;
+}
+
+/* ───── Breadcrumb / Toolbar ───── */
+.breadcrumb-bar {
+    height: var(--breadcrumb-h);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--pad-content);
+    font-size: 0.85rem;
+    color: var(--c-muted);
+    background: var(--c-card);
+    border-bottom: 1px solid #e2e8f0;
+}
+.toolbar-bar {
+    height: var(--toolbar-h);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    background: var(--c-card);
+    border-bottom: 1px solid #e2e8f0;
+}
+
+/* ───── Dashboard Grid (auto-fit) ───── */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+.dashboard-grid .dg-card { min-height: 160px; }
+.dashboard-grid .dg-wide { grid-column: span 2; }
+.dashboard-grid .dg-full { grid-column: 1 / -1; }
+.dashboard-grid .dg-chart { grid-column: span 2; min-height: 320px; min-width: 600px; }
+
+@media (min-width: 1280px) { .dashboard-grid { gap: 20px; } }
+@media (min-width: 1920px) {
+    .dashboard-grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+}
+@media (max-width: 639px) {
+    .dashboard-grid .dg-wide,
+    .dashboard-grid .dg-chart { grid-column: span 1; }
+    .dashboard-grid .dg-chart { min-width: 0; }
+}
+
+/* ───── 데이터 테이블 (ERP 표준) ───── */
+.tbl-erp-wrap {
+    width: 100%;
+    overflow-x: auto;
+    background: var(--c-card);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+}
+.tbl-erp {
+    width: 100%;
+    min-width: 800px;
+    border-collapse: collapse;
+}
+.tbl-erp thead th {
+    height: var(--row-header-h);
+    padding: var(--cell-pad-y) var(--cell-pad-x);
+    background: #f8fafc;
+    color: var(--c-dark);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    white-space: nowrap;
+    border-bottom: 2px solid #e2e8f0;
+}
+.tbl-erp tbody td {
+    height: var(--row-h);
+    padding: var(--cell-pad-y) var(--cell-pad-x);
+    font-size: 0.88rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+.tbl-erp tbody tr:hover { background: rgba(37,99,235,0.04); }
+.tbl-erp .col-check  { width: 48px; }
+.tbl-erp .col-no     { width: 60px; }
+.tbl-erp .col-date   { width: 120px; }
+.tbl-erp .col-time   { width: 80px; }
+.tbl-erp .col-name   { width: 120px; }
+.tbl-erp .col-dept   { width: 120px; }
+.tbl-erp .col-status { width: 100px; }
+.tbl-erp .col-amount { width: 120px; text-align: right; font-variant-numeric: tabular-nums; }
+.tbl-erp .col-action { width: 100px; }
+.tbl-erp .sticky-left  { position: sticky; left: 0; background: inherit; z-index: 4; }
+.tbl-erp .sticky-right { position: sticky; right: 0; background: inherit; z-index: 4; }
+
+/* ───── 입력 폼 (ERP 표준) ───── */
+.form-erp { display: grid; grid-template-columns: 1fr; gap: var(--field-gap-y); }
+.form-erp .field {
+    display: grid;
+    grid-template-columns: var(--label-w) 1fr;
+    align-items: center;
+    gap: 12px;
+}
+.form-erp .field-label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #475569;
+}
+.form-erp .field-input,
+.form-erp .field input,
+.form-erp .field select {
+    height: var(--input-h);
+}
+.form-erp .field-input-sm  { max-width: 200px; }
+.form-erp .field-input-num { max-width: 120px; }
+.form-erp .field-textarea { grid-column: 1 / -1; }
+.form-erp .form-section { margin-bottom: 32px; }
+.form-erp .form-section-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--c-dark);
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+@media (min-width: 768px) {
+    .form-erp.two-col {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: var(--field-gap-x);
+    }
+}
+@media (max-width: 639px) {
+    .form-erp .field {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+}
+
+/* ───── 상세 페이지 (2분할) ───── */
+.detail-layout {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+}
+.detail-layout .detail-side {
+    width: 360px;
+    flex-shrink: 0;
+}
+.detail-layout .detail-main { flex: 1; min-width: 0; }
+@media (max-width: 1023px) {
+    .detail-layout { flex-direction: column; }
+    .detail-layout .detail-side { width: 100%; }
+}
+
+/* ───── 모달 사이즈 토큰 (.modal-dialog와 함께) ───── */
+.modal-sm  .modal-content { max-width: 480px; margin: 0 auto; }
+.modal-md  .modal-content { max-width: 800px; margin: 0 auto; }
+.modal-lg  .modal-content { max-width: 1100px; margin: 0 auto; }
+.modal-xl  .modal-content { max-width: 1400px; margin: 0 auto; }
+.modal-full .modal-dialog { max-width: 90vw; margin: 5vh auto; }
+
+/* ───── 반응형 Breakpoint (ERP spec) ───── */
+/* lg 미만(1023px): 사이드바 자동 축소 → 모바일 drawer 사용 (기존 991.98 유지) */
+
+/* xl 이상 (1280+): 풀 펼침 사이드바 — 이미 기본 */
+
+/* 2K 이상: 메인 콘텐츠 중앙정렬 — main-content가 이미 max-width 1600 */
+
+/* 1366 노트북: 사이드바 펼침 유지 (240) → 사용가능 폭 ~1126 */
+@media (min-width: 1024px) and (max-width: 1366px) {
+    .main-content { padding: var(--pad-content-md); }
+}
+
+/* 태블릿(768~1023): 사이드바 drawer */
+@media (max-width: 1023px) and (min-width: 768px) {
+    .main-content,
+    .detail-content,
+    .form-content,
+    .settings-content { padding: var(--pad-content-md); }
+}
+
+/* 모바일(<768): drawer + 최소 padding */
+@media (max-width: 767px) {
+    .main-content,
+    .detail-content,
+    .form-content,
+    .settings-content { padding: var(--pad-content-sm); }
+    .tbl-erp { min-width: 600px; }     /* 모바일 가로스크롤 */
+    .form-erp .field { gap: 4px; }
+    body { padding-top: var(--header-h-mobile); }
+}
+
+/* 터치 타겟 확보 */
+@media (pointer: coarse) {
+    .btn, .nav-link, a.side-link { min-height: var(--touch-min); }
+}
+
+/* ───── 인쇄 ───── */
+@media print {
+    body { padding: 0; background: #fff; }
+    .navbar-custom, .sidebar, .sidebar-overlay, .breadcrumb-bar, .toolbar-bar,
+    .app-footer, body::after { display: none !important; }
+    .main-content, .detail-content { max-width: 100%; padding: 0; }
+    .tbl-erp-wrap { box-shadow: none; }
+    .card { box-shadow: none; border: 1px solid #cbd5e1; }
 }
