@@ -158,17 +158,30 @@ print(f"[████████░░░░░░░░░░░░]  40% tar.
 # ── 2) SSH 전송 → NAS 스테이징 디렉터리 ─────────────────────────
 c = paramiko.SSHClient()
 c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-c.connect(NAS_HOST, port=22, username=NAS_USER, password=NAS_PASS)
+# SSH 키 인증 시도 → 실패 시 비번 인증 fallback
+_ssh_key = os.path.expanduser("~/.ssh/id_tams_nas")
+try:
+    if os.path.exists(_ssh_key):
+        c.connect(NAS_HOST, port=22, username=NAS_USER, key_filename=_ssh_key, timeout=15)
+    else:
+        c.connect(NAS_HOST, port=22, username=NAS_USER, password=NAS_PASS, timeout=15)
+except paramiko.AuthenticationException:
+    c.connect(NAS_HOST, port=22, username=NAS_USER, password=NAS_PASS, timeout=15)
 
 def nas(cmd):
     _, stdout, _ = c.exec_command(cmd)
     return stdout.read().decode().strip()
 
 def sudo_nas(cmd):
+    # .5 Linux: rose90m이 docker 그룹 → sudo 불필요
+    if NAS_HOST.endswith(".5"):
+        full = f"sh -c 'PATH=/usr/local/bin:$PATH {cmd}' 2>&1"
+        _, stdout, _ = c.exec_command(full)
+        return stdout.read().decode().strip()
+    # .11 NAS: sudo 필요
     full = f"echo '{NAS_SUDO}' | sudo -S sh -c 'PATH=/usr/local/bin:$PATH {cmd}' 2>&1"
     _, stdout, _ = c.exec_command(full)
     out = stdout.read().decode().strip()
-    # sudo -S prints "Password: " without newline, so output starts with "Password: "
     if out.startswith("Password: "):
         out = out[len("Password: "):]
     return out.strip()
