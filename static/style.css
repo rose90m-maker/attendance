@@ -21,42 +21,57 @@
     --radius-md: 10px;
     --radius-lg: 16px;
 
-    /* ===== 레이아웃 토큰 (ERP 표준) ===== */
-    --navbar-h: 60px;          /* spec 60 적용 */
-    --header-h: 60px;
-    --header-h-mobile: 56px;
-    --sidebar-w: 240px;        /* 240 (기존 220에서 확장) */
-    --sidebar-w-collapsed: 72px;
-    --sidebar-w-mobile: 280px;
-    --breadcrumb-h: 40px;
-    --toolbar-h: 56px;
-    --footer-h: 32px;
+    /* ===== 레이아웃 토큰 (TAMS 엔터프라이즈 — FHD 정보밀도 우선) ===== */
+    --navbar-h: 48px;           /* TAMS 스타일 */
+    --header-h: 48px;
+    --header-h-mobile: 44px;
+    --sidebar-w: 220px;          /* TAMS 220 */
+    --sidebar-w-collapsed: 56px;
+    --sidebar-w-mobile: 260px;
+    --breadcrumb-h: 32px;
+    --toolbar-h: 44px;
+    --footer-h: 28px;
 
-    /* 컨테이너 max-width */
-    --main-max-w: 1600px;
-    --detail-max-w: 1280px;
-    --form-max-w: 1120px;
-    --settings-max-w: 960px;
+    /* 컨테이너 폭 — 풀폭 우선 */
+    --main-max-w: none;
+    --detail-max-w: none;
+    --form-max-w: 960px;
+    --settings-max-w: 800px;
 
-    /* 콘텐츠 패딩 */
-    --pad-content: 24px;
-    --pad-content-md: 16px;
-    --pad-content-sm: 12px;
+    /* 콘텐츠 패딩 (밀집) */
+    --pad-content: 12px;
+    --pad-content-md: 10px;
+    --pad-content-sm: 8px;
 
-    /* 테이블 */
-    --row-h: 44px;
-    --row-header-h: 48px;
-    --cell-pad-x: 12px;
-    --cell-pad-y: 8px;
+    /* 테이블 (밀집) */
+    --row-h: 32px;
+    --row-header-h: 36px;
+    --cell-pad-x: 8px;
+    --cell-pad-y: 4px;
 
-    /* 폼 */
-    --label-w: 140px;
-    --input-h: 40px;
-    --field-gap-y: 16px;
-    --field-gap-x: 24px;
+    /* 폼 (밀집) */
+    --label-w: 110px;
+    --input-h: 32px;
+    --field-gap-y: 8px;
+    --field-gap-x: 16px;
 
     /* 터치 */
-    --touch-min: 44px;
+    --touch-min: 32px;
+
+    /* 카드 (밀집) */
+    --card-pad: 10px;
+    --card-header-pad-y: 6px;
+    --card-header-pad-x: 10px;
+    --card-radius: 2px;
+
+    /* 섹션/그리드 간격 */
+    --section-gap: 8px;
+    --grid-gap: 8px;
+
+    /* 폰트 */
+    --base-font: 13px;
+    --table-font: 12.5px;
+    --header-font: 13px;
 
     /* z-index */
     --z-header: 1040;
@@ -68,13 +83,19 @@
 
 * { font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif; }
 *, *::before, *::after { box-sizing: border-box; }
-body { background: var(--c-bg); color: #1e293b; padding-top: var(--navbar-h); padding-left: var(--sidebar-w); }
+body {
+    background: var(--c-bg);
+    color: #1e293b;
+    font-size: var(--base-font);
+    padding-top: var(--navbar-h);
+    padding-left: var(--sidebar-w);
+}
 
 /* ───── 네비게이션 바 (상단 헤더) ───── */
 .navbar-custom {
     background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #1e40af 100%);
-    box-shadow: var(--shadow-lg);
-    padding: 0.4rem 0;
+    box-shadow: none;
+    padding: 0 12px;
     border: none;
     position: fixed;
     top: 0;
@@ -82,10 +103,11 @@ body { background: var(--c-bg); color: #1e293b; padding-top: var(--navbar-h); pa
     right: 0;
     z-index: 1040;
     height: var(--navbar-h);
+    min-height: var(--navbar-h);
 }
 .navbar-custom .navbar-brand {
-    font-weight: 800;
-    font-size: 1.15rem;
+    font-weight: 700;
+    font-size: 0.95rem;
     color: #fff !important;
     letter-spacing: -0.3px;
 }
@@ -128,24 +150,25 @@ body { background: var(--c-bg); color: #1e293b; padding-top: var(--navbar-h); pa
 .sidebar::-webkit-scrollbar { width: 4px; }
 .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
 .sidebar .nav-group-label {
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     font-weight: 700;
     color: rgba(255,255,255,0.35);
     text-transform: uppercase;
-    letter-spacing: 1.2px;
-    padding: 14px 18px 6px;
+    letter-spacing: 1px;
+    padding: 8px 14px 4px;
 }
 .sidebar .side-link {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 9px 18px;
-    font-size: 0.82rem;
+    gap: 8px;
+    padding: 6px 14px;
+    font-size: 0.78rem;
     font-weight: 500;
-    color: rgba(255,255,255,0.7);
+    color: rgba(255,255,255,0.78);
     text-decoration: none;
     transition: all 0.15s ease;
     border-left: 3px solid transparent;
+    min-height: 30px;
 }
 .sidebar .side-link:hover {
     background: rgba(255,255,255,0.06);
@@ -688,9 +711,18 @@ body.login-bg::after { display: none; }
     padding: var(--cell-pad-y) var(--cell-pad-x);
 }
 .table.table-sm thead th,
-.table.table-sm > thead > tr > th { height: 40px; padding: 6px 10px; }
+.table.table-sm > thead > tr > th {
+    height: var(--row-header-h);
+    padding: var(--cell-pad-y) var(--cell-pad-x);
+    font-size: var(--table-font);
+}
 .table.table-sm tbody td,
-.table.table-sm > tbody > tr > td { height: 36px; padding: 6px 10px; }
+.table.table-sm > tbody > tr > td {
+    height: var(--row-h);
+    padding: var(--cell-pad-y) var(--cell-pad-x);
+    font-size: var(--table-font);
+}
+.table tbody td, .table thead th { font-size: var(--table-font); }
 
 /* ── Bootstrap 폼 → spec 사이즈 (input height 40, button 40) ── */
 .form-control,
@@ -782,10 +814,72 @@ body.sidebar-collapsed .navbar-custom { padding-left: var(--sidebar-w-collapsed)
     body.sidebar-collapsed { padding-left: 0; }
 }
 
-/* ── 카드 패딩 spec ── */
-.card-body { padding: 16px; }
-@media (max-width: 1023px) { .card-body { padding: 12px; } }
-@media (max-width: 767px)  { .card-body { padding: 10px; } }
+/* ── 카드 (TAMS 밀집) — border-radius 최소, shadow 제거 ── */
+.card {
+    border-radius: var(--card-radius) !important;
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0;
+}
+.card-header {
+    padding: var(--card-header-pad-y) var(--card-header-pad-x);
+    font-size: var(--header-font);
+    font-weight: 600;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+}
+.card-body { padding: var(--card-pad); }
+@media (max-width: 767px) { .card-body { padding: 8px; } }
+
+/* ── 버튼 (radius 2, 패딩 축소) ── */
+.btn { border-radius: var(--card-radius) !important; padding: 4px 12px; font-size: 13px; }
+.btn-sm { padding: 2px 8px; font-size: 12px; }
+.btn-lg { padding: 6px 16px; font-size: 14px; }
+.btn:hover { transform: none !important; box-shadow: none !important; }
+
+/* ── 입력칸 (radius 2, height 32) ── */
+.form-control, .form-select { border-radius: var(--card-radius) !important; font-size: 13px; padding: 4px 8px; }
+.form-control-sm, .form-select-sm { padding: 2px 6px; font-size: 12px; min-height: 28px; }
+.form-label { font-size: 12px; font-weight: 500; margin-bottom: 2px; }
+
+/* ── 필터 바 (밀집) ── */
+.filter-bar {
+    padding: 8px 12px;
+    margin-bottom: var(--section-gap);
+    border-radius: var(--card-radius);
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0;
+}
+
+/* ── 페이지 타이틀 (밀집) ── */
+.page-title {
+    padding: 6px 0;
+    min-height: 32px;
+    font-size: 15px;
+}
+.page-title h4, .page-title h3, .page-title h5 {
+    font-size: 15px !important;
+    margin: 0;
+}
+.page-title .title-icon {
+    width: 24px !important;
+    height: 24px !important;
+    font-size: 0.9rem !important;
+    border-radius: var(--card-radius);
+}
+
+/* ── 그리드 간격 (전역) ── */
+.row { --bs-gutter-x: var(--grid-gap); --bs-gutter-y: var(--grid-gap); }
+.mt-4 { margin-top: var(--section-gap) !important; }
+.mb-4 { margin-bottom: var(--section-gap) !important; }
+.mb-3 { margin-bottom: var(--section-gap) !important; }
+.g-3 { --bs-gutter-x: var(--grid-gap) !important; --bs-gutter-y: var(--grid-gap) !important; }
+.g-4 { --bs-gutter-x: var(--grid-gap) !important; --bs-gutter-y: var(--grid-gap) !important; }
+
+/* ── 배지/뱃지 (radius 축소) ── */
+.badge { border-radius: var(--card-radius); padding: 2px 6px; font-size: 11px; font-weight: 500; }
+
+/* ── alert 축소 ── */
+.alert { padding: 6px 10px; margin-bottom: var(--section-gap); border-radius: var(--card-radius); font-size: 12px; }
 
 /* ── 토스트/알림 위치는 사이드바 폭 기준 ── */
 .toast-container.position-fixed {
