@@ -22,8 +22,8 @@
     --radius-lg: 16px;
 
     /* ===== 레이아웃 토큰 (ERP 표준) ===== */
-    --navbar-h: 56px;          /* 기존 호환 */
-    --header-h: 60px;          /* 신규 표준 */
+    --navbar-h: 60px;          /* spec 60 적용 */
+    --header-h: 60px;
     --header-h-mobile: 56px;
     --sidebar-w: 240px;        /* 240 (기존 220에서 확장) */
     --sidebar-w-collapsed: 72px;
@@ -656,4 +656,136 @@ body.login-bg::after { display: none; }
     .main-content, .detail-content { max-width: 100%; padding: 0; }
     .tbl-erp-wrap { box-shadow: none; }
     .card { box-shadow: none; border: 1px solid #cbd5e1; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   ERP Spec 강제 적용 — Bootstrap 클래스에 직접 오버라이드
+   (60개 템플릿 HTML 수정 없이 spec 사이즈 적용)
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── HEADER 60px (Bootstrap navbar 강제) ── */
+.navbar-custom { height: var(--header-h); padding: 0 16px; }
+@media (max-width: 767px) { .navbar-custom { height: var(--header-h-mobile); } }
+
+/* ── 모든 Bootstrap 테이블 → spec 사이즈 + sticky 헤더 ── */
+.table thead th,
+.table > thead > tr > th {
+    height: var(--row-header-h);
+    line-height: 1.2;
+    vertical-align: middle;
+    padding: var(--cell-pad-y) var(--cell-pad-x);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: #f8fafc;
+    box-shadow: 0 1px 0 #e2e8f0;
+    white-space: nowrap;
+}
+.table tbody td,
+.table > tbody > tr > td {
+    height: var(--row-h);
+    vertical-align: middle;
+    padding: var(--cell-pad-y) var(--cell-pad-x);
+}
+.table.table-sm thead th,
+.table.table-sm > thead > tr > th { height: 40px; padding: 6px 10px; }
+.table.table-sm tbody td,
+.table.table-sm > tbody > tr > td { height: 36px; padding: 6px 10px; }
+
+/* ── Bootstrap 폼 → spec 사이즈 (input height 40, button 40) ── */
+.form-control,
+.form-select {
+    min-height: var(--input-h);
+}
+.form-control-sm,
+.form-select-sm { min-height: 32px; }
+.form-control-lg,
+.form-select-lg { min-height: 48px; }
+.btn { min-height: var(--input-h); }
+.btn-sm { min-height: 32px; }
+.btn-lg { min-height: 48px; }
+
+/* ── Bootstrap 모달 → spec 사이즈 ── */
+.modal-dialog { max-width: 800px; margin: 5vh auto; }    /* 기본 md */
+.modal-dialog.modal-sm { max-width: 480px; }
+.modal-dialog.modal-lg { max-width: 1100px; }
+.modal-dialog.modal-xl { max-width: 1400px; }
+.modal-dialog.modal-fullscreen,
+.modal-dialog.modal-full { max-width: 90vw; max-height: 90vh; margin: 5vh auto; }
+
+/* ── container 패딩 + max-width spec ── */
+.container,
+.container-fluid {
+    max-width: var(--main-max-w);
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: var(--pad-content);
+    padding-right: var(--pad-content);
+}
+@media (max-width: 1023px) {
+    .container, .container-fluid {
+        padding-left: var(--pad-content-md);
+        padding-right: var(--pad-content-md);
+    }
+}
+@media (max-width: 767px) {
+    .container, .container-fluid {
+        padding-left: var(--pad-content-sm);
+        padding-right: var(--pad-content-sm);
+    }
+}
+/* 일부 페이지는 풀폭 유지하고 싶을 때 .full-width 클래스 추가 */
+.container-fluid.full-width { max-width: none; }
+
+/* ── 페이지 타이틀 sticky 옵션 ── */
+.page-title { padding: 8px 0; min-height: var(--breadcrumb-h); }
+
+/* ── 폼 라벨 spec 너비 (Bootstrap form-label) ── */
+.form-erp-row {
+    display: grid;
+    grid-template-columns: var(--label-w) 1fr;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: var(--field-gap-y);
+}
+@media (max-width: 639px) {
+    .form-erp-row { grid-template-columns: 1fr; gap: 4px; }
+}
+
+/* ── 터치 타겟 (모바일) ── */
+@media (pointer: coarse) {
+    .btn, .nav-link, .form-control, .form-select,
+    .side-link, a.list-group-item { min-height: var(--touch-min); }
+}
+
+/* ── 사이드바 토글 (collapsed 모드 — 추후 토글 버튼 추가 시 사용) ── */
+body.sidebar-collapsed { padding-left: var(--sidebar-w-collapsed); }
+body.sidebar-collapsed .sidebar { width: var(--sidebar-w-collapsed); }
+body.sidebar-collapsed .sidebar .side-link { padding-left: 0; justify-content: center; }
+body.sidebar-collapsed .sidebar .side-link > *:not(.sl-icon) { display: none; }
+body.sidebar-collapsed .sidebar .nav-group-label { display: none; }
+body.sidebar-collapsed .navbar-custom { padding-left: var(--sidebar-w-collapsed); }
+
+/* ── Breakpoint 알림 — 1024 이하는 사이드바 drawer ── */
+@media (max-width: 1023px) {
+    body { padding-left: 0; }
+    .sidebar {
+        width: var(--sidebar-w-mobile);
+        transform: translateX(-100%);
+    }
+    .sidebar.show { transform: translateX(0); }
+    body.sidebar-collapsed { padding-left: 0; }
+}
+
+/* ── 카드 패딩 spec ── */
+.card-body { padding: 16px; }
+@media (max-width: 1023px) { .card-body { padding: 12px; } }
+@media (max-width: 767px)  { .card-body { padding: 10px; } }
+
+/* ── 토스트/알림 위치는 사이드바 폭 기준 ── */
+.toast-container.position-fixed {
+    left: calc(var(--sidebar-w) + 16px) !important;
+}
+@media (max-width: 1023px) {
+    .toast-container.position-fixed { left: 16px !important; }
 }
