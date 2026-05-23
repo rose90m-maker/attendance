@@ -17,6 +17,18 @@
         .perm-schedule { background:#fef3c7; color:#92400e; }
         .perm-notice { background:#f3e8ff; color:#6b21a8; }
         .perm-none { background:#f3f4f6; color:#6b7280; }
+
+        /* 메인 사용자 테이블 — sticky 헤더 + 스크롤 영역 (ERP 표준) */
+        #userMgmtTableWrap { max-height: calc(100vh - 230px); overflow-y: auto; }
+        #userMgmtTableWrap thead th {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            background: #f9fafb;
+            box-shadow: 0 2px 0 rgba(0,0,0,0.04);
+        }
+        #userMgmtTableWrap tbody tr { height: var(--row-h); }
+        #userMgmtTableWrap tbody td { padding: var(--cell-pad-y) var(--cell-pad-x); }
         @media (max-width: 767.98px) {
             .table { font-size: 0.72rem !important; }
             .table th, .table td { padding: 3px 2px; white-space: nowrap; }
@@ -49,7 +61,7 @@
     </div>
 
     <div class="card">
-        <div class="card-body p-0 table-responsive">
+        <div class="card-body p-0 table-responsive" id="userMgmtTableWrap">
             <table class="table table-sm table-bordered table-hover align-middle mb-0" style="font-size:0.88rem;">
                 <thead>
                     <tr style="background:#f9fafb;">

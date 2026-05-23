@@ -15,6 +15,17 @@
             .col-desktop-only { display: none !important; }
             .plan-row { cursor: pointer; }
         }
+        /* 연차계획 메인 테이블 — sticky 헤더 + 스크롤 영역 */
+        #leavePlanWrap { max-height: calc(100vh - 280px); overflow-y: auto; }
+        #leavePlanWrap thead th {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            background: #f3f4f6;
+            box-shadow: 0 2px 0 rgba(0,0,0,0.04);
+        }
+        #leavePlanWrap tbody tr { height: var(--row-h); }
+        #leavePlanWrap tbody td { padding: var(--cell-pad-y) var(--cell-pad-x); }
     </style>
 </head>
 <body>
@@ -272,7 +283,7 @@
                 <button class="btn btn-sm btn-outline-danger" onclick="deleteSelectedPlans()">🗑️ 선택 삭제</button>
             </div>
             {% endif %}
-            <div class="table-responsive">
+            <div class="table-responsive" id="leavePlanWrap">
                 <table class="table table-hover table-sm mb-0" style="font-size:0.88rem;">
                     <thead class="table-light">
                         <tr>
