@@ -37,14 +37,14 @@
         /* ── 메인 콘텐츠 그리드 — 비대칭 3컬럼, 최소폭 보장 ─────
             좌(바로가기/식수/출근) : 가운데(캘린더/MES/생일자) : 우(공지/배차/전력)
             비율: 1.0 : 1.35 : 1.1  (가운데 캘린더 넉넉히)
-            각 컬럼 최소폭: 290px 보장 ─ 합 870 < 1240 안전
+            각 컬럼 최소폭: 310/380/310 보장 → 합 1000 < 1320 안전
         */
         .content-grid {
             display: grid;
             grid-template-columns:
-                minmax(290px, 1.0fr)
-                minmax(330px, 1.35fr)
-                minmax(290px, 1.1fr);
+                minmax(310px, 1.0fr)
+                minmax(380px, 1.35fr)
+                minmax(310px, 1.1fr);
             grid-template-rows: 3fr 2fr;
             gap: 8px;
             min-height: 0;
@@ -79,9 +79,9 @@
         .main-row {
             display: grid;
             grid-template-columns:
-                minmax(290px, 1.0fr)
-                minmax(330px, 1.35fr)
-                minmax(290px, 1.1fr);
+                minmax(310px, 1.0fr)
+                minmax(380px, 1.35fr)
+                minmax(310px, 1.1fr);
             gap: 8px;
             min-height: 0;
         }

@@ -33,8 +33,8 @@
     --footer-h: 28px;
 
     /* 컨테이너 폭 — TAMS 스타일 중앙정렬 */
-    --main-max-w: 1240px;       /* 본문 max-width */
-    --detail-max-w: 1240px;
+    --main-max-w: 1320px;       /* 본문 max-width */
+    --detail-max-w: 1320px;
     --form-max-w: 960px;
     --settings-max-w: 800px;
 
