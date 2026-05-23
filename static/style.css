@@ -713,14 +713,17 @@ body.login-bg::after { display: none; }
 .modal-dialog.modal-fullscreen,
 .modal-dialog.modal-full { max-width: 90vw; max-height: 90vh; margin: 5vh auto; }
 
-/* ── container 패딩 + max-width spec ── */
-.container,
+/* ── container 패딩 spec (max-width는 페이지 유형별 클래스로 분리) ── */
+/* spec: 테이블/대시보드 = Full Width, 상세=1280, 폼=1120, 설정=960 */
 .container-fluid {
-    max-width: var(--main-max-w);
-    margin-left: auto;
-    margin-right: auto;
     padding-left: var(--pad-content);
     padding-right: var(--pad-content);
+    /* max-width 없음 → Full Width (Bootstrap default 유지) */
+}
+.container {
+    padding-left: var(--pad-content);
+    padding-right: var(--pad-content);
+    /* .container는 Bootstrap 반응형 max-width 유지 */
 }
 @media (max-width: 1023px) {
     .container, .container-fluid {
@@ -734,8 +737,10 @@ body.login-bg::after { display: none; }
         padding-right: var(--pad-content-sm);
     }
 }
-/* 일부 페이지는 풀폭 유지하고 싶을 때 .full-width 클래스 추가 */
-.container-fluid.full-width { max-width: none; }
+/* spec — 페이지 유형별 max-width 옵션 (필요한 페이지만 추가) */
+.container-fluid.cf-detail   { max-width: var(--detail-max-w); margin-left: auto; margin-right: auto; }
+.container-fluid.cf-form     { max-width: var(--form-max-w); margin-left: auto; margin-right: auto; }
+.container-fluid.cf-settings { max-width: var(--settings-max-w); margin-left: auto; margin-right: auto; }
 
 /* ── 페이지 타이틀 sticky 옵션 ── */
 .page-title { padding: 8px 0; min-height: var(--breadcrumb-h); }
