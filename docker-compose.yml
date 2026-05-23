@@ -1,21 +1,18 @@
 version: "3.9"
 
 # ============================================================
-# 근태관리 시스템 Docker 구성
+# 근태관리 시스템 Docker 구성 (.5 Linux 서버 운영본)
 #
-# [현재 운영 중인 시스템과 포트 충돌 없음]
-#   - 현재: Flask 5050, MariaDB 3307 (NAS 패키지)
-#   - Docker: Flask 5060, MariaDB 3308 (컨테이너)
+# [최초 실행]
+#   1. .env 파일 준비 (DB_PASSWORD 포함)
+#   2. docker compose up -d db
+#   3. DB 데이터 import:
+#      docker compose exec -T db mariadb -u root -p${DB_PASSWORD} attendance < attendance_migrate.sql
+#   4. docker compose up -d
 #
-# [전환 방법]
-#   1. 아래 ports: "5060:5050" → "5050:5050" 으로 변경
-#   2. NAS MariaDB 패키지 중지: synoservice --stop pkgctl-MariaDB10
-#   3. docker compose up -d
-#
-# [최초 실행 시 DB 초기화]
-#   docker compose up -d db
-#   docker compose exec db bash -c \
-#     "mariadb -u root -p7602mr attendance < /docker-entrypoint-initdb.d/attendance.sql"
+# [이후 배포]
+#   python deploy_and_restart.py  (코드만 갱신 + 재시작)
+#   python deploy_and_restart.py --rebuild  (이미지 재빌드 포함)
 # ============================================================
 
 services:
@@ -24,15 +21,15 @@ services:
     container_name: attendance-app
     restart: unless-stopped
     ports:
-      - "5080:5050"      # Mac 대기 서버: 5080
+      - "5050:5050"
     environment:
       DB_HOST: db
       DB_PORT: "3306"
       DB_USER: root
-      DB_PASSWORD: "7602mr"
+      DB_PASSWORD: "${DB_PASSWORD}"
       DB_NAME: attendance
     env_file:
-      - .env             # OPENAI_API_KEY, GROQ_API_KEY 등
+      - .env
     depends_on:
       db:
         condition: service_healthy
@@ -48,12 +45,12 @@ services:
     container_name: attendance-tbm
     restart: unless-stopped
     ports:
-      - "5081:5051"      # Mac 대기 TBM: 5081
+      - "5051:5051"
     environment:
       DB_HOST: db
       DB_PORT: "3306"
       DB_USER: root
-      DB_PASSWORD: "7602mr"
+      DB_PASSWORD: "${DB_PASSWORD}"
       DB_NAME: attendance
     env_file:
       - .env
@@ -70,16 +67,15 @@ services:
     container_name: attendance-db
     restart: unless-stopped
     ports:
-      - "3308:3306"      # 전환 시 → "3307:3306" (기존 NAS MariaDB 중지 후)
+      - "3307:3306"      # caps_sync.py 등 외부 접속용
     environment:
-      MARIADB_ROOT_PASSWORD: "7602mr"
+      MARIADB_ROOT_PASSWORD: "${DB_PASSWORD}"
       MARIADB_DATABASE: attendance
       MARIADB_CHARACTER_SET_SERVER: utf8mb4
       MARIADB_COLLATION_SERVER: utf8mb4_general_ci
     volumes:
       - attendance-db:/var/lib/mysql
-      - ./db-init:/docker-entrypoint-initdb.d  # .sql 파일 자동 실행 (최초 1회)
-      - ./db-slave/slave.cnf:/etc/mysql/conf.d/slave.cnf:ro  # 슬레이브 설정
+      - ./db-init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s

@@ -122,6 +122,7 @@ files = [
     # TBM 관리 시스템
     ("tbm_app.py", "tbm_app.py"),
     ("start_tbm.sh", "start_tbm.sh"),
+    ("docker-compose.yml", "docker-compose.yml"),
     ("templates/tbm/base.html", "templates/tbm/base.html"),
     ("templates/tbm/login.html", "templates/tbm/login.html"),
     ("templates/tbm/dashboard.html", "templates/tbm/dashboard.html"),
@@ -137,7 +138,7 @@ NAS_HOST = os.environ["NAS_HOST"]
 NAS_USER = os.environ["NAS_USER"]
 NAS_PASS = os.environ["NAS_PASS"]
 NAS_SUDO = os.environ["NAS_SUDO"]
-STAGE_DIR = "/volume1/web/attendance"
+STAGE_DIR = os.environ.get("NAS_STAGE_DIR", "/volume1/web/attendance")
 DOCKER_MAIN = "attendance-app"
 DOCKER_TBM  = "attendance-tbm"
 DOCKER_APP_DIR = "/app"
@@ -236,18 +237,13 @@ for src, dst in docker_files_tbm:
 
 # ── 4) Docker 재시작 (또는 이미지 재빌드) ────────────────────────
 if REBUILD:
-    print("[████████████████░░░░]  80% 이미지 재빌드 중 (약 2분)...")
-    # 메인 컨테이너 재빌드
+    print("[████████████████░░░░]  80% 이미지 재빌드 중 (약 3분)...")
     r_build = sudo_nas(
-        f"cd {STAGE_DIR} && docker build -t {DOCKER_MAIN}-img . && "
-        f"docker stop {DOCKER_MAIN} && docker rm {DOCKER_MAIN} && "
-        f"docker run -d --name {DOCKER_MAIN} --restart unless-stopped "
-        f"-p 5050:5050 --env-file {STAGE_DIR}/.env "
-        f"-v {STAGE_DIR}/uploads:/app/uploads "
-        f"{DOCKER_MAIN}-img && echo RST_OK"
+        f"cd {STAGE_DIR} && docker compose build app tbm && "
+        f"docker compose up -d --no-deps --force-recreate app tbm && echo RST_OK"
     )
     r_main = r_build
-    r_tbm  = sudo_nas(f"docker restart {DOCKER_TBM} && echo RST_OK")
+    r_tbm  = r_build
     time.sleep(15)
 else:
     r_main = sudo_nas(f"docker restart {DOCKER_MAIN} && echo RST_OK")
