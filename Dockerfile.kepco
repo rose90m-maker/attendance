@@ -1,0 +1,38 @@
+# KEPCO 파워플래너 자동 수집 — Playwright + cron
+FROM mcr.microsoft.com/playwright/python:v1.60.0-jammy
+
+WORKDIR /app
+
+# 시간대 (cron 시각 KST 기준)
+ENV TZ=Asia/Seoul
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# cron + tini (PID 1 신호 처리)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cron tzdata tini \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 의존성 (playwright는 베이스 이미지의 브라우저 버전과 일치시킴)
+RUN pip install --no-cache-dir --break-system-packages \
+    pymysql \
+    python-dotenv \
+    requests \
+    xlrd \
+    playwright==1.60.0
+
+# 스크립트 + cron 설정
+COPY kepco_pp_scraper.py kepco_collector.py kepco_analyzer.py ./
+COPY kepco-cron /etc/cron.d/kepco-cron
+
+# cron 권한 + 등록
+RUN chmod 0644 /etc/cron.d/kepco-cron \
+    && touch /var/log/kepco.log \
+    && crontab /etc/cron.d/kepco-cron
+
+# 스크린샷/다운로드 폴더
+RUN mkdir -p /app/pp_screenshots /app/pp_downloads
+
+# tini → cron foreground → 로그 tail 로 stdout 출력
+# .env는 docker-compose volume으로 /app/.env 에 read-only 마운트됨
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["sh", "-c", "cron && tail -F /var/log/kepco.log"]

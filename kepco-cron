@@ -1,0 +1,18 @@
+# KEPCO 파워플래너 자동 수집 cron
+# 환경변수는 컨테이너 환경에서 가져옴 (BASH_ENV)
+SHELL=/bin/bash
+BASH_ENV=/app/.env
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+TZ=Asia/Seoul
+
+# 매일 01:00 - 전일 데이터
+0 1 * * * root cd /app && set -a && . /app/.env && set +a && python kepco_pp_scraper.py >> /var/log/kepco.log 2>&1
+
+# 매월 1일 02:00 - 청구서 데이터
+0 2 1 * * root cd /app && set -a && . /app/.env && set +a && python kepco_pp_scraper.py --billing >> /var/log/kepco.log 2>&1
+
+# 매시간 정각 - 오늘 데이터 (실시간)
+0 * * * * root cd /app && set -a && . /app/.env && set +a && python kepco_pp_scraper.py --headless >> /var/log/kepco.log 2>&1
+
+# 매시간 10분 - 스마트뷰 데이터
+10 * * * * root cd /app && set -a && . /app/.env && set +a && python kepco_pp_scraper.py --smartview --headless >> /var/log/kepco.log 2>&1

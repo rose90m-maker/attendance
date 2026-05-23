@@ -62,6 +62,32 @@ services:
     networks:
       - attendance-net
 
+  # KEPCO 파워플래너 자동 스크래퍼 (Playwright + cron)
+  kepco-scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile.kepco
+    container_name: attendance-kepco
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # 같은 docker network 내에서 app 컨테이너로 직접 호출
+      POWER_API_URL: "http://app:5050/api/power_upload"
+      POWER_BILL_API_URL: "http://app:5050/api/power_bill_upload"
+      POWER_SMARTVIEW_API_URL: "http://app:5050/api/power_smartview_upload"
+      # DB 직접 쓰기 fallback도 지원
+      DB_HOST: db
+      DB_PORT: "3306"
+    depends_on:
+      - app
+    volumes:
+      - ./pp_screenshots:/app/pp_screenshots
+      - ./pp_downloads:/app/pp_downloads
+      - ./.env:/app/.env:ro     # cron이 source 하려면 파일 필요
+    networks:
+      - attendance-net
+
   db:
     image: mariadb:10.11
     container_name: attendance-db
