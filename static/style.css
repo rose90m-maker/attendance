@@ -95,7 +95,8 @@ body {
 .navbar-custom {
     background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #1e40af 100%);
     box-shadow: none;
-    padding: 0 12px;
+    /* 헤더 콘텐츠를 본문과 동일한 기준선에 정렬 — padding-left = 사이드바 폭 */
+    padding: 0 0 0 var(--sidebar-w);
     border: none;
     position: fixed;
     top: 0;
@@ -104,6 +105,15 @@ body {
     z-index: 1040;
     height: var(--navbar-h);
     min-height: var(--navbar-h);
+}
+/* 헤더 안의 컨테이너는 본문 컨테이너와 동일한 max-width / margin / padding 사용 */
+.navbar-custom > .container-fluid {
+    max-width: var(--main-max-w);
+    margin: 0 auto;
+    padding-left: var(--pad-content);
+    padding-right: var(--pad-content);
+    height: 100%;
+    width: 100%;
 }
 .navbar-custom .navbar-brand {
     font-weight: 700;
