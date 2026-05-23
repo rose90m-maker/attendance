@@ -32,9 +32,9 @@
     --toolbar-h: 44px;
     --footer-h: 28px;
 
-    /* 컨테이너 폭 — TAMS 스타일 중앙정렬 */
-    --main-max-w: 1320px;       /* 본문 max-width */
-    --detail-max-w: 1320px;
+    /* 컨테이너 폭 — 업무형 레이아웃 (FHD 정보밀도) */
+    --main-max-w: 1600px;       /* 본문 max-width */
+    --detail-max-w: 1600px;
     --form-max-w: 960px;
     --settings-max-w: 800px;
 
