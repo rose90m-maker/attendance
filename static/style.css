@@ -151,19 +151,18 @@ body {
     left: 0;
     bottom: 0;
     width: var(--sidebar-w);
-    background: #ffffff;              /* TAMS 흰색 */
-    border-right: 1px solid #e5e7eb;
+    background: #0f172a;              /* 검정-네이비 원복 */
     z-index: var(--z-sidebar);
     overflow-y: auto;
     transition: transform 0.25s ease;
     padding-top: 8px;
 }
 .sidebar::-webkit-scrollbar { width: 4px; }
-.sidebar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
 .sidebar .nav-group-label {
     font-size: 0.62rem;
     font-weight: 700;
-    color: #9ca3af;
+    color: rgba(255,255,255,0.35);
     text-transform: uppercase;
     letter-spacing: 1px;
     padding: 8px 14px 4px;
@@ -175,26 +174,26 @@ body {
     padding: 6px 14px;
     font-size: 0.78rem;
     font-weight: 500;
-    color: #374151;
+    color: rgba(255,255,255,0.78);
     text-decoration: none;
     transition: background 0.15s ease, color 0.15s ease;
     border-left: 3px solid transparent;
     min-height: 30px;
 }
 .sidebar .side-link:hover {
-    background: #f3f4f6;
-    color: #111827;
+    background: rgba(255,255,255,0.06);
+    color: #fff;
 }
 .sidebar .side-link.active {
-    background: #16a34a;             /* TAMS 초록 */
+    background: #16a34a;             /* TAMS 초록 — 활성만 유지 */
     color: #ffffff;
     border-left-color: #15803d;
     font-weight: 700;
 }
 .sidebar .side-link.active .sl-icon { color: #ffffff; }
-.sidebar .side-link .sl-icon { font-size: 1rem; width: 22px; text-align: center; flex-shrink: 0; color: #6b7280; }
+.sidebar .side-link .sl-icon { font-size: 1rem; width: 22px; text-align: center; flex-shrink: 0; }
 .sidebar .side-divider {
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid rgba(255,255,255,0.08);
     margin: 6px 14px;
 }
 
