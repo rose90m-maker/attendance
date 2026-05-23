@@ -696,9 +696,14 @@ body.login-bg::after { display: none; }
    (60개 템플릿 HTML 수정 없이 spec 사이즈 적용)
    ════════════════════════════════════════════════════════════════════ */
 
-/* ── HEADER 60px (Bootstrap navbar 강제) ── */
-.navbar-custom { height: var(--header-h); padding: 0 16px; }
-@media (max-width: 767px) { .navbar-custom { height: var(--header-h-mobile); } }
+/* ── HEADER spec — 본문 정렬 기준 padding-left = 사이드바 폭 ── */
+.navbar-custom {
+    height: var(--header-h);
+    padding: 0 0 0 var(--sidebar-w) !important;
+}
+@media (max-width: 767px) {
+    .navbar-custom { height: var(--header-h-mobile); padding: 0 !important; }
+}
 
 /* ── 모든 Bootstrap 테이블 → spec 사이즈 + sticky 헤더 ── */
 .table thead th,
