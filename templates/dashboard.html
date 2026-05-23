@@ -21,7 +21,7 @@
         }
         body { background:var(--erp-bg); color:var(--erp-text); font-size:13px; }
 
-        /* ── 100vh 그리드 레이아웃 — TAMS 스타일 1240 중앙 정렬 ── */
+        /* ── 100vh 그리드 레이아웃 — 1240 중앙 정렬 + 카드 최소폭 보장 ── */
         .dash-viewport {
             height: calc(100vh - var(--navbar-h));
             max-width: var(--main-max-w);
@@ -34,20 +34,27 @@
             overflow: hidden;
         }
 
-        /* ── 6셀 통합 그리드 (메인+하단 열 정렬) ── */
+        /* ── 메인 콘텐츠 그리드 — 비대칭 3컬럼, 최소폭 보장 ─────
+            좌(바로가기/식수/출근) : 가운데(캘린더/MES/생일자) : 우(공지/배차/전력)
+            비율: 1.0 : 1.35 : 1.1  (가운데 캘린더 넉넉히)
+            각 컬럼 최소폭: 290px 보장 ─ 합 870 < 1240 안전
+        */
         .content-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns:
+                minmax(290px, 1.0fr)
+                minmax(330px, 1.35fr)
+                minmax(290px, 1.1fr);
             grid-template-rows: 3fr 2fr;
-            gap: 10px;
+            gap: 8px;
             min-height: 0;
         }
 
-        /* ── Row 1: KPI 카드 ── */
+        /* ── Row 1: KPI 카드 — 4개 또는 5개 자동 ── */
         .kpi-row {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 8px;
         }
         .kpi-card {
             display: flex; align-items: center; gap: 14px;
@@ -68,20 +75,29 @@
         .kpi-green { background: linear-gradient(135deg,#22c55e,#16a34a); color:#fff; }
         .kpi-purple{ background: linear-gradient(135deg,#8b5cf6,#7c3aed); color:#fff; }
 
-        /* ── Row 2: 메인 3열 ── */
+        /* ── Row 2: 메인 3열 — 비대칭 + 최소폭 보장 ── */
         .main-row {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 10px;
+            grid-template-columns:
+                minmax(290px, 1.0fr)
+                minmax(330px, 1.35fr)
+                minmax(290px, 1.1fr);
+            gap: 8px;
             min-height: 0;
         }
 
-        /* ── 공통 패널 카드 ── */
+        /* ── 공통 패널 카드 — 최소폭/높이 보장 ── */
         .panel-card {
-            background: #fff; border: 1px solid var(--erp-border);
-            border-radius: 6px; display: flex; flex-direction: column;
-            overflow: hidden; min-height: 0;
+            background: #fff;
+            border: 1px solid var(--erp-border);
+            border-radius: 2px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 0;
+            min-height: 120px;
         }
+        .panel-card .panel-body { min-height: 0; }
         .panel-header {
             padding: 10px 14px; border-bottom: 1px solid var(--erp-border);
             background: var(--erp-head-bg); font-weight: 700; font-size: 0.88rem;
@@ -95,16 +111,20 @@
         .panel-body::-webkit-scrollbar { width: 4px; }
         .panel-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
 
-        /* ── Row 3: 하단 ── */
+        /* ── Row 3: 하단 — 2:1 비율 + 최소폭 보장 ── */
         .bottom-row {
             display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 10px;
+            grid-template-columns: minmax(420px, 2fr) minmax(280px, 1fr);
+            gap: 8px;
             min-height: 0;
         }
 
-        /* ── 바로가기 ── */
-        .quick-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px 8px; }
+        /* ── 바로가기 — 최소 buttonsize 보장 ── */
+        .quick-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+            gap: 6px 8px;
+        }
         .quick-link {
             display: flex; flex-direction: column; align-items: center; gap: 4px;
             padding: 10px 4px; border-radius: 4px; text-decoration: none;
@@ -203,17 +223,23 @@
 
         /* ── 반응형 ── */
         @media (max-width: 1279px) {
-            .kpi-card .kpi-value { font-size: 1.6rem; }
-            .kpi-card { gap: 10px; padding: 0 14px; }
+            .kpi-card .kpi-value { font-size: 1.4rem; }
+            .kpi-card { gap: 8px; padding: 0 10px; }
         }
-        @media (max-width: 1023px) {
-            .content-grid { grid-template-columns: 1fr 1fr; }
+        @media (max-width: 1099px) {
+            /* 1240 cap이 안 잡힐 정도로 좁아지면 2컬럼 fallback */
+            .content-grid {
+                grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr);
+            }
+            .main-row {
+                grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr);
+            }
         }
         @media (max-width: 767.98px) {
-            .dash-viewport { height: auto; overflow: visible; grid-template-rows: auto 1fr; }
+            .dash-viewport { height: auto; overflow: visible; grid-template-rows: auto 1fr; padding: 8px; }
             .content-grid { grid-template-columns: 1fr; grid-template-rows: none; }
+            .main-row, .bottom-row { grid-template-columns: 1fr; }
             .kpi-row { grid-template-columns: repeat(2, 1fr); }
-            .quick-grid { grid-template-columns: repeat(5, 1fr); }
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
