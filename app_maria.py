@@ -7128,6 +7128,7 @@ def work_report():
         conn.close()
         return redirect(url_for("dashboard"))
     status_filter = request.args.get("status", "all").strip()
+    mine_pending = request.args.get("mine_pending", "").strip() == "1"
     recent_mode = "month" not in request.args
     sel_month = request.args.get("month", datetime.now().strftime("%Y-%m"))
     wr_page = max(1, int(request.args.get("wr_page", 1) or 1))
@@ -7255,6 +7256,21 @@ def work_report():
         if status_filter and status_filter != "all":
             sql += " AND r.status = %s"
             params.append(status_filter)
+        # ── 내 미결재만: 사용자가 결재자(reviewer)인 보고서 중, 사용자의 결재 이력이 없는 것 ──
+        if mine_pending and user_reviewer_rows:
+            # 사용자가 결재자인 그룹 ID
+            my_rev_gids = list(set(r[0] for r in user_reviewer_rows))
+            ph_rev = ','.join(['%s'] * len(my_rev_gids))
+            sql += f""" AND r.group_id IN ({ph_rev})
+                       AND r.status NOT IN ('결재', '반려')
+                       AND NOT EXISTS (
+                           SELECT 1 FROM wr_approval_log al
+                           WHERE al.report_id = r.id
+                             AND al.user_id = %s
+                             AND al.action != '반려'
+                       )"""
+            params.extend(my_rev_gids)
+            params.append(login_eid)
         sql += " ORDER BY r.report_date DESC, g.group_name, r.id"
         # 전체 건수 조회
         cur.execute("SELECT COUNT(*) FROM (" + sql + ") _cnt", params)
@@ -7355,6 +7371,8 @@ def work_report():
                            wr_page=wr_page, wr_total_pages=wr_total_pages, wr_total=wr_total,
                            report_groups=list(report_groups.values()),
                            status_filter=status_filter,
+                           mine_pending=mine_pending,
+                           is_reviewer=bool(user_reviewer_rows),
                            groups=groups, sel_group=sel_group,
                            reviewers=reviewers, members=members, writers=writers,
                            group_final_step=group_final_step,

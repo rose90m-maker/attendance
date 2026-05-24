@@ -300,6 +300,17 @@
                         <option value="반려" {{ 'selected' if status_filter=='반려' }}>반려</option>
                     </select>
                 </div>
+                {% if is_reviewer %}
+                <div class="col-auto d-flex align-items-end">
+                    <div class="form-check" style="padding-left:1.7em;">
+                        <input class="form-check-input" type="checkbox" name="mine_pending" value="1" id="chkMinePending"
+                               {{ 'checked' if mine_pending }} onchange="this.form.submit()">
+                        <label class="form-check-label" for="chkMinePending" style="font-size:0.78rem;cursor:pointer;">
+                            🔔 내 미결재만
+                        </label>
+                    </div>
+                </div>
+                {% endif %}
                 <div class="col-auto">
                     <button type="submit" class="btn btn-sm btn-dark">🔍 검색</button>
                     <a href="/work_report" class="btn btn-sm btn-outline-secondary">초기화</a>
