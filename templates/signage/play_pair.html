@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>디스플레이 페어링 — 태인 디지털 사이니지</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            background: #0f172a; color: #fff;
+            font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+            min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            text-align: center;
+        }
+        .wrap { padding: 4vw; max-width: 90vw; }
+        .logo { font-size: 4vw; font-weight: 800; margin-bottom: 2vw; opacity: 0.9; }
+        .label { font-size: 1.6vw; opacity: 0.65; margin-bottom: 1vw; letter-spacing: 0.1em; }
+        .code {
+            font-family: 'Courier New', monospace;
+            font-size: 18vw; font-weight: 900;
+            letter-spacing: 0.1em;
+            color: #fbbf24;
+            line-height: 1;
+            margin: 2vw 0;
+            text-shadow: 0 0 40px rgba(251, 191, 36, 0.4);
+        }
+        .hint {
+            font-size: 1.3vw; opacity: 0.5; margin-top: 3vw;
+            line-height: 1.6;
+        }
+        .timer {
+            font-size: 1.2vw; opacity: 0.4; margin-top: 1vw;
+        }
+        .status {
+            font-size: 1.4vw; padding: 0.8vw 1.6vw;
+            background: rgba(255, 255, 255, 0.08); border-radius: 0.4vw;
+            margin-top: 2vw; display: inline-block;
+        }
+        .status.waiting { color: #fbbf24; }
+        .status.paired {
+            color: #16a34a; background: rgba(22, 163, 74, 0.15);
+        }
+        .footer {
+            position: fixed; bottom: 1vw; left: 0; right: 0;
+            font-size: 0.8vw; opacity: 0.3; text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="logo">📺 태인 디지털 사이니지</div>
+    <div class="label">디스플레이 등록 코드</div>
+    <div class="code">{{ pair_code }}</div>
+
+    <div class="status waiting" id="status">⏳ 관리자 등록 대기 중…</div>
+
+    <div class="hint">
+        관리자 PC에서 <strong>태인관리시스템 → 디지털 사이니지 → 디스플레이 → 디스플레이 등록</strong>에<br>
+        위 코드를 입력하시면 자동으로 송출이 시작됩니다.
+    </div>
+
+    <div class="timer" id="timer">코드 유효시간: <span id="remain">{{ expire_min * 60 }}</span>초</div>
+</div>
+
+<div class="footer">Token: <code>{{ token[:16] }}…</code></div>
+
+<script>
+const TOKEN = "{{ token }}";
+let remain = {{ expire_min * 60 }};
+
+// 카운트다운
+setInterval(() => {
+    remain--;
+    if (remain <= 0) {
+        document.getElementById('status').innerHTML = '⛔ 코드 만료. 새로고침하세요.';
+        document.getElementById('status').className = 'status';
+        document.getElementById('status').style.color = '#dc2626';
+        return;
+    }
+    const m = Math.floor(remain/60);
+    const s = remain % 60;
+    document.getElementById('remain').textContent = m > 0 ? `${m}분 ${s}초` : `${s}초`;
+}, 1000);
+
+// 페어링 완료 폴링 (3초마다)
+async function checkPair() {
+    try {
+        const res = await fetch(`/signage/api/play/pair_status/${TOKEN}`);
+        const j = await res.json();
+        if (j.expired) {
+            document.getElementById('status').innerHTML = '⛔ 코드 만료. 새로고침하세요.';
+            return;
+        }
+        if (j.paired) {
+            document.getElementById('status').textContent = `✅ 페어링 완료: ${j.name} (3초 후 자동 재생)`;
+            document.getElementById('status').className = 'status paired';
+            setTimeout(() => {
+                location.href = `/signage/play/${TOKEN}`;
+            }, 3000);
+            return;
+        }
+    } catch (e) {
+        console.warn('check failed', e);
+    }
+    setTimeout(checkPair, 3000);
+}
+checkPair();
+</script>
+</body>
+</html>

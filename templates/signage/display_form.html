@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ '디스플레이 등록' if mode=='new' else '디스플레이 편집' }}</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=25" rel="stylesheet">
+    <style>
+        .form-section {
+            background:#fff; border:1px solid #e2e8f0; border-radius:2px;
+            padding:16px 18px; margin-bottom:12px;
+        }
+        .form-section-title {
+            font-weight:700; font-size:0.9rem; color:#0f172a;
+            border-bottom:1px solid #e2e8f0; padding-bottom:8px; margin-bottom:12px;
+        }
+        .code-input {
+            font-family: 'Courier New', monospace;
+            font-size: 2rem; font-weight: 700;
+            text-align: center; letter-spacing: 0.3em;
+            text-transform: uppercase;
+        }
+        .help-box {
+            background:#eff6ff; border-left:4px solid #3b82f6;
+            padding:10px 14px; font-size:0.85rem; color:#1e40af;
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_displays' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}{% endwith %}
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">🖥️ {{ '디스플레이 등록' if mode=='new' else '디스플레이 편집' }}</h4>
+        <a href="/signage/displays" class="btn btn-sm btn-outline-secondary">← 목록</a>
+    </div>
+
+    <form method="post" style="max-width:720px;">
+        {% if mode == 'new' %}
+        <div class="form-section">
+            <div class="form-section-title">① 페어링 코드</div>
+            <div class="help-box mb-3">
+                <strong>📺 코드 받는 법:</strong><br>
+                TV 브라우저에서 <code>http://192.168.100.5:5050/signage/play/pair</code> 접속 →
+                화면에 표시되는 <strong>6자리 코드</strong>를 그대로 입력
+            </div>
+            <input type="text" name="pair_code" class="form-control code-input" maxlength="6"
+                   placeholder="A3K9F2" required pattern="[A-Z0-9]{6}" autofocus>
+            <div class="form-text mt-2">10분 안에 등록 안 하면 코드 만료. 만료 시 TV에서 새로 받으세요.</div>
+        </div>
+        {% endif %}
+
+        <div class="form-section">
+            <div class="form-section-title">② 디스플레이 정보</div>
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <label class="form-label">이름 *</label>
+                    <input type="text" name="name" class="form-control" required
+                           placeholder="예: 로비 TV"
+                           value="{{ display.name if display else '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">위치</label>
+                    <input type="text" name="location" class="form-control"
+                           placeholder="예: 본사 1층 로비"
+                           value="{{ display.location if display else '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">기본 플레이리스트</label>
+                    <select name="default_playlist_id" class="form-select">
+                        <option value="">— 시스템 기본(⭐) 사용 —</option>
+                        {% for p in playlists %}
+                        <option value="{{ p.id }}"
+                            {{ 'selected' if display and display.default_playlist_id == p.id }}>
+                            {{ '⭐ ' if p.is_default }}{{ p.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">방향</label>
+                    <select name="orientation" class="form-select">
+                        <option value="landscape" {{ 'selected' if (display and display.orientation=='landscape') or not display }}>가로</option>
+                        <option value="portrait" {{ 'selected' if display and display.orientation=='portrait' }}>세로</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        {% if mode == 'edit' and display %}
+        <div class="form-section">
+            <div class="form-section-title">메타 정보</div>
+            <div class="row g-2 small">
+                <div class="col-md-6">상태: <strong>{{ display.status }}</strong></div>
+                <div class="col-md-6">해상도: {{ display.resolution }}</div>
+                <div class="col-md-12">송출 URL: <code>http://192.168.100.5:5050/signage/play/{{ display.token }}</code></div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="d-flex gap-2 justify-content-end">
+            <a href="/signage/displays" class="btn btn-outline-secondary">취소</a>
+            <button type="submit" class="btn btn-primary">{{ '등록 완료' if mode=='new' else '저장' }}</button>
+        </div>
+    </form>
+</div>
+
+<script>
+// 코드 입력 — 대문자 자동 변환
+const codeInp = document.querySelector('input[name=pair_code]');
+if (codeInp) {
+    codeInp.addEventListener('input', e => {
+        e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    });
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

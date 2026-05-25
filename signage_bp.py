@@ -260,14 +260,16 @@ def init_signage_db(cur):
     cur.execute("""
         CREATE TABLE IF NOT EXISTS ds_displays (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            name VARCHAR(100) NOT NULL,
+            name VARCHAR(100) NOT NULL DEFAULT '',
             location VARCHAR(200),
             group_id INT NULL,
+            default_playlist_id INT NULL,
             resolution VARCHAR(20) DEFAULT '3840x2160',
             orientation ENUM('landscape','portrait') NOT NULL DEFAULT 'landscape',
             token VARCHAR(64) UNIQUE,
             pair_code VARCHAR(8) NULL,
             pair_expires_at DATETIME NULL,
+            paired TINYINT NOT NULL DEFAULT 0,
             last_seen DATETIME NULL,
             current_content_id INT NULL,
             status ENUM('online','offline','paused','error') NOT NULL DEFAULT 'offline',
@@ -277,9 +279,19 @@ def init_signage_db(cur):
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_status (status),
             INDEX idx_group (group_id),
-            INDEX idx_token (token)
+            INDEX idx_token (token),
+            INDEX idx_pair_code (pair_code)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
+    # 기존 테이블 마이그레이션 (idempotent)
+    for ddl in [
+        "ALTER TABLE ds_displays ADD COLUMN default_playlist_id INT NULL AFTER group_id",
+        "ALTER TABLE ds_displays ADD COLUMN paired TINYINT NOT NULL DEFAULT 0 AFTER pair_expires_at",
+        "ALTER TABLE ds_displays MODIFY COLUMN name VARCHAR(100) NOT NULL DEFAULT ''",
+        "ALTER TABLE ds_displays ADD INDEX idx_pair_code (pair_code)",
+    ]:
+        try: cur.execute(ddl)
+        except Exception: pass
 
     # 10. 편성표
     cur.execute("""
@@ -995,11 +1007,393 @@ def layouts():
     return redirect(url_for("signage.dashboard"))
 
 
+# ════════════════════════════════════════════════════════
+#  Phase 1.3 — 디스플레이 + 송출 페이지
+# ════════════════════════════════════════════════════════
+
+import random, string
+
+PAIR_CODE_LEN = 6
+PAIR_EXPIRE_MIN = 10
+
+
+def _gen_pair_code(cur):
+    """중복 안 되는 6자리 영숫자 코드 생성"""
+    while True:
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=PAIR_CODE_LEN))
+        cur.execute("SELECT 1 FROM ds_displays WHERE pair_code=%s AND paired=0", (code,))
+        if not cur.fetchone():
+            return code
+
+
+def _gen_token():
+    return secrets.token_urlsafe(32)
+
+
+def _mark_offline_displays(cur, threshold_sec=120):
+    """heartbeat 끊긴 지 threshold_sec 이상 되면 offline 처리"""
+    cur.execute("""UPDATE ds_displays
+                   SET status='offline'
+                   WHERE status='online'
+                     AND last_seen IS NOT NULL
+                     AND TIMESTAMPDIFF(SECOND, last_seen, NOW()) > %s""",
+                (threshold_sec,))
+
+
 @signage_bp.route("/displays")
 @_login_required
 def displays():
-    flash("디스플레이 — Phase 1에서 구현 예정", "info")
-    return redirect(url_for("signage.dashboard"))
+    """디스플레이 목록"""
+    if not _has_signage_perm("view") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = _conn(); cur = conn.cursor()
+    _mark_offline_displays(cur)
+    conn.commit()
+
+    cur.execute("""SELECT d.id, d.name, d.location, d.group_id, d.default_playlist_id,
+                          d.resolution, d.orientation, d.token, d.paired,
+                          d.last_seen, d.current_content_id, d.status,
+                          d.ip_address, d.created_at,
+                          p.name AS playlist_name,
+                          c.title AS current_content_title
+                   FROM ds_displays d
+                   LEFT JOIN ds_playlists p ON d.default_playlist_id = p.id
+                   LEFT JOIN ds_contents c ON d.current_content_id = c.id
+                   WHERE d.paired=1
+                   ORDER BY (d.status='online') DESC, d.name""")
+    displays_list = [
+        {'id': r[0], 'name': r[1], 'location': r[2], 'group_id': r[3],
+         'default_playlist_id': r[4], 'resolution': r[5], 'orientation': r[6],
+         'token': r[7], 'paired': r[8], 'last_seen': r[9],
+         'current_content_id': r[10], 'status': r[11],
+         'ip_address': r[12], 'created_at': r[13],
+         'playlist_name': r[14], 'current_content_title': r[15]}
+        for r in cur.fetchall()
+    ]
+    conn.close()
+    return render_template("signage/displays.html",
+                           displays=displays_list,
+                           is_admin=session.get('role') == 'admin',
+                           can_edit=_has_signage_perm("create") or session.get('role') == 'admin')
+
+
+@signage_bp.route("/displays/new", methods=["GET", "POST"])
+@_login_required
+def display_new():
+    """관리자가 페어링 코드 입력 → 디스플레이 등록 완료"""
+    if not _has_signage_perm("create") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.displays"))
+
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        code = request.form.get('pair_code', '').strip().upper()
+        name = request.form.get('name', '').strip()
+        location = request.form.get('location', '').strip()
+        playlist_id = request.form.get('default_playlist_id') or None
+        orientation = request.form.get('orientation', 'landscape')
+
+        if not code or not name:
+            flash("페어링 코드와 이름을 입력하세요.", "danger")
+            conn.close()
+            return redirect(url_for("signage.display_new"))
+
+        # 코드로 임시 row 찾기
+        cur.execute("""SELECT id FROM ds_displays
+                       WHERE pair_code=%s AND paired=0
+                         AND (pair_expires_at IS NULL OR pair_expires_at > NOW())""",
+                    (code,))
+        row = cur.fetchone()
+        if not row:
+            flash("페어링 코드가 유효하지 않거나 만료됐습니다. TV에서 코드를 다시 받아주세요.", "danger")
+            conn.close()
+            return redirect(url_for("signage.display_new"))
+
+        did = row[0]
+        try:
+            cur.execute("""UPDATE ds_displays SET
+                name=%s, location=%s, default_playlist_id=%s, orientation=%s,
+                paired=1, pair_code=NULL, pair_expires_at=NULL
+                WHERE id=%s""",
+                (name, location, playlist_id if playlist_id else None,
+                 orientation, did))
+            cur.execute("""INSERT INTO ds_display_logs (display_id, event_type, message)
+                           VALUES (%s, 'paired', %s)""",
+                        (did, f"Paired by user_id={session.get('user_id')}"))
+            conn.commit()
+            flash(f"디스플레이 '{name}' 등록 완료. TV가 자동으로 재생을 시작합니다.", "success")
+            conn.close()
+            return redirect(url_for("signage.displays"))
+        except Exception as e:
+            conn.rollback()
+            flash(f"등록 실패: {e}", "danger")
+
+    # GET — 폼
+    cur.execute("SELECT id, name, is_default FROM ds_playlists WHERE status='active' ORDER BY is_default DESC, name")
+    playlists = [{'id': r[0], 'name': r[1], 'is_default': r[2]} for r in cur.fetchall()]
+    conn.close()
+    return render_template("signage/display_form.html",
+                           mode='new', display=None, playlists=playlists,
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/displays/<int:did>/edit", methods=["GET", "POST"])
+@_login_required
+def display_edit(did):
+    """디스플레이 정보 수정"""
+    if not _has_signage_perm("update") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.displays"))
+
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        name = request.form.get('name', '').strip()
+        location = request.form.get('location', '').strip()
+        playlist_id = request.form.get('default_playlist_id') or None
+        orientation = request.form.get('orientation', 'landscape')
+
+        try:
+            cur.execute("""UPDATE ds_displays SET
+                name=%s, location=%s, default_playlist_id=%s, orientation=%s
+                WHERE id=%s""",
+                (name, location, playlist_id if playlist_id else None, orientation, did))
+            conn.commit()
+            flash("저장됨.", "success")
+        except Exception as e:
+            conn.rollback()
+            flash(f"저장 실패: {e}", "danger")
+        conn.close()
+        return redirect(url_for("signage.displays"))
+
+    cur.execute("""SELECT id, name, location, group_id, default_playlist_id,
+                          resolution, orientation, token, paired, status
+                   FROM ds_displays WHERE id=%s AND paired=1""", (did,))
+    r = cur.fetchone()
+    if not r:
+        conn.close()
+        flash("디스플레이 없음.", "danger")
+        return redirect(url_for("signage.displays"))
+    display = {
+        'id': r[0], 'name': r[1], 'location': r[2], 'group_id': r[3],
+        'default_playlist_id': r[4], 'resolution': r[5], 'orientation': r[6],
+        'token': r[7], 'paired': r[8], 'status': r[9]
+    }
+    cur.execute("SELECT id, name, is_default FROM ds_playlists WHERE status='active' ORDER BY is_default DESC, name")
+    playlists = [{'id': r[0], 'name': r[1], 'is_default': r[2]} for r in cur.fetchall()]
+    conn.close()
+    return render_template("signage/display_form.html",
+                           mode='edit', display=display, playlists=playlists,
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/displays/<int:did>/delete", methods=["POST"])
+@_login_required
+def display_delete(did):
+    if not _has_signage_perm("delete") and session.get("role") != "admin":
+        return jsonify({"ok": False, "msg": "권한 없음"}), 403
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM ds_displays WHERE id=%s", (did,))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ── 송출 페이지 (인증 불필요 — token 기반) ───────────────
+
+@signage_bp.route("/play/pair")
+def play_pair():
+    """TV가 처음 진입 → 6자리 코드 발급, 등록 대기"""
+    conn = _conn(); cur = conn.cursor()
+    code = _gen_pair_code(cur)
+    token = _gen_token()
+    cur.execute("""INSERT INTO ds_displays
+        (name, pair_code, pair_expires_at, token, paired,
+         status, ip_address, user_agent)
+        VALUES ('', %s, NOW() + INTERVAL %s MINUTE, %s, 0,
+                'offline', %s, %s)""",
+        (code, PAIR_EXPIRE_MIN, token,
+         request.remote_addr,
+         (request.headers.get('User-Agent') or '')[:200]))
+    did = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return render_template("signage/play_pair.html",
+                           pair_code=code, token=token, display_id=did,
+                           expire_min=PAIR_EXPIRE_MIN)
+
+
+@signage_bp.route("/api/play/pair_status/<token>")
+def play_pair_status(token):
+    """페어링 완료 여부 폴링"""
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT paired, name FROM ds_displays WHERE token=%s", (token,))
+    r = cur.fetchone()
+    conn.close()
+    if not r:
+        return jsonify({"paired": False, "expired": True})
+    return jsonify({"paired": bool(r[0]), "name": r[1] or ""})
+
+
+@signage_bp.route("/play/<token>")
+def play(token):
+    """송출 페이지 — TV 풀스크린 진입점"""
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT id, name, paired, status FROM ds_displays WHERE token=%s""",
+                (token,))
+    r = cur.fetchone()
+    if not r:
+        conn.close()
+        return "Invalid token", 404
+    if not r[2]:  # not paired
+        conn.close()
+        return redirect(url_for("signage.play_pair"))
+
+    did = r[0]
+    cur.execute("""UPDATE ds_displays SET
+        status='online', last_seen=NOW(), ip_address=%s, user_agent=%s
+        WHERE id=%s""",
+        (request.remote_addr, (request.headers.get('User-Agent') or '')[:200], did))
+    cur.execute("""INSERT INTO ds_display_logs (display_id, event_type, message)
+                   VALUES (%s, 'online', 'Player started')""", (did,))
+    conn.commit()
+    conn.close()
+    return render_template("signage/play.html",
+                           token=token, display_id=did, display_name=r[1])
+
+
+def _get_active_playlist_for(display_id, cur):
+    """디스플레이에 송출할 플레이리스트 결정"""
+    # 1. 디스플레이 지정 플레이리스트
+    cur.execute("""SELECT p.id FROM ds_displays d
+                   JOIN ds_playlists p ON d.default_playlist_id=p.id
+                   WHERE d.id=%s AND p.status='active'""", (display_id,))
+    r = cur.fetchone()
+    if r:
+        return r[0]
+    # 2. is_default 플레이리스트
+    cur.execute("SELECT id FROM ds_playlists WHERE is_default=1 AND status='active' LIMIT 1")
+    r = cur.fetchone()
+    return r[0] if r else None
+
+
+def _get_playlist_items(playlist_id, cur):
+    """플레이리스트 항목 + 콘텐츠 정보"""
+    cur.execute("""SELECT pi.content_id, IFNULL(pi.duration_sec, c.duration_sec),
+                          c.title, c.type, c.body_text, c.file_path, c.web_url, c.priority
+                   FROM ds_playlist_items pi
+                   JOIN ds_contents c ON pi.content_id=c.id
+                   WHERE pi.playlist_id=%s
+                     AND c.status='active'
+                     AND (c.start_at IS NULL OR c.start_at <= NOW())
+                     AND (c.end_at IS NULL OR c.end_at >= NOW())
+                   ORDER BY pi.seq""",
+                (playlist_id,))
+    return [
+        {'content_id': r[0], 'duration_sec': r[1],
+         'title': r[2], 'type': r[3], 'body_text': r[4],
+         'file_path': r[5], 'web_url': r[6], 'priority': r[7]}
+        for r in cur.fetchall()
+    ]
+
+
+@signage_bp.route("/api/play/<token>/poll")
+def play_poll(token):
+    """현재 재생할 콘텐츠 목록 반환"""
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT id, paired, status FROM ds_displays WHERE token=%s", (token,))
+    r = cur.fetchone()
+    if not r:
+        conn.close()
+        return jsonify({"ok": False, "msg": "invalid token"}), 404
+    if not r[1]:
+        conn.close()
+        return jsonify({"ok": False, "msg": "not paired"}), 403
+
+    did = r[0]
+    # heartbeat 갱신
+    cur.execute("UPDATE ds_displays SET last_seen=NOW(), status='online' WHERE id=%s", (did,))
+
+    # 긴급공지 우선
+    cur.execute("""SELECT id, title, body, image_path, bg_color
+                   FROM ds_emergency_messages
+                   WHERE status='active'
+                     AND (start_at IS NULL OR start_at <= NOW())
+                     AND (end_at IS NULL OR end_at >= NOW())
+                   ORDER BY created_at DESC LIMIT 1""")
+    em = cur.fetchone()
+    if em:
+        conn.commit(); conn.close()
+        return jsonify({
+            "ok": True, "emergency": True,
+            "emergency_id": em[0], "title": em[1], "body": em[2],
+            "image_path": em[3], "bg_color": em[4] or '#dc2626',
+            "items": [], "playlist_id": None, "loop_mode": "sequential"
+        })
+
+    # 플레이리스트
+    pid = _get_active_playlist_for(did, cur)
+    if not pid:
+        conn.commit(); conn.close()
+        return jsonify({"ok": True, "items": [], "playlist_id": None,
+                        "msg": "no playlist", "loop_mode": "sequential"})
+
+    items = _get_playlist_items(pid, cur)
+    cur.execute("SELECT loop_mode FROM ds_playlists WHERE id=%s", (pid,))
+    lm_row = cur.fetchone()
+    loop_mode = lm_row[0] if lm_row else 'sequential'
+
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "items": items, "playlist_id": pid,
+                    "loop_mode": loop_mode, "emergency": False})
+
+
+@signage_bp.route("/api/play/<token>/heartbeat", methods=["POST"])
+def play_heartbeat(token):
+    """heartbeat — 디스플레이 online 유지"""
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""UPDATE ds_displays SET last_seen=NOW(), status='online'
+                   WHERE token=%s AND paired=1""", (token,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "ts": datetime.now().isoformat()})
+
+
+@signage_bp.route("/api/play/<token>/log", methods=["POST"])
+def play_log(token):
+    """재생로그 기록 — TV가 콘텐츠 표시 시작/종료 시 호출"""
+    data = request.get_json(silent=True) or {}
+    content_id = data.get('content_id')
+    playlist_id = data.get('playlist_id')
+    duration_sec = data.get('duration_sec')
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT id FROM ds_displays WHERE token=%s AND paired=1", (token,))
+    r = cur.fetchone()
+    if not r:
+        conn.close()
+        return jsonify({"ok": False}), 404
+    did = r[0]
+
+    cur.execute("""INSERT INTO ds_play_logs
+        (display_id, content_id, playlist_id, duration_sec)
+        VALUES (%s, %s, %s, %s)""",
+        (did, content_id, playlist_id, duration_sec))
+    if content_id:
+        cur.execute("UPDATE ds_displays SET current_content_id=%s WHERE id=%s",
+                    (content_id, did))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 @signage_bp.route("/emergency")

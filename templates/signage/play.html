@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ display_name or '디지털 사이니지' }} — 송출</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        html, body {
+            width: 100%; height: 100vh; overflow: hidden;
+            background: #000; color: #fff;
+            font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+            cursor: none;       /* TV: 마우스 숨김 */
+        }
+
+        /* 메인 스테이지 — 한 화면에 하나의 콘텐츠 */
+        #stage {
+            position: fixed; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden;
+        }
+
+        /* 텍스트 콘텐츠 */
+        .c-text {
+            font-size: 6vw; font-weight: 800;
+            text-align: center; line-height: 1.4;
+            padding: 4vw 6vw; max-width: 90%;
+            word-break: keep-all;
+        }
+
+        /* 이미지 */
+        .c-image {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .c-image img {
+            max-width: 100%; max-height: 100%;
+            object-fit: contain;
+        }
+
+        /* 웹 URL */
+        .c-web { width: 100%; height: 100%; border: 0; }
+
+        /* 긴급공지 */
+        .c-emergency {
+            position: fixed; inset: 0;
+            background: var(--em-bg, #dc2626);
+            color: #fff;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            padding: 6vw; text-align: center;
+            animation: emerg-pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes emerg-pulse {
+            0%, 100% { background: var(--em-bg, #dc2626); }
+            50% { background: var(--em-bg-pulse, #991b1b); }
+        }
+        .c-emergency .em-icon { font-size: 12vw; margin-bottom: 2vw; }
+        .c-emergency .em-title { font-size: 8vw; font-weight: 900; margin-bottom: 2vw; }
+        .c-emergency .em-body { font-size: 4vw; line-height: 1.4; }
+        .c-emergency img { max-width: 40%; max-height: 30%; margin-top: 3vw; }
+
+        /* 빈 상태 / 에러 */
+        .c-empty {
+            color: #475569; font-size: 3vw; text-align: center;
+        }
+        .c-empty .icon { font-size: 8vw; opacity: 0.3; }
+        .c-empty .label { margin-top: 2vw; }
+
+        /* 디버그 오버레이 (?debug=1) */
+        .debug-overlay {
+            position: fixed; bottom: 10px; right: 10px;
+            background: rgba(0,0,0,0.7); color: #94a3b8;
+            font-family: monospace; font-size: 0.75rem;
+            padding: 6px 10px; border-radius: 2px; z-index: 9999;
+        }
+
+        /* 상태 인디케이터 (좌측 상단, 항상 표시 — 작게) */
+        .status-dot {
+            position: fixed; top: 8px; left: 8px;
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #16a34a; box-shadow: 0 0 4px rgba(22,163,74,0.4);
+            opacity: 0.4; z-index: 9998;
+        }
+        .status-dot.disconnected { background: #dc2626; opacity: 0.8; }
+    </style>
+</head>
+<body>
+    <div id="stage">
+        <div class="c-empty">
+            <div class="icon">⏳</div>
+            <div class="label">콘텐츠 로딩 중…</div>
+        </div>
+    </div>
+
+    <div class="status-dot" id="statusDot"></div>
+    <div class="debug-overlay" id="debugOverlay" style="display:none;"></div>
+
+<script>
+const TOKEN = "{{ token }}";
+const DISPLAY_ID = {{ display_id }};
+const DEBUG = new URLSearchParams(location.search).has('debug');
+
+if (DEBUG) document.getElementById('debugOverlay').style.display = 'block';
+
+let currentItems = [];     // 현재 플레이리스트 항목
+let currentIdx = 0;
+let currentEmergency = null;
+let currentPlaylistId = null;
+let currentLoopMode = 'sequential';
+let lastPollHash = null;   // 변경 감지용
+let playTimer = null;
+let logStartTime = null;
+let lastNetworkOk = true;
+
+const stage = document.getElementById('stage');
+const statusDot = document.getElementById('statusDot');
+const debugEl = document.getElementById('debugOverlay');
+
+function setStatus(connected) {
+    if (connected) {
+        statusDot.classList.remove('disconnected');
+        lastNetworkOk = true;
+    } else {
+        statusDot.classList.add('disconnected');
+        lastNetworkOk = false;
+    }
+}
+
+function debug(msg) {
+    if (DEBUG) {
+        const t = new Date().toLocaleTimeString();
+        debugEl.textContent = `[${t}] ${msg}`;
+        console.log(msg);
+    }
+}
+
+// ─── 콘텐츠 렌더링 ─────────────────────────────────
+function renderContent(item) {
+    if (!item) {
+        stage.innerHTML = `<div class="c-empty">
+            <div class="icon">📺</div>
+            <div class="label">대기 중 — 콘텐츠가 등록되지 않았습니다</div>
+        </div>`;
+        return;
+    }
+
+    let html = '';
+    if (item.type === 'text') {
+        const body = (item.body_text || item.title || '').replace(/\n/g, '<br>');
+        html = `<div class="c-text">${body}</div>`;
+    } else if (item.type === 'image' && item.file_path) {
+        html = `<div class="c-image"><img src="/signage/uploads/${item.file_path}" alt=""></div>`;
+    } else if (item.type === 'web' && item.web_url) {
+        html = `<iframe class="c-web" src="${item.web_url}" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`;
+    } else {
+        html = `<div class="c-empty">
+            <div class="icon">❓</div>
+            <div class="label">${item.type} 유형 미지원 (Phase 2 예정)</div>
+        </div>`;
+    }
+    stage.innerHTML = html;
+}
+
+function renderEmergency(em) {
+    document.documentElement.style.setProperty('--em-bg', em.bg_color || '#dc2626');
+    let imgHtml = em.image_path ? `<img src="/signage/uploads/${em.image_path}" alt="">` : '';
+    stage.innerHTML = `<div class="c-emergency">
+        <div class="em-icon">🚨</div>
+        <div class="em-title">${em.title}</div>
+        <div class="em-body">${(em.body || '').replace(/\n/g, '<br>')}</div>
+        ${imgHtml}
+    </div>`;
+}
+
+// ─── 재생 로직 ─────────────────────────────────────
+function playNext() {
+    clearTimeout(playTimer);
+
+    // 이전 콘텐츠 로그 (시작~종료)
+    if (logStartTime && currentItems[currentIdx]) {
+        const dur = Math.round((Date.now() - logStartTime) / 1000);
+        sendLog(currentItems[currentIdx].content_id, currentPlaylistId, dur);
+    }
+
+    if (currentEmergency) {
+        renderEmergency(currentEmergency);
+        // 긴급공지는 다음 폴링까지 유지
+        return;
+    }
+
+    if (!currentItems.length) {
+        renderContent(null);
+        return;
+    }
+
+    // loop_mode 처리
+    if (currentLoopMode === 'random') {
+        currentIdx = Math.floor(Math.random() * currentItems.length);
+    } else if (currentLoopMode === 'priority') {
+        // priority 높은 순으로 정렬해서 가중치 선택
+        const sorted = [...currentItems].sort((a,b) => (b.priority||0) - (a.priority||0));
+        currentItems = sorted;
+        currentIdx = currentIdx % currentItems.length;
+    }
+    // sequential 기본
+
+    const item = currentItems[currentIdx];
+    renderContent(item);
+    logStartTime = Date.now();
+    debug(`▶ ${item.title} (${item.type}, ${item.duration_sec}s) [${currentIdx+1}/${currentItems.length}]`);
+
+    // 다음 콘텐츠 예약
+    const durationMs = (item.duration_sec || 10) * 1000;
+    playTimer = setTimeout(() => {
+        currentIdx = (currentIdx + 1) % currentItems.length;
+        playNext();
+    }, durationMs);
+}
+
+// ─── 서버 통신 ─────────────────────────────────────
+async function poll() {
+    try {
+        const res = await fetch(`/signage/api/play/${TOKEN}/poll`, {cache: 'no-cache'});
+        if (!res.ok) {
+            setStatus(false);
+            debug(`poll err HTTP ${res.status}`);
+            return;
+        }
+        const j = await res.json();
+        setStatus(true);
+
+        // 데이터 변경 여부 (해시)
+        const hash = JSON.stringify([j.emergency_id, j.playlist_id, j.items?.length,
+                                    j.items?.map(i=>i.content_id+'@'+i.duration_sec).join(',')]);
+
+        if (hash !== lastPollHash) {
+            lastPollHash = hash;
+            debug(`poll: 변경 감지 (items=${j.items?.length||0}, emergency=${!!j.emergency})`);
+
+            currentItems = j.items || [];
+            currentPlaylistId = j.playlist_id;
+            currentLoopMode = j.loop_mode || 'sequential';
+            currentEmergency = j.emergency ? {
+                title: j.title, body: j.body, image_path: j.image_path,
+                bg_color: j.bg_color, id: j.emergency_id
+            } : null;
+            currentIdx = 0;
+            playNext();
+        }
+    } catch (e) {
+        setStatus(false);
+        debug(`poll exception: ${e.message}`);
+    }
+}
+
+async function sendLog(contentId, playlistId, duration) {
+    try {
+        await fetch(`/signage/api/play/${TOKEN}/log`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                content_id: contentId, playlist_id: playlistId, duration_sec: duration
+            })
+        });
+    } catch (e) { /* 무시 */ }
+}
+
+async function heartbeat() {
+    try {
+        await fetch(`/signage/api/play/${TOKEN}/heartbeat`, {method: 'POST'});
+        setStatus(true);
+    } catch (e) {
+        setStatus(false);
+    }
+}
+
+// ─── 시작 ─────────────────────────────────────────
+poll();                          // 즉시 1회
+setInterval(poll, 15 * 1000);    // 15초 폴링
+setInterval(heartbeat, 30 * 1000); // 30초 heartbeat
+
+// 화면 켜둠 (no sleep): video 트릭 또는 그냥 두면 됨
+// 새로고침 방지: visibilitychange 시 재시작
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        debug('visible: re-poll');
+        poll();
+    }
+});
+
+// ESC 키로 종료 (개발 편의)
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        if (confirm('재생 종료?')) location.href = '/signage/play/pair';
+    }
+});
+</script>
+</body>
+</html>
