@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>콘텐츠 관리 — 디지털 사이니지</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=23" rel="stylesheet">
+    <style>
+        .thumb {
+            width: 60px; height: 36px; object-fit: cover;
+            border-radius: 2px; border: 1px solid #e2e8f0;
+            background: #f8fafc; display: inline-block;
+        }
+        .thumb-icon {
+            width: 60px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+            background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 2px;
+            font-size: 1rem;
+        }
+        .tag-chip {
+            display: inline-block; font-size: 0.7rem;
+            padding: 1px 6px; border-radius: 8px; margin-right: 3px;
+            background: #f3f4f6; color: #374151;
+        }
+        .status-active { color: #16a34a; font-weight: 600; }
+        .status-draft { color: #94a3b8; }
+        .status-paused { color: #d97706; }
+        .row-content:hover { background: #f8fafc; }
+        .filter-bar-signage {
+            background: #fff; border: 1px solid #e2e8f0;
+            padding: 10px 14px; margin-bottom: 12px;
+            border-radius: 2px;
+        }
+        .type-badge {
+            font-size: 0.7rem; padding: 2px 6px; border-radius: 2px;
+        }
+        .t-text { background: #fef3c7; color: #92400e; }
+        .t-image { background: #dbeafe; color: #1e40af; }
+        .t-video { background: #fce7f3; color: #9d174d; }
+        .t-web { background: #d1fae5; color: #065f46; }
+        .t-pdf { background: #fee2e2; color: #991b1b; }
+        .t-table, .t-mixed { background: #e0e7ff; color: #3730a3; }
+
+        .signage-table thead th {
+            position: sticky; top: 0; z-index: 5;
+            background: #f9fafb; border-bottom: 2px solid #e2e8f0;
+            font-size: 0.78rem; padding: 8px 10px;
+        }
+        .signage-table tbody td {
+            padding: 6px 10px; font-size: 0.85rem;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_contents' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}{% endwith %}
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">📁 콘텐츠 관리
+            <small class="text-muted" style="font-size:0.55em;">총 {{ total_count }}건</small>
+        </h4>
+        <div>
+            {% if can_edit %}
+            <a href="/signage/contents/new" class="btn btn-sm btn-primary">➕ 새 콘텐츠</a>
+            {% endif %}
+            <a href="/signage" class="btn btn-sm btn-outline-secondary">← 대시보드</a>
+        </div>
+    </div>
+
+    <!-- 필터 -->
+    <form method="get" class="filter-bar-signage">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3 col-sm-6">
+                <label class="form-label small mb-1">검색</label>
+                <input type="text" name="q" value="{{ filter_q }}" class="form-control form-control-sm" placeholder="제목 또는 본문">
+            </div>
+            <div class="col-md-2 col-sm-6">
+                <label class="form-label small mb-1">유형</label>
+                <select name="type" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for v, lbl in [('text','텍스트'),('image','이미지'),('video','영상'),('pdf','PDF'),('web','웹URL'),('table','표'),('mixed','혼합')] %}
+                    <option value="{{ v }}" {{ 'selected' if filter_type == v }}>{{ lbl }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 col-sm-6">
+                <label class="form-label small mb-1">상태</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    <option value="draft" {{ 'selected' if filter_status=='draft' }}>임시저장</option>
+                    <option value="active" {{ 'selected' if filter_status=='active' }}>사용</option>
+                    <option value="paused" {{ 'selected' if filter_status=='paused' }}>중지</option>
+                </select>
+            </div>
+            <div class="col-md-2 col-sm-6">
+                <label class="form-label small mb-1">태그</label>
+                <select name="tag" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for t in all_tags %}
+                    <option value="{{ t.name }}" {{ 'selected' if filter_tag==t.name }}>{{ t.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 col-sm-12 d-flex gap-1">
+                <button type="submit" class="btn btn-sm btn-dark">🔍 검색</button>
+                <a href="/signage/contents" class="btn btn-sm btn-outline-secondary">초기화</a>
+            </div>
+        </div>
+    </form>
+
+    <!-- 목록 -->
+    <div class="card">
+        <div class="card-body p-0 table-responsive" style="max-height: calc(100vh - 280px); overflow-y: auto;">
+            <table class="table table-hover signage-table mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:32px;">#</th>
+                        <th style="width:80px;">썸네일</th>
+                        <th style="width:60px;">유형</th>
+                        <th>제목</th>
+                        <th style="width:200px;">태그</th>
+                        <th style="width:140px;">기간</th>
+                        <th style="width:60px;text-align:center;">⏱</th>
+                        <th style="width:50px;text-align:center;">우선</th>
+                        <th style="width:80px;text-align:center;">상태</th>
+                        <th style="width:140px;">수정일시</th>
+                        <th style="width:160px;text-align:center;">관리</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for c in contents %}
+                <tr class="row-content">
+                    <td>{{ loop.index }}</td>
+                    <td>
+                        {% if c.type == 'image' and c.file_path %}
+                            <img src="/signage/uploads/{{ c.file_path }}" class="thumb" alt="">
+                        {% elif c.type == 'text' %}
+                            <span class="thumb-icon">📝</span>
+                        {% elif c.type == 'web' %}
+                            <span class="thumb-icon">🌐</span>
+                        {% elif c.type == 'video' %}
+                            <span class="thumb-icon">🎬</span>
+                        {% elif c.type == 'pdf' %}
+                            <span class="thumb-icon">📄</span>
+                        {% else %}
+                            <span class="thumb-icon">📦</span>
+                        {% endif %}
+                    </td>
+                    <td><span class="type-badge t-{{ c.type }}">{{ c.type }}</span></td>
+                    <td>
+                        <a href="/signage/contents/{{ c.id }}/preview" target="_blank" class="fw-semibold text-decoration-none text-dark">
+                            {{ c.title }}
+                        </a>
+                        {% if c.body_text %}<div class="text-muted small" style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.body_text[:80] }}</div>{% endif %}
+                    </td>
+                    <td>
+                        {% for t in c.tags %}<span class="tag-chip" style="background:{{ t.color }}1a;color:{{ t.color }};">{{ t.name }}</span>{% endfor %}
+                    </td>
+                    <td class="text-muted small">
+                        {% if c.start_at or c.end_at %}
+                            {{ c.start_at.strftime('%m/%d') if c.start_at else '제한없음' }}
+                            ~ {{ c.end_at.strftime('%m/%d') if c.end_at else '제한없음' }}
+                        {% else %}무기한{% endif %}
+                    </td>
+                    <td class="text-center">{{ c.duration_sec }}s</td>
+                    <td class="text-center">{{ c.priority }}</td>
+                    <td class="text-center">
+                        {% if c.status == 'active' %}<span class="status-active">● 사용</span>
+                        {% elif c.status == 'draft' %}<span class="status-draft">○ 임시</span>
+                        {% else %}<span class="status-paused">⏸ 중지</span>{% endif %}
+                    </td>
+                    <td class="text-muted small">{{ c.updated_at.strftime('%m/%d %H:%M') if c.updated_at else '-' }}</td>
+                    <td class="text-center">
+                        <a href="/signage/contents/{{ c.id }}/preview" target="_blank" class="btn btn-sm btn-outline-info" style="font-size:0.7rem;padding:2px 6px;">미리보기</a>
+                        {% if can_edit %}
+                        <a href="/signage/contents/{{ c.id }}/edit" class="btn btn-sm btn-outline-primary" style="font-size:0.7rem;padding:2px 6px;">편집</a>
+                        <button class="btn btn-sm btn-outline-danger" style="font-size:0.7rem;padding:2px 6px;" onclick="del({{ c.id }}, '{{ c.title|replace("'", "\\'") }}')">삭제</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="11" class="text-center text-muted py-5">
+                    <div style="font-size:2rem;opacity:0.4;">📁</div>
+                    등록된 콘텐츠가 없습니다.
+                    {% if can_edit %}<br><a href="/signage/contents/new" class="btn btn-sm btn-primary mt-2">➕ 첫 콘텐츠 등록</a>{% endif %}
+                </td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+async function del(cid, title) {
+    if (!confirm(`정말 '${title}' 콘텐츠를 삭제할까요? (복구 불가)`)) return;
+    const res = await fetch(`/signage/contents/${cid}/delete`, {method:'POST'});
+    const j = await res.json();
+    if (j.ok) { location.reload(); }
+    else { alert('삭제 실패: ' + (j.msg||'unknown')); }
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

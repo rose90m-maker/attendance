@@ -1,32 +1,60 @@
-"""㈜ 태인 — 디지털 사이니지 관리 (Phase 0)
+"""㈜ 태인 — 디지털 사이니지 관리 (Phase 0 + 1.1)
 Flask Blueprint. url_prefix=/signage, template_folder=signage.
-세션 키는 메인 앱과 통일 (user_id, role, e_id, user_name) — SSO.
 
-Phase 0 범위:
-- DB 스키마 15개 테이블 생성
-- 메뉴 진입점 (/signage 대시보드)
-- 권한 체크 헬퍼
-
-Phase 1 (MVP)에서 추가 예정:
-- 콘텐츠 CRUD
-- 플레이리스트 CRUD
-- 디스플레이 페어링
-- 송출 페이지 /signage/play/<token>
+Phase 0: DB 스키마 + 메뉴 + 진입점 (완료)
+Phase 1.1: 콘텐츠 CRUD (현재)
+Phase 1.2~: 플레이리스트 / 디스플레이 / 송출
 """
 import os
+import json
+import uuid
 import secrets
+from pathlib import Path
 from datetime import datetime
 from functools import wraps
 
 import pymysql
 from dotenv import load_dotenv
 from flask import (Blueprint, render_template, request, flash, jsonify,
-                   redirect, url_for, session)
+                   redirect, url_for, session, send_from_directory,
+                   current_app, abort)
+from werkzeug.utils import secure_filename
 
 load_dotenv()
 
 signage_bp = Blueprint("signage", __name__, url_prefix="/signage",
                        template_folder="signage")
+
+
+# ── 업로드 설정 ────────────────────────────────────────
+UPLOAD_DIR = Path(os.environ.get("SIGNAGE_UPLOAD_DIR", "/app/uploads/signage"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+ALLOWED_EXTS = {
+    'image': {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'},
+    'video': {'mp4', 'webm', 'mov', 'mkv'},
+    'pdf': {'pdf'},
+}
+MAX_UPLOAD_MB = 100
+
+
+def _allowed_file(filename, kind):
+    if '.' not in filename:
+        return False
+    ext = filename.rsplit('.', 1)[1].lower()
+    return ext in ALLOWED_EXTS.get(kind, set())
+
+
+def _save_upload(file_storage, kind):
+    """업로드 파일 저장 → 상대경로 반환"""
+    if not file_storage or not file_storage.filename:
+        return None
+    if not _allowed_file(file_storage.filename, kind):
+        raise ValueError(f"허용되지 않는 파일 형식: {file_storage.filename}")
+    ext = file_storage.filename.rsplit('.', 1)[1].lower()
+    fname = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.{ext}"
+    fpath = UPLOAD_DIR / fname
+    file_storage.save(str(fpath))
+    return f"signage/{fname}"   # uploads/signage/xxx.png 형태로 URL 만듦
 
 
 # ── DB 설정 (메인 앱과 동일 DB) ─────────────────────────
@@ -457,12 +485,295 @@ def dashboard():
                            is_admin=session.get('role') == 'admin')
 
 
-# ── Phase 1+에서 추가될 라우트 자리표시자 ───────────────
+# ════════════════════════════════════════════════════════
+#  Phase 1.1 — 콘텐츠 CRUD
+# ════════════════════════════════════════════════════════
+
 @signage_bp.route("/contents")
 @_login_required
 def contents():
-    flash("콘텐츠 관리 — Phase 1에서 구현 예정", "info")
-    return redirect(url_for("signage.dashboard"))
+    """콘텐츠 목록 + 필터"""
+    if not _has_signage_perm("view") and session.get("role") != "admin":
+        flash("디지털 사이니지 접근 권한이 없습니다.", "danger")
+        return redirect(url_for("dashboard"))
+
+    # 필터 파라미터
+    q_text = request.args.get('q', '').strip()
+    f_type = request.args.get('type', '').strip()
+    f_status = request.args.get('status', '').strip()
+    f_tag = request.args.get('tag', '').strip()
+
+    conn = _conn(); cur = conn.cursor()
+
+    # 쿼리 빌드
+    where = ["1=1"]
+    params = []
+    if q_text:
+        where.append("(c.title LIKE %s OR c.body_text LIKE %s)")
+        params.extend([f"%{q_text}%", f"%{q_text}%"])
+    if f_type:
+        where.append("c.type = %s")
+        params.append(f_type)
+    if f_status:
+        where.append("c.status = %s")
+        params.append(f_status)
+    if f_tag:
+        where.append("""EXISTS (SELECT 1 FROM ds_content_tags ct
+                                JOIN ds_tags t ON ct.tag_id=t.id
+                                WHERE ct.content_id=c.id AND t.name=%s)""")
+        params.append(f_tag)
+
+    sql = f"""SELECT c.id, c.title, c.type, c.body_text, c.file_path, c.web_url,
+                     c.thumbnail_path, c.duration_sec, c.start_at, c.end_at,
+                     c.priority, c.status, c.created_at, c.updated_at
+              FROM ds_contents c
+              WHERE {' AND '.join(where)}
+              ORDER BY c.priority DESC, c.updated_at DESC
+              LIMIT 200"""
+    cur.execute(sql, params)
+    rows = cur.fetchall()
+
+    contents_list = []
+    for r in rows:
+        cid = r[0]
+        # 태그
+        cur.execute("""SELECT t.name, t.color FROM ds_tags t
+                       JOIN ds_content_tags ct ON ct.tag_id=t.id
+                       WHERE ct.content_id=%s""", (cid,))
+        tags = [{'name': t[0], 'color': t[1]} for t in cur.fetchall()]
+        contents_list.append({
+            'id': r[0], 'title': r[1], 'type': r[2],
+            'body_text': r[3], 'file_path': r[4], 'web_url': r[5],
+            'thumbnail_path': r[6], 'duration_sec': r[7],
+            'start_at': r[8], 'end_at': r[9],
+            'priority': r[10], 'status': r[11],
+            'created_at': r[12], 'updated_at': r[13],
+            'tags': tags
+        })
+
+    # 전체 태그 목록 (필터용)
+    cur.execute("SELECT name, color FROM ds_tags ORDER BY name")
+    all_tags = [{'name': t[0], 'color': t[1]} for t in cur.fetchall()]
+
+    # 카운트
+    cur.execute("SELECT COUNT(*) FROM ds_contents")
+    total_count = cur.fetchone()[0]
+
+    conn.close()
+    return render_template("signage/contents.html",
+                           contents=contents_list,
+                           all_tags=all_tags,
+                           total_count=total_count,
+                           filter_q=q_text, filter_type=f_type,
+                           filter_status=f_status, filter_tag=f_tag,
+                           is_admin=session.get('role') == 'admin',
+                           can_edit=_has_signage_perm("create") or session.get('role') == 'admin')
+
+
+@signage_bp.route("/contents/new", methods=["GET", "POST"])
+@_login_required
+def content_new():
+    """콘텐츠 신규 등록"""
+    if not _has_signage_perm("create") and session.get("role") != "admin":
+        flash("등록 권한이 없습니다.", "danger")
+        return redirect(url_for("signage.contents"))
+
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        title = request.form.get('title', '').strip()
+        ctype = request.form.get('type', 'text')
+        body_text = request.form.get('body_text', '').strip()
+        web_url = request.form.get('web_url', '').strip()
+        duration = int(request.form.get('duration_sec', 10))
+        priority = int(request.form.get('priority', 0))
+        status = request.form.get('status', 'draft')
+        start_at = request.form.get('start_at') or None
+        end_at = request.form.get('end_at') or None
+        tag_names = [t.strip() for t in request.form.get('tags', '').split(',') if t.strip()]
+
+        if not title:
+            flash("제목을 입력하세요.", "danger")
+            conn.close()
+            return redirect(url_for("signage.content_new"))
+
+        # 파일 업로드 처리
+        file_path = None
+        if ctype == 'image' and 'file' in request.files:
+            try:
+                file_path = _save_upload(request.files['file'], 'image')
+            except ValueError as e:
+                flash(str(e), "danger")
+                conn.close()
+                return redirect(url_for("signage.content_new"))
+
+        try:
+            cur.execute("""INSERT INTO ds_contents
+                (title, type, body_text, file_path, web_url, duration_sec,
+                 start_at, end_at, priority, status, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (title, ctype, body_text, file_path, web_url, duration,
+                 start_at, end_at, priority, status, session.get('user_id')))
+            cid = cur.lastrowid
+            # 태그 처리
+            for tname in tag_names:
+                cur.execute("INSERT IGNORE INTO ds_tags (name) VALUES (%s)", (tname,))
+                cur.execute("SELECT id FROM ds_tags WHERE name=%s", (tname,))
+                tid = cur.fetchone()[0]
+                cur.execute("INSERT IGNORE INTO ds_content_tags (content_id, tag_id) VALUES (%s, %s)", (cid, tid))
+            conn.commit()
+            flash(f"콘텐츠 '{title}' 등록 완료.", "success")
+            conn.close()
+            return redirect(url_for("signage.contents"))
+        except Exception as e:
+            conn.rollback()
+            flash(f"등록 실패: {e}", "danger")
+
+    # GET — 폼 표시
+    cur.execute("SELECT name FROM ds_tags ORDER BY name")
+    all_tags = [t[0] for t in cur.fetchall()]
+    conn.close()
+    return render_template("signage/content_form.html",
+                           mode='new', content=None, all_tags=all_tags,
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/contents/<int:cid>/edit", methods=["GET", "POST"])
+@_login_required
+def content_edit(cid):
+    """콘텐츠 편집"""
+    if not _has_signage_perm("update") and session.get("role") != "admin":
+        flash("편집 권한이 없습니다.", "danger")
+        return redirect(url_for("signage.contents"))
+
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        title = request.form.get('title', '').strip()
+        ctype = request.form.get('type', 'text')
+        body_text = request.form.get('body_text', '').strip()
+        web_url = request.form.get('web_url', '').strip()
+        duration = int(request.form.get('duration_sec', 10))
+        priority = int(request.form.get('priority', 0))
+        status = request.form.get('status', 'draft')
+        start_at = request.form.get('start_at') or None
+        end_at = request.form.get('end_at') or None
+        tag_names = [t.strip() for t in request.form.get('tags', '').split(',') if t.strip()]
+
+        # 기존 파일 경로 유지 (새 업로드 없으면)
+        cur.execute("SELECT file_path FROM ds_contents WHERE id=%s", (cid,))
+        row = cur.fetchone()
+        if not row:
+            flash("존재하지 않는 콘텐츠입니다.", "danger")
+            conn.close()
+            return redirect(url_for("signage.contents"))
+        file_path = row[0]
+
+        if ctype == 'image' and 'file' in request.files and request.files['file'].filename:
+            try:
+                file_path = _save_upload(request.files['file'], 'image')
+            except ValueError as e:
+                flash(str(e), "danger")
+                conn.close()
+                return redirect(url_for("signage.content_edit", cid=cid))
+
+        try:
+            cur.execute("""UPDATE ds_contents SET
+                title=%s, type=%s, body_text=%s, file_path=%s, web_url=%s,
+                duration_sec=%s, start_at=%s, end_at=%s,
+                priority=%s, status=%s
+                WHERE id=%s""",
+                (title, ctype, body_text, file_path, web_url,
+                 duration, start_at, end_at, priority, status, cid))
+            # 태그 전부 갱신
+            cur.execute("DELETE FROM ds_content_tags WHERE content_id=%s", (cid,))
+            for tname in tag_names:
+                cur.execute("INSERT IGNORE INTO ds_tags (name) VALUES (%s)", (tname,))
+                cur.execute("SELECT id FROM ds_tags WHERE name=%s", (tname,))
+                tid = cur.fetchone()[0]
+                cur.execute("INSERT IGNORE INTO ds_content_tags (content_id, tag_id) VALUES (%s, %s)", (cid, tid))
+            conn.commit()
+            flash("저장됨.", "success")
+            conn.close()
+            return redirect(url_for("signage.contents"))
+        except Exception as e:
+            conn.rollback()
+            flash(f"저장 실패: {e}", "danger")
+
+    # GET — 폼 표시
+    cur.execute("""SELECT id, title, type, body_text, file_path, web_url,
+                          duration_sec, start_at, end_at, priority, status
+                   FROM ds_contents WHERE id=%s""", (cid,))
+    r = cur.fetchone()
+    if not r:
+        conn.close()
+        flash("존재하지 않는 콘텐츠입니다.", "danger")
+        return redirect(url_for("signage.contents"))
+
+    cur.execute("""SELECT t.name FROM ds_tags t
+                   JOIN ds_content_tags ct ON ct.tag_id=t.id
+                   WHERE ct.content_id=%s""", (cid,))
+    content_tags = [t[0] for t in cur.fetchall()]
+
+    content = {
+        'id': r[0], 'title': r[1], 'type': r[2], 'body_text': r[3],
+        'file_path': r[4], 'web_url': r[5], 'duration_sec': r[6],
+        'start_at': r[7], 'end_at': r[8],
+        'priority': r[9], 'status': r[10], 'tags': content_tags
+    }
+
+    cur.execute("SELECT name FROM ds_tags ORDER BY name")
+    all_tags = [t[0] for t in cur.fetchall()]
+    conn.close()
+    return render_template("signage/content_form.html",
+                           mode='edit', content=content, all_tags=all_tags,
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/contents/<int:cid>/delete", methods=["POST"])
+@_login_required
+def content_delete(cid):
+    """콘텐츠 삭제"""
+    if not _has_signage_perm("delete") and session.get("role") != "admin":
+        return jsonify({"ok": False, "msg": "삭제 권한 없음"}), 403
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM ds_content_tags WHERE content_id=%s", (cid,))
+        cur.execute("DELETE FROM ds_contents WHERE id=%s", (cid,))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@signage_bp.route("/contents/<int:cid>/preview")
+@_login_required
+def content_preview(cid):
+    """콘텐츠 미리보기 (단독 페이지, 4K 비율 시뮬레이션)"""
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT id, title, type, body_text, file_path, web_url, duration_sec
+                   FROM ds_contents WHERE id=%s""", (cid,))
+    r = cur.fetchone()
+    conn.close()
+    if not r:
+        abort(404)
+    content = {
+        'id': r[0], 'title': r[1], 'type': r[2], 'body_text': r[3],
+        'file_path': r[4], 'web_url': r[5], 'duration_sec': r[6],
+    }
+    return render_template("signage/content_preview.html", content=content)
+
+
+@signage_bp.route("/uploads/<path:fname>")
+@_login_required
+def serve_upload(fname):
+    """업로드 파일 서빙 (signage/xxx.png 형태)"""
+    base = UPLOAD_DIR.parent  # /app/uploads
+    return send_from_directory(str(base), fname)
 
 
 @signage_bp.route("/playlists")

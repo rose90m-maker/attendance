@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ '콘텐츠 신규 등록' if mode=='new' else '콘텐츠 편집' }} — 디지털 사이니지</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=23" rel="stylesheet">
+    <style>
+        .form-section {
+            background: #fff; border: 1px solid #e2e8f0;
+            border-radius: 2px; padding: 16px 18px; margin-bottom: 12px;
+        }
+        .form-section-title {
+            font-weight: 700; font-size: 0.9rem; color: #0f172a;
+            border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;
+            margin-bottom: 12px;
+        }
+        .type-radio-group {
+            display: flex; gap: 6px; flex-wrap: wrap;
+        }
+        .type-radio-group label {
+            cursor: pointer; padding: 8px 14px; border: 1px solid #cbd5e1;
+            border-radius: 2px; background: #fff; font-size: 0.85rem;
+            transition: all .15s;
+        }
+        .type-radio-group input[type=radio] { display: none; }
+        .type-radio-group input[type=radio]:checked + label {
+            background: #1e40af; color: #fff; border-color: #1e3a8a;
+        }
+        .preview-pane {
+            background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 2px;
+            min-height: 240px; padding: 12px; font-size: 0.85rem;
+            color: #64748b;
+        }
+        .preview-pane img { max-width: 100%; max-height: 320px; object-fit: contain; }
+        .preview-pane iframe { width: 100%; height: 320px; border: none; }
+        .form-actions {
+            position: sticky; bottom: 0; background: #fff;
+            border-top: 1px solid #e2e8f0; padding: 12px 0;
+            display: flex; gap: 8px; justify-content: flex-end;
+        }
+        .tag-input-wrap input { font-size: 0.85rem; }
+        .tag-existing-chip {
+            display: inline-block; font-size: 0.72rem; padding: 2px 8px;
+            border: 1px solid #cbd5e1; border-radius: 10px; margin: 2px;
+            cursor: pointer; background: #fff;
+        }
+        .tag-existing-chip:hover { background: #f1f5f9; }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_contents' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}{% endwith %}
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">
+            📁 {{ '새 콘텐츠' if mode=='new' else '콘텐츠 편집' }}
+            {% if mode=='edit' %}<small class="text-muted" style="font-size:0.55em;">#{{ content.id }}</small>{% endif %}
+        </h4>
+        <a href="/signage/contents" class="btn btn-sm btn-outline-secondary">← 목록</a>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" id="cform">
+        <div class="row g-3">
+            <!-- 좌측: 입력 -->
+            <div class="col-lg-7">
+                <div class="form-section">
+                    <div class="form-section-title">기본 정보</div>
+
+                    <div class="mb-3">
+                        <label class="form-label">제목 *</label>
+                        <input type="text" name="title" class="form-control" required
+                               value="{{ content.title if content else '' }}" autofocus>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">유형 *</label>
+                        <div class="type-radio-group" id="typeGroup">
+                            {% for v, lbl, icon in [('text','텍스트','📝'),('image','이미지','🖼️'),('web','웹URL','🌐'),('video','영상','🎬'),('pdf','PDF','📄')] %}
+                            <input type="radio" name="type" id="type-{{ v }}" value="{{ v }}"
+                                   {{ 'checked' if (content and content.type == v) or (not content and v == 'text') }}
+                                   onchange="onTypeChange()">
+                            <label for="type-{{ v }}">{{ icon }} {{ lbl }}</label>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- 텍스트 본문 -->
+                    <div class="mb-3 type-section" data-type="text">
+                        <label class="form-label">텍스트 본문</label>
+                        <textarea name="body_text" class="form-control" rows="6"
+                                  placeholder="화면에 표시할 텍스트 (대화면용 큰 폰트로 자동 표시)">{{ content.body_text if content else '' }}</textarea>
+                    </div>
+
+                    <!-- 이미지 업로드 -->
+                    <div class="mb-3 type-section" data-type="image" style="display:none;">
+                        <label class="form-label">이미지 파일</label>
+                        {% if content and content.file_path %}
+                        <div class="mb-2">
+                            <span class="text-muted small">현재 파일: <code>{{ content.file_path }}</code></span>
+                        </div>
+                        {% endif %}
+                        <input type="file" name="file" class="form-control" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml">
+                        <div class="form-text">PNG, JPG, GIF, WEBP, SVG · 최대 100MB</div>
+                    </div>
+
+                    <!-- 웹 URL -->
+                    <div class="mb-3 type-section" data-type="web" style="display:none;">
+                        <label class="form-label">웹 URL</label>
+                        <input type="url" name="web_url" class="form-control"
+                               value="{{ content.web_url if content else '' }}"
+                               placeholder="https://example.com">
+                        <div class="form-text">iframe으로 임베드. iframe 차단 사이트는 표시 안 됨</div>
+                    </div>
+
+                    <!-- 영상/PDF (Phase 2+) -->
+                    <div class="mb-3 type-section" data-type="video" style="display:none;">
+                        <div class="alert alert-info py-2 mb-0">🎬 영상 업로드 — Phase 2에서 지원 예정</div>
+                    </div>
+                    <div class="mb-3 type-section" data-type="pdf" style="display:none;">
+                        <div class="alert alert-info py-2 mb-0">📄 PDF — Phase 2에서 지원 예정</div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">표시 설정</div>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">재생 시간 (초)</label>
+                            <input type="number" name="duration_sec" class="form-control" min="1" max="600"
+                                   value="{{ content.duration_sec if content else 10 }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">우선순위</label>
+                            <input type="number" name="priority" class="form-control" min="-100" max="100"
+                                   value="{{ content.priority if content else 0 }}">
+                            <div class="form-text">높을수록 우선</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">상태</label>
+                            <select name="status" class="form-select">
+                                <option value="draft" {{ 'selected' if content and content.status=='draft' else '' }}>임시저장</option>
+                                <option value="active" {{ 'selected' if (content and content.status=='active') or (not content) }}>사용</option>
+                                <option value="paused" {{ 'selected' if content and content.status=='paused' else '' }}>중지</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">시작일시 (선택)</label>
+                            <input type="datetime-local" name="start_at" class="form-control"
+                                   value="{{ content.start_at.strftime('%Y-%m-%dT%H:%M') if content and content.start_at else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">종료일시 (선택)</label>
+                            <input type="datetime-local" name="end_at" class="form-control"
+                                   value="{{ content.end_at.strftime('%Y-%m-%dT%H:%M') if content and content.end_at else '' }}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">태그</div>
+                    <div class="tag-input-wrap">
+                        <input type="text" name="tags" class="form-control" id="tagsInput"
+                               value="{{ content.tags|join(', ') if content and content.tags else '' }}"
+                               placeholder="쉼표로 구분 (예: 안전, 공지, TBM)">
+                    </div>
+                    {% if all_tags %}
+                    <div class="mt-2">
+                        <span class="text-muted small">기존 태그:</span>
+                        {% for t in all_tags %}
+                        <span class="tag-existing-chip" onclick="addTag('{{ t }}')">{{ t }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 우측: 미리보기 -->
+            <div class="col-lg-5">
+                <div class="form-section" style="position: sticky; top: 12px;">
+                    <div class="form-section-title">미리보기 (16:9)</div>
+                    <div class="preview-pane" id="preview" style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;">
+                        <div class="text-muted">유형/내용 입력 시 자동 표시</div>
+                    </div>
+                    <div class="form-text mt-2">💡 미리보기는 실제 송출 화면(4K)의 축소 시뮬레이션입니다.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <a href="/signage/contents" class="btn btn-outline-secondary">취소</a>
+            <button type="submit" class="btn btn-primary">{{ '등록' if mode=='new' else '저장' }}</button>
+        </div>
+    </form>
+</div>
+
+<script>
+function onTypeChange() {
+    const sel = document.querySelector('input[name=type]:checked').value;
+    document.querySelectorAll('.type-section').forEach(el => {
+        el.style.display = el.dataset.type === sel ? '' : 'none';
+    });
+    updatePreview();
+}
+function updatePreview() {
+    const sel = document.querySelector('input[name=type]:checked').value;
+    const text = document.querySelector('textarea[name=body_text]').value;
+    const webUrl = document.querySelector('input[name=web_url]').value;
+    const fileInput = document.querySelector('input[name=file]');
+    const pv = document.getElementById('preview');
+
+    if (sel === 'text') {
+        pv.innerHTML = text
+            ? `<div style="font-size:1.4rem;font-weight:600;text-align:center;line-height:1.4;padding:20px;">${text.replace(/\n/g,'<br>')}</div>`
+            : '<div class="text-muted">텍스트 입력 시 표시</div>';
+    } else if (sel === 'image') {
+        if (fileInput.files && fileInput.files[0]) {
+            const url = URL.createObjectURL(fileInput.files[0]);
+            pv.innerHTML = `<img src="${url}" style="max-width:100%;max-height:100%;">`;
+        } else {
+            {% if content and content.file_path %}
+            pv.innerHTML = '<img src="/signage/uploads/{{ content.file_path }}" style="max-width:100%;max-height:100%;">';
+            {% else %}
+            pv.innerHTML = '<div class="text-muted">이미지 선택 시 표시</div>';
+            {% endif %}
+        }
+    } else if (sel === 'web') {
+        pv.innerHTML = webUrl ? `<iframe src="${webUrl}" sandbox></iframe>` : '<div class="text-muted">URL 입력 시 표시</div>';
+    } else {
+        pv.innerHTML = `<div class="text-muted">${sel} — Phase 2 지원 예정</div>`;
+    }
+}
+function addTag(name) {
+    const inp = document.getElementById('tagsInput');
+    const tags = inp.value.split(',').map(t=>t.trim()).filter(Boolean);
+    if (!tags.includes(name)) { tags.push(name); inp.value = tags.join(', '); }
+}
+document.querySelector('textarea[name=body_text]').addEventListener('input', updatePreview);
+document.querySelector('input[name=web_url]').addEventListener('input', updatePreview);
+document.querySelector('input[name=file]').addEventListener('change', updatePreview);
+onTypeChange();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

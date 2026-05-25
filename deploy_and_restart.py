@@ -126,6 +126,9 @@ files = [
     # 디지털 사이니지
     ("signage_bp.py", "signage_bp.py"),
     ("templates/signage/dashboard.html", "templates/signage/dashboard.html"),
+    ("templates/signage/contents.html", "templates/signage/contents.html"),
+    ("templates/signage/content_form.html", "templates/signage/content_form.html"),
+    ("templates/signage/content_preview.html", "templates/signage/content_preview.html"),
     ("templates/tbm/base.html", "templates/tbm/base.html"),
     ("templates/tbm/login.html", "templates/tbm/login.html"),
     ("templates/tbm/dashboard.html", "templates/tbm/dashboard.html"),
@@ -189,7 +192,7 @@ def sudo_nas(cmd):
         out = out[len("Password: "):]
     return out.strip()
 
-nas(f"mkdir -p {STAGE_DIR}/static {STAGE_DIR}/templates {STAGE_DIR}/templates/tbm {STAGE_DIR}/templates/signage {STAGE_DIR}/uploads/documents")
+nas(f"mkdir -p {STAGE_DIR}/static {STAGE_DIR}/templates {STAGE_DIR}/templates/tbm {STAGE_DIR}/templates/signage {STAGE_DIR}/uploads/documents {STAGE_DIR}/uploads/signage")
 
 chunks = [tar_b64[i:i+60000] for i in range(0, len(tar_b64), 60000)]
 nas(f"> /tmp/_deploy.tar.gz.b64")
@@ -242,7 +245,7 @@ for local, remote in files:
 
 cp_ok = True
 # 메인 컨테이너 안에 신규 디렉토리 보장 (signage 등)
-sudo_nas(f"docker exec {DOCKER_MAIN} mkdir -p {DOCKER_APP_DIR}/templates/signage")
+sudo_nas(f"docker exec {DOCKER_MAIN} mkdir -p {DOCKER_APP_DIR}/templates/signage {DOCKER_APP_DIR}/uploads/signage")
 for src, dst in docker_files_main:
     r = sudo_nas(f"docker cp {src} {DOCKER_MAIN}:{dst}; echo EXIT_$?")
     if "EXIT_0" not in r:
