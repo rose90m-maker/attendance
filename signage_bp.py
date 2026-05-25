@@ -188,9 +188,15 @@ def init_signage_db(cur):
             resolution VARCHAR(20) NOT NULL DEFAULT '3840x2160',
             config JSON NULL,
             is_system TINYINT NOT NULL DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_sys_name (name, is_system)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
+    # 기존 테이블에 UNIQUE 보장 (idempotent)
+    try:
+        cur.execute("ALTER TABLE ds_layouts ADD UNIQUE KEY uq_sys_name (name, is_system)")
+    except Exception:
+        pass
 
     # 7. 레이아웃 영역
     cur.execute("""
@@ -203,9 +209,14 @@ def init_signage_db(cur):
             w INT NOT NULL,
             h INT NOT NULL,
             z_index INT NOT NULL DEFAULT 0,
-            INDEX idx_layout (layout_id)
+            INDEX idx_layout (layout_id),
+            UNIQUE KEY uq_layout_zone (layout_id, zone_key)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
+    try:
+        cur.execute("ALTER TABLE ds_layout_zones ADD UNIQUE KEY uq_layout_zone (layout_id, zone_key)")
+    except Exception:
+        pass
 
     # 8. 디스플레이 그룹
     cur.execute("""
@@ -343,37 +354,39 @@ def init_signage_db(cur):
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 
-    # ── 기본 시스템 레이아웃 8종 시드 (idempotent) ──
-    cur.execute("SELECT COUNT(*) FROM ds_layouts WHERE is_system=1")
-    if cur.fetchone()[0] == 0:
-        sys_layouts = [
-            ('전체화면 1분할', 'full', '3840x2160',
-                [('main', 0, 0, 3840, 2160, 0)]),
-            ('좌우 2분할 60:40', 'split2', '3840x2160',
-                [('left', 0, 0, 2304, 2160, 0), ('right', 2304, 0, 1536, 2160, 0)]),
-            ('상단공지 + 메인', 'top_bottom', '3840x2160',
-                [('top', 0, 0, 3840, 432, 1), ('main', 0, 432, 3840, 1728, 0)]),
-            ('메인 + 하단자막', 'top_bottom', '3840x2160',
-                [('main', 0, 0, 3840, 1944, 0), ('ticker', 0, 1944, 3840, 216, 1)]),
-            ('3분할 대시보드', 'split3', '3840x2160',
-                [('top', 0, 0, 3840, 432, 1), ('main', 0, 432, 2688, 1728, 0),
-                 ('side', 2688, 432, 1152, 1728, 0)]),
-            ('영상 + 오버레이', 'overlay', '3840x2160',
-                [('main', 0, 0, 3840, 2160, 0), ('overlay', 480, 1296, 2880, 432, 10)]),
-            ('이미지 슬라이드', 'slide', '3840x2160',
-                [('main', 0, 0, 3840, 2160, 0)]),
-            ('표/현황판', 'table', '3840x2160',
-                [('top', 0, 0, 3840, 432, 1), ('table', 0, 432, 3840, 1728, 0)]),
-        ]
-        for name, ttype, res, zones in sys_layouts:
-            cur.execute("""INSERT INTO ds_layouts (name, template_type, resolution, is_system)
-                           VALUES (%s, %s, %s, 1)""", (name, ttype, res))
-            lid = cur.lastrowid
-            for zk, x, y, w, h, z in zones:
-                cur.execute("""INSERT INTO ds_layout_zones
-                               (layout_id, zone_key, x, y, w, h, z_index)
-                               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                            (lid, zk, x, y, w, h, z))
+    # ── 기본 시스템 레이아웃 8종 시드 (idempotent, INSERT IGNORE) ──
+    sys_layouts = [
+        ('전체화면 1분할', 'full', '3840x2160',
+            [('main', 0, 0, 3840, 2160, 0)]),
+        ('좌우 2분할 60:40', 'split2', '3840x2160',
+            [('left', 0, 0, 2304, 2160, 0), ('right', 2304, 0, 1536, 2160, 0)]),
+        ('상단공지 + 메인', 'top_bottom', '3840x2160',
+            [('top', 0, 0, 3840, 432, 1), ('main', 0, 432, 3840, 1728, 0)]),
+        ('메인 + 하단자막', 'top_bottom', '3840x2160',
+            [('main', 0, 0, 3840, 1944, 0), ('ticker', 0, 1944, 3840, 216, 1)]),
+        ('3분할 대시보드', 'split3', '3840x2160',
+            [('top', 0, 0, 3840, 432, 1), ('main', 0, 432, 2688, 1728, 0),
+             ('side', 2688, 432, 1152, 1728, 0)]),
+        ('영상 + 오버레이', 'overlay', '3840x2160',
+            [('main', 0, 0, 3840, 2160, 0), ('overlay', 480, 1296, 2880, 432, 10)]),
+        ('이미지 슬라이드', 'slide', '3840x2160',
+            [('main', 0, 0, 3840, 2160, 0)]),
+        ('표/현황판', 'table', '3840x2160',
+            [('top', 0, 0, 3840, 432, 1), ('table', 0, 432, 3840, 1728, 0)]),
+    ]
+    for name, ttype, res, zones in sys_layouts:
+        cur.execute("""INSERT IGNORE INTO ds_layouts (name, template_type, resolution, is_system)
+                       VALUES (%s, %s, %s, 1)""", (name, ttype, res))
+        cur.execute("SELECT id FROM ds_layouts WHERE name=%s AND is_system=1", (name,))
+        lid_row = cur.fetchone()
+        if not lid_row:
+            continue
+        lid = lid_row[0]
+        for zk, x, y, w, h, z in zones:
+            cur.execute("""INSERT IGNORE INTO ds_layout_zones
+                           (layout_id, zone_key, x, y, w, h, z_index)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                        (lid, zk, x, y, w, h, z))
 
 
 # ════════════════════════════════════════════════════════
