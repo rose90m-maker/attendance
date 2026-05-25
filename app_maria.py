@@ -1039,6 +1039,12 @@ def _init_db():
             _init_tbm_db(cur)
         except Exception as _e:
             print(f"[TBM init] {_e}")
+        # 디지털 사이니지 테이블 초기화 (Phase 0)
+        try:
+            from signage_bp import init_signage_db as _init_signage_db
+            _init_signage_db(cur)
+        except Exception as _e:
+            print(f"[Signage init] {_e}")
         conn.commit()
         conn.close()
     except Exception:
@@ -1130,6 +1136,9 @@ MENU_STRUCTURE = [
     ("cat_tbm", None, "TBM", []),
     ("tbm_sign", "cat_tbm", "서명 참여", ["view", "create"]),
     ("tbm_admin", "cat_tbm", "TBM 관리", ["view", "create", "update", "delete"]),
+
+    ("cat_signage", None, "디지털 사이니지", []),
+    ("signage", "cat_signage", "사이니지 관리", ["view", "create", "update", "delete", "publish"]),
 ]
 
 # 기존 CSV 권한 → 새 메뉴키 매핑 (마이그레이션용)
@@ -9673,6 +9682,14 @@ try:
     app.register_blueprint(_tbm_bp)
 except Exception as _e:
     print(f"[TBM Blueprint] 등록 실패: {_e}")
+
+
+# ═══ 디지털 사이니지 Blueprint 등록 ═══
+try:
+    from signage_bp import signage_bp as _signage_bp
+    app.register_blueprint(_signage_bp)
+except Exception as _e:
+    print(f"[Signage Blueprint] 등록 실패: {_e}")
 
 
 if __name__ == "__main__":

@@ -123,6 +123,9 @@ files = [
     ("tbm_app.py", "tbm_app.py"),
     ("start_tbm.sh", "start_tbm.sh"),
     ("docker-compose.yml", "docker-compose.yml"),
+    # 디지털 사이니지
+    ("signage_bp.py", "signage_bp.py"),
+    ("templates/signage/dashboard.html", "templates/signage/dashboard.html"),
     ("templates/tbm/base.html", "templates/tbm/base.html"),
     ("templates/tbm/login.html", "templates/tbm/login.html"),
     ("templates/tbm/dashboard.html", "templates/tbm/dashboard.html"),
@@ -186,7 +189,7 @@ def sudo_nas(cmd):
         out = out[len("Password: "):]
     return out.strip()
 
-nas(f"mkdir -p {STAGE_DIR}/static {STAGE_DIR}/templates {STAGE_DIR}/templates/tbm {STAGE_DIR}/uploads/documents")
+nas(f"mkdir -p {STAGE_DIR}/static {STAGE_DIR}/templates {STAGE_DIR}/templates/tbm {STAGE_DIR}/templates/signage {STAGE_DIR}/uploads/documents")
 
 chunks = [tar_b64[i:i+60000] for i in range(0, len(tar_b64), 60000)]
 nas(f"> /tmp/_deploy.tar.gz.b64")
@@ -210,6 +213,7 @@ docker_files_main = [
     (f"{STAGE_DIR}/edu_bp.py",           f"{DOCKER_APP_DIR}/edu_bp.py"),
     (f"{STAGE_DIR}/hazmat_bp.py",        f"{DOCKER_APP_DIR}/hazmat_bp.py"),
     (f"{STAGE_DIR}/tbm_bp.py",           f"{DOCKER_APP_DIR}/tbm_bp.py"),
+    (f"{STAGE_DIR}/signage_bp.py",       f"{DOCKER_APP_DIR}/signage_bp.py"),
     (f"{STAGE_DIR}/kepco_collector.py", f"{DOCKER_APP_DIR}/kepco_collector.py"),
     (f"{STAGE_DIR}/kepco_analyzer.py",  f"{DOCKER_APP_DIR}/kepco_analyzer.py"),
     (f"{STAGE_DIR}/.env",               f"{DOCKER_APP_DIR}/.env"),
@@ -237,6 +241,8 @@ for local, remote in files:
         docker_files_tbm.append((f"{STAGE_DIR}/{local}", f"{DOCKER_APP_DIR}/{remote}"))
 
 cp_ok = True
+# 메인 컨테이너 안에 신규 디렉토리 보장 (signage 등)
+sudo_nas(f"docker exec {DOCKER_MAIN} mkdir -p {DOCKER_APP_DIR}/templates/signage")
 for src, dst in docker_files_main:
     r = sudo_nas(f"docker cp {src} {DOCKER_MAIN}:{dst}; echo EXIT_$?")
     if "EXIT_0" not in r:

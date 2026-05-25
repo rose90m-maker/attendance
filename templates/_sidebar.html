@@ -237,6 +237,24 @@
         <a href="/esg/governance"  class="side-link{% if active_page == 'esg_governance'  %} active{% endif %}"><span class="sl-icon">🏛</span>지배구조 (G)</a>
     </div>
 
+    <!-- 디지털 사이니지 -->
+    <button class="nav-group-toggle" data-group="grp-signage">
+        <span class="ng-icon">📺</span><span class="ng-label">디지털 사이니지</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-signage">
+        <a href="/signage"           class="side-link{% if active_page == 'signage' %} active{% endif %}"><span class="sl-icon">🏠</span>대시보드</a>
+        <a href="/signage/contents"  class="side-link{% if active_page == 'signage_contents' %} active{% endif %}"><span class="sl-icon">📁</span>콘텐츠 관리</a>
+        <a href="/signage/playlists" class="side-link{% if active_page == 'signage_playlists' %} active{% endif %}"><span class="sl-icon">▶️</span>플레이리스트</a>
+        <a href="/signage/schedules" class="side-link{% if active_page == 'signage_schedules' %} active{% endif %}"><span class="sl-icon">📅</span>편성표</a>
+        <a href="/signage/layouts"   class="side-link{% if active_page == 'signage_layouts' %} active{% endif %}"><span class="sl-icon">🧩</span>레이아웃</a>
+        <a href="/signage/displays"  class="side-link{% if active_page == 'signage_displays' %} active{% endif %}"><span class="sl-icon">🖥️</span>디스플레이</a>
+        <a href="/signage/emergency" class="side-link{% if active_page == 'signage_emergency' %} active{% endif %}"><span class="sl-icon">🚨</span>긴급공지</a>
+        <a href="/signage/logs"      class="side-link{% if active_page == 'signage_logs' %} active{% endif %}"><span class="sl-icon">📋</span>재생로그</a>
+        {% if is_admin %}
+        <a href="/signage/settings"  class="side-link{% if active_page == 'signage_settings' %} active{% endif %}"><span class="sl-icon">⚙️</span>설정</a>
+        {% endif %}
+    </div>
+
     <!-- 시스템 -->
     <button class="nav-group-toggle" data-group="grp-system">
         <span class="ng-icon">🛠</span><span class="ng-label">시스템</span><span class="ng-arrow">▸</span>

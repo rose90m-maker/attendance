@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>디지털 사이니지 — 태인관리시스템</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=22" rel="stylesheet">
+    <style>
+        .stat-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            padding: 14px 16px;
+        }
+        .stat-card .label { font-size: 0.78rem; color: #64748b; font-weight: 600; }
+        .stat-card .value { font-size: 1.6rem; font-weight: 800; color: #0f172a; line-height: 1.2; }
+        .stat-card .sub { font-size: 0.72rem; color: #94a3b8; }
+        .stat-card.alert { border-color: #dc2626; }
+        .stat-card.alert .value { color: #dc2626; }
+        .stat-card.success .value { color: #16a34a; }
+        .stat-card.warn .value { color: #d97706; }
+
+        .panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; }
+        .panel-h {
+            padding: 10px 14px; border-bottom: 1px solid #e2e8f0;
+            font-weight: 700; font-size: 0.88rem; color: #0f172a;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .panel-b { padding: 10px 14px; }
+
+        .disp-card {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 12px; border-bottom: 1px solid #f1f5f9;
+            font-size: 0.85rem;
+        }
+        .disp-card:last-child { border-bottom: none; }
+        .disp-dot {
+            width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+        }
+        .disp-dot.online { background: #16a34a; }
+        .disp-dot.offline { background: #94a3b8; }
+        .disp-dot.error { background: #dc2626; }
+        .disp-dot.paused { background: #d97706; }
+        .disp-name { flex: 1; font-weight: 600; }
+        .disp-loc { color: #64748b; font-size: 0.78rem; }
+
+        .log-row {
+            padding: 6px 0; border-bottom: 1px solid #f1f5f9;
+            font-size: 0.82rem; display: flex; gap: 8px;
+        }
+        .log-row:last-child { border-bottom: none; }
+        .log-time { color: #94a3b8; flex-shrink: 0; min-width: 110px; font-variant-numeric: tabular-nums; }
+
+        .empty-state {
+            text-align: center; padding: 30px 20px;
+            color: #94a3b8; font-size: 0.85rem;
+        }
+        .empty-state .icon { font-size: 2rem; margin-bottom: 8px; opacity: 0.4; }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">📺 디지털 사이니지 <small class="text-muted" style="font-size:0.55em;">사내 디스플레이 콘텐츠 송출 시스템</small></h4>
+        <div>
+            <a href="/signage/contents" class="btn btn-sm btn-primary">📁 콘텐츠</a>
+            <a href="/signage/displays" class="btn btn-sm btn-outline-dark">🖥️ 디스플레이</a>
+            {% if is_admin %}
+            <a href="/signage/emergency" class="btn btn-sm btn-danger">🚨 긴급공지</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- KPI 카드 5개 -->
+    <div class="row g-2 mb-3">
+        <div class="col-md-2 col-sm-4 col-6">
+            <div class="stat-card">
+                <div class="label">콘텐츠</div>
+                <div class="value">{{ stats.content_active }}</div>
+                <div class="sub">활성 / 전체 {{ stats.content_total }}</div>
+            </div>
+        </div>
+        <div class="col-md-2 col-sm-4 col-6">
+            <div class="stat-card {{ 'success' if stats.display_online == stats.display_total and stats.display_total > 0 else 'warn' if stats.display_offline else '' }}">
+                <div class="label">디스플레이</div>
+                <div class="value">{{ stats.display_online }} / {{ stats.display_total }}</div>
+                <div class="sub">온라인 / 전체</div>
+            </div>
+        </div>
+        <div class="col-md-2 col-sm-4 col-6">
+            <div class="stat-card">
+                <div class="label">활성 편성</div>
+                <div class="value">{{ stats.schedule_active }}</div>
+                <div class="sub">건</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 col-6">
+            <div class="stat-card {{ 'alert' if stats.emergency_active else '' }}">
+                <div class="label">긴급공지</div>
+                <div class="value">{{ '🚨 ' + stats.emergency_active|string if stats.emergency_active else '없음' }}</div>
+                <div class="sub">{{ '활성 중' if stats.emergency_active else '평시' }}</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 col-6">
+            <div class="stat-card">
+                <div class="label">오늘 재생</div>
+                <div class="value">{{ stats.plays_today }}</div>
+                <div class="sub">회</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 메인 2분할: 디스플레이 + 재생로그 -->
+    <div class="row g-2">
+        <div class="col-lg-7">
+            <div class="panel">
+                <div class="panel-h">
+                    🖥️ 디스플레이 상태
+                    <a href="/signage/displays" class="text-decoration-none small">전체 →</a>
+                </div>
+                <div class="panel-b" style="max-height:480px;overflow-y:auto;">
+                    {% if displays %}
+                        {% for d in displays %}
+                        <div class="disp-card">
+                            <span class="disp-dot {{ d.status }}"></span>
+                            <span class="disp-name">{{ d.name }}</span>
+                            <span class="disp-loc">{{ d.location or '-' }}</span>
+                            <span class="text-muted small">
+                                {% if d.last_seen %}{{ d.last_seen.strftime('%H:%M') }}{% else %}—{% endif %}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">
+                            <div class="icon">🖥️</div>
+                            등록된 디스플레이가 없습니다.<br>
+                            <a href="/signage/displays" class="btn btn-sm btn-outline-primary mt-2">디스플레이 등록</a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="panel">
+                <div class="panel-h">
+                    📋 최근 재생로그
+                    <a href="/signage/logs" class="text-decoration-none small">전체 →</a>
+                </div>
+                <div class="panel-b" style="max-height:480px;overflow-y:auto;">
+                    {% if recent_logs %}
+                        {% for log in recent_logs %}
+                        <div class="log-row">
+                            <span class="log-time">{{ log.time.strftime('%m/%d %H:%M') if log.time else '-' }}</span>
+                            <span class="fw-semibold">{{ log.display or '?' }}</span>
+                            <span class="text-muted">←</span>
+                            <span>{{ log.content or '(삭제됨)' }}</span>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">
+                            <div class="icon">📋</div>
+                            아직 재생로그가 없습니다.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phase 0 안내 -->
+    <div class="alert alert-info mt-3" style="font-size:0.85rem;">
+        <strong>📺 디지털 사이니지 Phase 0 완료</strong> —
+        DB 스키마(15개 테이블) + 시스템 레이아웃(8종) 시드 + 권한 키(<code>signage</code>) 등록.
+        Phase 1(MVP)에서 콘텐츠 CRUD / 플레이리스트 / 디스플레이 페어링 / 송출 페이지가 추가됩니다.
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
