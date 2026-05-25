@@ -129,6 +129,8 @@ files = [
     ("templates/signage/contents.html", "templates/signage/contents.html"),
     ("templates/signage/content_form.html", "templates/signage/content_form.html"),
     ("templates/signage/content_preview.html", "templates/signage/content_preview.html"),
+    ("templates/signage/playlists.html", "templates/signage/playlists.html"),
+    ("templates/signage/playlist_form.html", "templates/signage/playlist_form.html"),
     ("templates/tbm/base.html", "templates/tbm/base.html"),
     ("templates/tbm/login.html", "templates/tbm/login.html"),
     ("templates/tbm/dashboard.html", "templates/tbm/dashboard.html"),

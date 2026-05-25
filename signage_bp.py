@@ -776,11 +776,209 @@ def serve_upload(fname):
     return send_from_directory(str(base), fname)
 
 
+# ════════════════════════════════════════════════════════
+#  Phase 1.2 — 플레이리스트 CRUD
+# ════════════════════════════════════════════════════════
+
 @signage_bp.route("/playlists")
 @_login_required
 def playlists():
-    flash("플레이리스트 — Phase 1에서 구현 예정", "info")
-    return redirect(url_for("signage.dashboard"))
+    """플레이리스트 목록"""
+    if not _has_signage_perm("view") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT p.id, p.name, p.description, p.loop_mode, p.is_default,
+                          p.status, p.created_at, p.updated_at,
+                          (SELECT COUNT(*) FROM ds_playlist_items WHERE playlist_id=p.id) AS item_cnt,
+                          (SELECT SUM(IFNULL(pi.duration_sec, c.duration_sec))
+                           FROM ds_playlist_items pi
+                           JOIN ds_contents c ON pi.content_id=c.id
+                           WHERE pi.playlist_id=p.id) AS total_sec
+                   FROM ds_playlists p
+                   ORDER BY p.is_default DESC, p.updated_at DESC""")
+    playlists = [
+        {'id': r[0], 'name': r[1], 'description': r[2], 'loop_mode': r[3],
+         'is_default': r[4], 'status': r[5], 'created_at': r[6], 'updated_at': r[7],
+         'item_cnt': r[8] or 0, 'total_sec': r[9] or 0}
+        for r in cur.fetchall()
+    ]
+    conn.close()
+    return render_template("signage/playlists.html",
+                           playlists=playlists,
+                           is_admin=session.get('role') == 'admin',
+                           can_edit=_has_signage_perm("create") or session.get('role') == 'admin')
+
+
+@signage_bp.route("/playlists/new", methods=["GET", "POST"])
+@_login_required
+def playlist_new():
+    """플레이리스트 신규 작성"""
+    if not _has_signage_perm("create") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.playlists"))
+
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
+        loop_mode = request.form.get('loop_mode', 'sequential')
+        is_default = 1 if request.form.get('is_default') else 0
+        status = request.form.get('status', 'active')
+
+        if not name:
+            flash("이름을 입력하세요.", "danger")
+            conn.close()
+            return redirect(url_for("signage.playlist_new"))
+
+        try:
+            # 기본 플레이리스트는 1개만 허용
+            if is_default:
+                cur.execute("UPDATE ds_playlists SET is_default=0 WHERE is_default=1")
+            cur.execute("""INSERT INTO ds_playlists
+                (name, description, loop_mode, is_default, status, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s)""",
+                (name, description, loop_mode, is_default, status, session.get('user_id')))
+            pid = cur.lastrowid
+            conn.commit()
+            flash(f"플레이리스트 '{name}' 생성. 이어서 콘텐츠 추가 가능.", "success")
+            conn.close()
+            return redirect(url_for("signage.playlist_edit", pid=pid))
+        except Exception as e:
+            conn.rollback()
+            flash(f"생성 실패: {e}", "danger")
+
+    conn.close()
+    return render_template("signage/playlist_form.html",
+                           mode='new', playlist=None, items=[], library=[],
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/playlists/<int:pid>/edit", methods=["GET", "POST"])
+@_login_required
+def playlist_edit(pid):
+    """플레이리스트 편집"""
+    if not _has_signage_perm("update") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.playlists"))
+
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
+        loop_mode = request.form.get('loop_mode', 'sequential')
+        is_default = 1 if request.form.get('is_default') else 0
+        status = request.form.get('status', 'active')
+
+        try:
+            if is_default:
+                cur.execute("UPDATE ds_playlists SET is_default=0 WHERE is_default=1 AND id<>%s", (pid,))
+            cur.execute("""UPDATE ds_playlists SET
+                name=%s, description=%s, loop_mode=%s, is_default=%s, status=%s
+                WHERE id=%s""",
+                (name, description, loop_mode, is_default, status, pid))
+            conn.commit()
+            flash("저장됨.", "success")
+        except Exception as e:
+            conn.rollback()
+            flash(f"저장 실패: {e}", "danger")
+        conn.close()
+        return redirect(url_for("signage.playlist_edit", pid=pid))
+
+    # GET — 폼 + 항목 + 라이브러리
+    cur.execute("""SELECT id, name, description, loop_mode, is_default, status, created_at, updated_at
+                   FROM ds_playlists WHERE id=%s""", (pid,))
+    r = cur.fetchone()
+    if not r:
+        conn.close()
+        flash("존재하지 않는 플레이리스트.", "danger")
+        return redirect(url_for("signage.playlists"))
+    playlist = {
+        'id': r[0], 'name': r[1], 'description': r[2], 'loop_mode': r[3],
+        'is_default': r[4], 'status': r[5], 'created_at': r[6], 'updated_at': r[7]
+    }
+
+    # 현재 항목들
+    cur.execute("""SELECT pi.id, pi.content_id, pi.seq, pi.duration_sec, pi.weight,
+                          c.title, c.type, c.duration_sec AS c_duration,
+                          c.file_path, c.body_text, c.web_url
+                   FROM ds_playlist_items pi
+                   JOIN ds_contents c ON pi.content_id=c.id
+                   WHERE pi.playlist_id=%s ORDER BY pi.seq""", (pid,))
+    items = [
+        {'item_id': r[0], 'content_id': r[1], 'seq': r[2],
+         'duration_sec': r[3], 'weight': r[4],
+         'title': r[5], 'type': r[6], 'c_duration': r[7],
+         'file_path': r[8], 'body_text': r[9], 'web_url': r[10]}
+        for r in cur.fetchall()
+    ]
+
+    # 라이브러리 (active 콘텐츠 중 아직 추가 안 된 것 우선 표시 + 검색은 클라이언트에서)
+    cur.execute("""SELECT id, title, type, duration_sec, file_path, body_text, web_url, status
+                   FROM ds_contents WHERE status='active'
+                   ORDER BY updated_at DESC LIMIT 500""")
+    library = [
+        {'id': r[0], 'title': r[1], 'type': r[2], 'duration_sec': r[3],
+         'file_path': r[4], 'body_text': r[5], 'web_url': r[6], 'status': r[7]}
+        for r in cur.fetchall()
+    ]
+
+    conn.close()
+    return render_template("signage/playlist_form.html",
+                           mode='edit', playlist=playlist, items=items, library=library,
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/api/playlists/<int:pid>/items", methods=["POST"])
+@_login_required
+def playlist_items_save(pid):
+    """플레이리스트 항목 일괄 저장 (드래그앤드롭 순서 + duration override)"""
+    if not _has_signage_perm("update") and session.get("role") != "admin":
+        return jsonify({"ok": False, "msg": "권한 없음"}), 403
+
+    data = request.get_json(silent=True) or {}
+    items = data.get('items', [])  # [{content_id, duration_sec, weight}, ...]
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM ds_playlist_items WHERE playlist_id=%s", (pid,))
+        for seq, it in enumerate(items, start=1):
+            cur.execute("""INSERT INTO ds_playlist_items
+                (playlist_id, content_id, seq, duration_sec, weight)
+                VALUES (%s, %s, %s, %s, %s)""",
+                (pid, int(it['content_id']), seq,
+                 int(it.get('duration_sec')) if it.get('duration_sec') else None,
+                 int(it.get('weight', 1))))
+        conn.commit()
+        return jsonify({"ok": True, "count": len(items)})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@signage_bp.route("/playlists/<int:pid>/delete", methods=["POST"])
+@_login_required
+def playlist_delete(pid):
+    """플레이리스트 삭제"""
+    if not _has_signage_perm("delete") and session.get("role") != "admin":
+        return jsonify({"ok": False, "msg": "권한 없음"}), 403
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM ds_playlist_items WHERE playlist_id=%s", (pid,))
+        cur.execute("DELETE FROM ds_playlists WHERE id=%s", (pid,))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
 
 
 @signage_bp.route("/schedules")

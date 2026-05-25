@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>플레이리스트 — 디지털 사이니지</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=24" rel="stylesheet">
+    <style>
+        .pl-card {
+            background:#fff; border:1px solid #e2e8f0; border-radius:2px;
+            padding:14px 16px; margin-bottom:10px;
+            display:flex; align-items:center; gap:14px;
+            transition: border-color .15s;
+        }
+        .pl-card:hover { border-color:#3b82f6; }
+        .pl-card .pl-info { flex:1; min-width:0; }
+        .pl-card .pl-name {
+            font-size:0.95rem; font-weight:700; color:#0f172a;
+            display:flex; align-items:center; gap:8px;
+        }
+        .pl-card .pl-desc { font-size:0.8rem; color:#64748b; }
+        .pl-card .pl-meta { font-size:0.75rem; color:#94a3b8; margin-top:2px; }
+        .pl-badge {
+            font-size:0.65rem; padding:2px 6px; border-radius:2px;
+            display:inline-block;
+        }
+        .b-default { background:#fef3c7; color:#92400e; }
+        .b-seq     { background:#dbeafe; color:#1e40af; }
+        .b-random  { background:#fce7f3; color:#9d174d; }
+        .b-priority{ background:#d1fae5; color:#065f46; }
+        .b-active  { background:#16a34a; color:#fff; }
+        .b-paused  { background:#94a3b8; color:#fff; }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_playlists' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}{% endwith %}
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">▶️ 플레이리스트
+            <small class="text-muted" style="font-size:0.55em;">총 {{ playlists|length }}개</small>
+        </h4>
+        <div>
+            {% if can_edit %}<a href="/signage/playlists/new" class="btn btn-sm btn-primary">➕ 새 플레이리스트</a>{% endif %}
+            <a href="/signage" class="btn btn-sm btn-outline-secondary">← 대시보드</a>
+        </div>
+    </div>
+
+    {% if playlists %}
+        {% for p in playlists %}
+        <div class="pl-card">
+            <div class="pl-info">
+                <div class="pl-name">
+                    {{ p.name }}
+                    {% if p.is_default %}<span class="pl-badge b-default">⭐ 기본</span>{% endif %}
+                    {% if p.loop_mode == 'sequential' %}<span class="pl-badge b-seq">순차</span>
+                    {% elif p.loop_mode == 'random' %}<span class="pl-badge b-random">랜덤</span>
+                    {% else %}<span class="pl-badge b-priority">우선순위</span>{% endif %}
+                    <span class="pl-badge b-{{ 'active' if p.status=='active' else 'paused' }}">
+                        {{ '사용' if p.status=='active' else '중지' }}
+                    </span>
+                </div>
+                {% if p.description %}<div class="pl-desc">{{ p.description }}</div>{% endif %}
+                <div class="pl-meta">
+                    🎬 {{ p.item_cnt }}개 콘텐츠 · ⏱ 총 {{ p.total_sec }}초
+                    · 수정 {{ p.updated_at.strftime('%Y-%m-%d %H:%M') if p.updated_at else '-' }}
+                </div>
+            </div>
+            <div class="d-flex gap-1">
+                {% if can_edit %}
+                <a href="/signage/playlists/{{ p.id }}/edit" class="btn btn-sm btn-outline-primary">편집</a>
+                <button class="btn btn-sm btn-outline-danger" onclick="del({{ p.id }}, '{{ p.name|replace("'", "\\'") }}')">삭제</button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+    <div class="text-center py-5 text-muted">
+        <div style="font-size:3rem;opacity:0.3;">▶️</div>
+        <p class="mt-2">아직 등록된 플레이리스트가 없습니다.</p>
+        {% if can_edit %}<a href="/signage/playlists/new" class="btn btn-primary">➕ 첫 플레이리스트 만들기</a>{% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+async function del(pid, name) {
+    if (!confirm(`'${name}' 플레이리스트를 삭제할까요?`)) return;
+    const res = await fetch(`/signage/playlists/${pid}/delete`, {method:'POST'});
+    const j = await res.json();
+    if (j.ok) location.reload(); else alert('실패: '+(j.msg||''));
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
