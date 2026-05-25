@@ -1396,11 +1396,154 @@ def play_log(token):
     return jsonify({"ok": True})
 
 
+# ════════════════════════════════════════════════════════
+#  Phase 5 — 긴급공지
+# ════════════════════════════════════════════════════════
+
 @signage_bp.route("/emergency")
 @_login_required
 def emergency():
-    flash("긴급공지 — Phase 5에서 구현 예정", "info")
-    return redirect(url_for("signage.dashboard"))
+    """긴급공지 목록 + 발송 폼"""
+    if not _has_signage_perm("view") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = _conn(); cur = conn.cursor()
+    # 만료된 활성 공지 자동 종료
+    cur.execute("""UPDATE ds_emergency_messages
+                   SET status='ended', ended_at=NOW()
+                   WHERE status='active' AND end_at IS NOT NULL AND end_at < NOW()""")
+    conn.commit()
+
+    # 활성
+    cur.execute("""SELECT id, title, body, image_path, target_type, target_ids,
+                          bg_color, start_at, end_at, status, created_by,
+                          created_at, ended_at,
+                          (SELECT name FROM tuser WHERE id=ds_emergency_messages.created_by) AS sender
+                   FROM ds_emergency_messages
+                   WHERE status='active'
+                   ORDER BY created_at DESC""")
+    active = _emergency_rows(cur.fetchall())
+
+    # 최근 이력 (종료된 것 30건)
+    cur.execute("""SELECT id, title, body, image_path, target_type, target_ids,
+                          bg_color, start_at, end_at, status, created_by,
+                          created_at, ended_at,
+                          (SELECT name FROM tuser WHERE id=ds_emergency_messages.created_by) AS sender
+                   FROM ds_emergency_messages
+                   WHERE status='ended'
+                   ORDER BY ended_at DESC LIMIT 30""")
+    history = _emergency_rows(cur.fetchall())
+
+    # 디스플레이/그룹 목록 (대상 선택용)
+    cur.execute("""SELECT id, name, location FROM ds_displays
+                   WHERE paired=1 ORDER BY name""")
+    displays = [{'id': r[0], 'name': r[1], 'location': r[2]} for r in cur.fetchall()]
+    cur.execute("SELECT id, name FROM ds_display_groups ORDER BY name")
+    groups = [{'id': r[0], 'name': r[1]} for r in cur.fetchall()]
+
+    conn.close()
+    return render_template("signage/emergency.html",
+                           active=active, history=history,
+                           displays=displays, groups=groups,
+                           is_admin=session.get('role') == 'admin',
+                           can_publish=_has_signage_perm("publish") or session.get('role') == 'admin')
+
+
+def _emergency_rows(rows):
+    items = []
+    for r in rows:
+        try:
+            target_ids = json.loads(r[5]) if r[5] else []
+        except Exception:
+            target_ids = []
+        items.append({
+            'id': r[0], 'title': r[1], 'body': r[2], 'image_path': r[3],
+            'target_type': r[4], 'target_ids': target_ids,
+            'bg_color': r[6], 'start_at': r[7], 'end_at': r[8],
+            'status': r[9], 'created_by': r[10],
+            'created_at': r[11], 'ended_at': r[12],
+            'sender': r[13]
+        })
+    return items
+
+
+@signage_bp.route("/emergency/send", methods=["POST"])
+@_login_required
+def emergency_send():
+    """긴급공지 발송"""
+    if not _has_signage_perm("publish") and session.get("role") != "admin":
+        flash("긴급공지 발송 권한이 없습니다.", "danger")
+        return redirect(url_for("signage.emergency"))
+
+    title = request.form.get('title', '').strip()
+    body = request.form.get('body', '').strip()
+    target_type = request.form.get('target_type', 'all')
+    target_ids_raw = request.form.getlist('target_ids')
+    bg_color = request.form.get('bg_color', '#dc2626')
+    duration_min = request.form.get('duration_min', '').strip()
+
+    if not title:
+        flash("제목을 입력하세요.", "danger")
+        return redirect(url_for("signage.emergency"))
+
+    # 이미지 업로드 (선택)
+    image_path = None
+    if 'image' in request.files and request.files['image'].filename:
+        try:
+            image_path = _save_upload(request.files['image'], 'image')
+        except ValueError as e:
+            flash(str(e), "danger")
+            return redirect(url_for("signage.emergency"))
+
+    target_ids = []
+    if target_type in ('group', 'display') and target_ids_raw:
+        target_ids = [int(x) for x in target_ids_raw if x.isdigit()]
+
+    end_at = None
+    if duration_min and duration_min.isdigit() and int(duration_min) > 0:
+        from datetime import timedelta
+        end_at = datetime.now() + timedelta(minutes=int(duration_min))
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("""INSERT INTO ds_emergency_messages
+            (title, body, image_path, target_type, target_ids, bg_color,
+             start_at, end_at, status, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s, 'active', %s)""",
+            (title, body, image_path, target_type,
+             json.dumps(target_ids) if target_ids else None,
+             bg_color, end_at, session.get('user_id')))
+        conn.commit()
+        flash(f"🚨 긴급공지 '{title}' 발송 완료. TV 다음 폴링(최대 15초)에 즉시 표시됩니다.", "success")
+    except Exception as e:
+        conn.rollback()
+        flash(f"발송 실패: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("signage.emergency"))
+
+
+@signage_bp.route("/emergency/<int:eid>/end", methods=["POST"])
+@_login_required
+def emergency_end(eid):
+    """긴급공지 종료"""
+    if not _has_signage_perm("publish") and session.get("role") != "admin":
+        return jsonify({"ok": False, "msg": "권한 없음"}), 403
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("""UPDATE ds_emergency_messages
+            SET status='ended', ended_at=NOW(), ended_by=%s
+            WHERE id=%s AND status='active'""",
+            (session.get('user_id'), eid))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
 
 
 @signage_bp.route("/logs")

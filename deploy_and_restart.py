@@ -135,6 +135,7 @@ files = [
     ("templates/signage/display_form.html", "templates/signage/display_form.html"),
     ("templates/signage/play_pair.html", "templates/signage/play_pair.html"),
     ("templates/signage/play.html", "templates/signage/play.html"),
+    ("templates/signage/emergency.html", "templates/signage/emergency.html"),
     ("templates/tbm/base.html", "templates/tbm/base.html"),
     ("templates/tbm/login.html", "templates/tbm/login.html"),
     ("templates/tbm/dashboard.html", "templates/tbm/dashboard.html"),
