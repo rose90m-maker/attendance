@@ -137,43 +137,53 @@ html, body, #root {
   background: #0f172a; color: #fff; border-color: #0f172a;
 }
 
-/* 미리보기 안의 HTML 렌더 — 4K 비례 폰트 */
-.pv-content {
-  width: 100%; height: 100%;
-  padding: 1.5vw 2vw;
-  overflow: hidden;
-  color: #fff;
-  font-size: 2vw; line-height: 1.5;
+/* ─── 미리보기 (4K 픽셀 단위) ─── */
+/* .pv-4k 컨테이너는 3840×2160 고정. transform:scale로 보이는 크기 결정.
+   그래서 내부 요소 사이즈는 실제 4K 픽셀로 표기 */
+.pv-4k * { box-sizing: border-box; }
+.pv-4k h1 { font-size: 160px; font-weight: 800; margin: 16px 0; line-height: 1.2; }
+.pv-4k h2 { font-size: 120px; font-weight: 700; margin: 14px 0; line-height: 1.25; }
+.pv-4k h3 { font-size: 90px; font-weight: 700; margin: 12px 0; line-height: 1.3; }
+.pv-4k p { margin: 16px 0; }
+.pv-4k ul, .pv-4k ol { padding-left: 80px; margin: 16px 0; }
+.pv-4k li { margin: 8px 0; }
+.pv-4k img { max-width: 100%; max-height: 1400px; object-fit: contain; display: block; margin: 24px auto; }
+.pv-4k video { max-width: 100%; max-height: 1400px; display: block; margin: 24px auto; }
+.pv-4k table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 24px 0;
+  table-layout: fixed;
 }
-.pv-content h1 { font-size: 4.5vw; font-weight: 800; margin: 0.4vw 0; }
-.pv-content h2 { font-size: 3.5vw; font-weight: 700; margin: 0.4vw 0; }
-.pv-content h3 { font-size: 2.8vw; font-weight: 700; margin: 0.3vw 0; }
-.pv-content p { margin: 0.5vw 0; }
-.pv-content ul, .pv-content ol { padding-left: 2vw; margin: 0.5vw 0; }
-.pv-content img { max-width: 100%; max-height: 50vh; object-fit: contain; display: block; margin: 0.8vw auto; }
-.pv-content video { max-width: 100%; max-height: 50vh; display: block; margin: 0.8vw auto; }
-.pv-content table { border-collapse: collapse; width: 100%; margin: 0.5vw 0; }
-.pv-content table td, .pv-content table th {
-  border: 1px solid rgba(255,255,255,0.3);
-  padding: 0.4vw 0.8vw;
+.pv-4k table td, .pv-4k table th {
+  border: 2px solid rgba(127,127,127,0.4);
+  padding: 18px 28px;
+  font-size: 52px;
+  vertical-align: top;
+  word-break: keep-all;
 }
-.pv-content a { color: #fbbf24; text-decoration: underline; }
-.pv-content blockquote {
-  border-left: 0.4vw solid #fbbf24;
-  background: rgba(255,255,255,0.08);
-  padding: 0.8vw 1.6vw; margin: 0.5vw 0;
+.pv-4k a { color: #fbbf24; text-decoration: underline; }
+.pv-4k blockquote {
+  border-left: 12px solid #fbbf24;
+  background: rgba(127,127,127,0.1);
+  padding: 24px 48px;
+  margin: 24px 0;
   font-style: italic;
 }
-.pv-content code {
-  background: rgba(255,255,255,0.1); padding: 0.1vw 0.4vw;
-  font-family: monospace;
+.pv-4k code {
+  background: rgba(127,127,127,0.15);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-family: 'D2Coding', monospace;
 }
-.pv-content pre {
+.pv-4k pre {
   background: #0f172a; color: #e2e8f0;
-  padding: 1vw; border-radius: 0.4vw;
-  font-family: monospace; font-size: 1.4vw;
+  padding: 28px 36px; border-radius: 12px;
+  font-family: 'D2Coding', monospace; font-size: 44px;
   overflow: hidden; text-align: left;
+  margin: 24px 0;
 }
+.pv-4k pre code { background: transparent; padding: 0; }
 
 /* 설정 드로어 */
 .settings-drawer {
@@ -246,9 +256,12 @@ html, body, #root {
   padding: 4vh 4vw;
 }
 .fs-canvas {
-  background: #0f172a; width: 100%; max-width: 1920px; aspect-ratio: 16/9;
+  width: 100%; max-width: 1920px; aspect-ratio: 16/9;
   position: relative; overflow: hidden;
   box-shadow: 0 0 50px rgba(0,0,0,0.7);
+}
+.fs-canvas .preview-canvas {
+  width: 100%; height: 100%; box-shadow: none;
 }
 .fs-close {
   position: fixed; top: 14px; right: 14px;

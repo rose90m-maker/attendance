@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import ActionBar from './components/ActionBar';
 import ContentEditor from './components/ContentEditor';
-import PreviewPanel from './components/PreviewPanel';
+import PreviewPanel, { ScaledPreview } from './components/PreviewPanel';
 import SettingsDrawer from './components/SettingsDrawer';
 import { saveContent } from './api/client';
 import type { ContentDoc, SignageSettings, DisplayOption, InitialData } from './types';
@@ -46,6 +46,14 @@ export default function App() {
     setEditorJson(json);
     setBodyHtml(html);
   }, []);
+
+  const isDarkColor = (hex: string): boolean => {
+    if (!hex || hex[0] !== '#') return true;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) < 160;
+  };
 
   // ESC로 전체화면 닫기
   useEffect(() => {
@@ -143,10 +151,11 @@ export default function App() {
           <button className="fs-close" onClick={(e) => { e.stopPropagation(); setFsOpen(false); }}>
             ✕ 닫기 (ESC)
           </button>
-          <div className="fs-canvas" style={{ background: settings.bg_color }} onClick={e => e.stopPropagation()}>
-            <div
-              className="pv-content"
-              dangerouslySetInnerHTML={{ __html: bodyHtml }}
+          <div className="fs-canvas" onClick={e => e.stopPropagation()}>
+            <ScaledPreview
+              html={bodyHtml}
+              bg={settings.bg_color}
+              isDark={isDarkColor(settings.bg_color)}
             />
           </div>
         </div>
