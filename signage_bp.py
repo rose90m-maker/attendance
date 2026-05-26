@@ -673,6 +673,19 @@ def content_edit(cid):
 
     conn = _conn(); cur = conn.cursor()
 
+    # GET 시 slide/birthday subtype이면 전용 에디터로 리다이렉트
+    if request.method == "GET":
+        cur.execute("SELECT meta FROM ds_contents WHERE id=%s", (cid,))
+        r = cur.fetchone()
+        if r and r[0]:
+            try:
+                meta = json.loads(r[0]) if isinstance(r[0], str) else r[0]
+                if meta and meta.get('subtype') == 'slide':
+                    conn.close()
+                    return redirect(url_for("signage.slide_edit", cid=cid))
+            except Exception:
+                pass
+
     if request.method == "POST":
         title = request.form.get('title', '').strip()
         ctype = request.form.get('type', 'text')
@@ -2654,6 +2667,139 @@ def templates_gallery():
                            total=len(tmpls),
                            can_create=_has_signage_perm("create") or session.get('role') == 'admin',
                            is_admin=session.get('role') == 'admin')
+
+
+# ════════════════════════════════════════════════════════
+#  파워포인트형 슬라이드 에디터 (자유 배치 다중 요소)
+# ════════════════════════════════════════════════════════
+
+@signage_bp.route("/slide/new", methods=["GET", "POST"])
+@_login_required
+def slide_new():
+    if not _has_signage_perm("create") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.contents"))
+    return _slide_save_or_form(cid=None)
+
+
+@signage_bp.route("/slide/<int:cid>/edit", methods=["GET", "POST"])
+@_login_required
+def slide_edit(cid):
+    if not _has_signage_perm("update") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.contents"))
+    return _slide_save_or_form(cid=cid)
+
+
+def _slide_save_or_form(cid):
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        try:
+            title = request.form.get('title', '').strip() or '새 슬라이드'
+            duration = int(request.form.get('duration_sec', 15) or 15)
+            priority = int(request.form.get('priority', 0) or 0)
+            status = request.form.get('status', 'active')
+            bg_color = request.form.get('bg_color', '#0f172a').strip()
+            elements_json = request.form.get('elements_json', '[]')
+            try:
+                elements = json.loads(elements_json)
+            except Exception:
+                elements = []
+
+            meta = {
+                'subtype': 'slide',
+                'bg_color': bg_color,
+                'elements': elements,
+            }
+            fallback = title + ' — ' + ', '.join(
+                (e.get('content') or '').strip()[:30]
+                for e in elements if e.get('type') == 'text' and e.get('content')
+            )[:500]
+
+            if cid is None:
+                cur.execute("""INSERT INTO ds_contents
+                    (title, type, body_text, duration_sec, priority, status, meta, created_by)
+                    VALUES (%s, 'text', %s, %s, %s, %s, %s, %s)""",
+                    (title, fallback, duration, priority, status,
+                     json.dumps(meta, ensure_ascii=False),
+                     session.get('user_id')))
+                cid = cur.lastrowid
+                # '슬라이드' 태그 자동 추가
+                cur.execute("INSERT IGNORE INTO ds_tags (name, color) VALUES ('슬라이드', '#7c3aed')")
+                cur.execute("SELECT id FROM ds_tags WHERE name='슬라이드'")
+                tid = cur.fetchone()[0]
+                cur.execute("INSERT IGNORE INTO ds_content_tags (content_id, tag_id) VALUES (%s, %s)", (cid, tid))
+            else:
+                cur.execute("""UPDATE ds_contents SET
+                    title=%s, body_text=%s, duration_sec=%s, priority=%s, status=%s, meta=%s
+                    WHERE id=%s""",
+                    (title, fallback, duration, priority, status,
+                     json.dumps(meta, ensure_ascii=False), cid))
+            conn.commit()
+            flash(f"슬라이드 '{title}' 저장 완료 ({len(elements)}개 요소).", "success")
+            conn.close()
+            return redirect(url_for("signage.contents"))
+        except Exception as e:
+            conn.rollback()
+            flash(f"저장 실패: {e}", "danger")
+
+    # GET — 폼
+    slide = None
+    if cid:
+        cur.execute("""SELECT id, title, duration_sec, priority, status, meta
+                       FROM ds_contents WHERE id=%s""", (cid,))
+        r = cur.fetchone()
+        if not r:
+            conn.close()
+            flash("존재하지 않는 콘텐츠.", "danger")
+            return redirect(url_for("signage.contents"))
+        meta = {}
+        if r[5]:
+            try:
+                meta = json.loads(r[5]) if isinstance(r[5], str) else r[5]
+            except Exception:
+                meta = {}
+        slide = {
+            'id': r[0], 'title': r[1], 'duration_sec': r[2],
+            'priority': r[3], 'status': r[4],
+            'bg_color': meta.get('bg_color', '#0f172a'),
+            'elements': meta.get('elements', []),
+        }
+    conn.close()
+    return render_template("signage/slide_editor.html",
+                           mode='edit' if cid else 'new',
+                           cid=cid, slide=slide,
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/api/slide/upload", methods=["POST"])
+@_login_required
+def slide_upload():
+    """슬라이드 에디터용 이미지/영상 업로드"""
+    if not _has_signage_perm("create") and session.get("role") != "admin":
+        return jsonify({"ok": False, "msg": "권한 없음"}), 403
+    if 'file' not in request.files:
+        return jsonify({"ok": False, "msg": "파일 없음"}), 400
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({"ok": False, "msg": "파일명 없음"}), 400
+
+    # 확장자로 종류 판별
+    ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+    kind = None
+    for k, exts in ALLOWED_EXTS.items():
+        if ext in exts:
+            kind = k; break
+    if not kind:
+        return jsonify({"ok": False, "msg": f"허용되지 않는 형식: {ext}"}), 400
+
+    try:
+        path = _save_upload(f, kind)
+        return jsonify({"ok": True, "path": path, "kind": kind,
+                        "url": f"/signage/uploads/{path}"})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
 
 
 # ── 생일자 콘텐츠 빌더 (이름만 입력 → 자동 레이아웃) ──────────

@@ -262,9 +262,14 @@ function renderContent(item) {
         return;
     }
 
-    // 🎂 생일자 subtype (meta.subtype === 'birthday')
+    // 🎂 생일자 subtype
     if (item.meta && item.meta.subtype === 'birthday' && Array.isArray(item.meta.names)) {
         renderBirthday(item);
+        return;
+    }
+    // 🎨 슬라이드 subtype (파워포인트형 자유 배치)
+    if (item.meta && item.meta.subtype === 'slide' && Array.isArray(item.meta.elements)) {
+        renderSlide(item);
         return;
     }
 
@@ -313,6 +318,44 @@ function renderContent(item) {
 
 function escapeHtml(s) {
     return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderSlide(item) {
+    const m = item.meta;
+    const bg = m.bg_color || '#0f172a';
+    const elements = (m.elements || []).slice().sort((a,b) => (a.z||0) - (b.z||0));
+
+    let html = `<div style="position:fixed;inset:0;background:${bg};overflow:hidden;">`;
+    for (const e of elements) {
+        const style = `position:absolute;left:${e.x}%;top:${e.y}%;width:${e.w}%;height:${e.h}%;z-index:${e.z||0};box-sizing:border-box;overflow:hidden;`;
+        if (e.type === 'text') {
+            const fs = (e.font_size || 4);
+            const justify = (e.text_align === 'left') ? 'flex-start'
+                          : (e.text_align === 'right') ? 'flex-end' : 'center';
+            const bgStyle = e.no_bg ? 'transparent' : (e.bg || 'transparent');
+            html += `<div style="${style}color:${e.color||'#fff'};background:${bgStyle};
+                font-size:${fs}vw;font-weight:${e.weight||700};
+                display:flex;align-items:center;justify-content:${justify};
+                text-align:${e.text_align||'center'};padding:0.4vw 0.8vw;
+                line-height:1.2;word-break:keep-all;white-space:pre-line;">${escapeHtml(e.content||'')}</div>`;
+        } else if (e.type === 'image') {
+            const fit = e.fit || 'contain';
+            html += `<div style="${style}"><img src="${escapeHtml(e.url)}" style="width:100%;height:100%;object-fit:${fit};display:block;"></div>`;
+        } else if (e.type === 'video') {
+            const fit = e.fit || 'contain';
+            const ap = e.autoplay !== false ? 'autoplay' : '';
+            const lp = e.loop !== false ? 'loop' : '';
+            const mu = e.muted !== false ? 'muted' : '';
+            html += `<div style="${style}"><video src="${escapeHtml(e.url)}" ${ap} ${lp} ${mu} playsinline style="width:100%;height:100%;object-fit:${fit};display:block;"></video></div>`;
+        } else if (e.type === 'web') {
+            html += `<div style="${style}"><iframe src="${escapeHtml(e.url)}" sandbox="allow-scripts allow-same-origin allow-forms" style="width:100%;height:100%;border:0;"></iframe></div>`;
+        } else if (e.type === 'shape') {
+            const op = (e.opacity || 100) / 100;
+            html += `<div style="${style}background:${e.bg_color||'#3b82f6'};border-radius:${e.radius||0}px;opacity:${op};"></div>`;
+        }
+    }
+    html += '</div>';
+    stage.innerHTML = html;
 }
 
 function renderBirthday(item) {
@@ -399,6 +442,10 @@ function renderLayout(layout, items) {
 }
 
 function renderItemHtml(item) {
+    if (item.meta && item.meta.subtype === 'slide' && Array.isArray(item.meta.elements)) {
+        // 멀티존 안에서는 단순화: 첫 텍스트만 표시 또는 백그라운드만
+        return `<div style="position:absolute;inset:0;background:${item.meta.bg_color||'#0f172a'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:2vw;">[슬라이드: ${escapeHtml(item.title||'')}]</div>`;
+    }
     if (item.meta && item.meta.subtype === 'birthday' && Array.isArray(item.meta.names)) {
         const m = item.meta;
         const names = m.names.slice(0,10);

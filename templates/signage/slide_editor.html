@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>슬라이드 에디터 — 디지털 사이니지</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=27" rel="stylesheet">
+    <style>
+        body { background:#f1f5f9; }
+        .editor-wrap {
+            display:grid; grid-template-columns: 220px 1fr 280px;
+            gap:10px; padding:10px; height: calc(100vh - 56px);
+        }
+        /* 툴바 (좌) */
+        .toolbar {
+            background:#fff; border:1px solid #e2e8f0; border-radius:2px;
+            padding:10px; overflow-y:auto;
+        }
+        .toolbar h6 {
+            font-size:0.75rem; font-weight:700; color:#64748b;
+            text-transform:uppercase; letter-spacing:0.05em;
+            padding-bottom:6px; border-bottom:1px solid #e2e8f0;
+            margin: 8px 0 6px;
+        }
+        .toolbar h6:first-child { margin-top:0; }
+        .tool-btn {
+            display:flex; align-items:center; gap:8px;
+            width:100%; padding:8px 10px; margin-bottom:4px;
+            background:#f8fafc; border:1px solid #e2e8f0; border-radius:2px;
+            font-size:0.85rem; cursor:pointer; text-align:left;
+        }
+        .tool-btn:hover { background:#1e40af; color:#fff; border-color:#1e3a8a; }
+        .tool-btn .ti { font-size:1.1rem; }
+
+        /* 캔버스 (중앙) */
+        .canvas-area {
+            background:#fff; border:1px solid #e2e8f0; border-radius:2px;
+            padding:12px; overflow:auto; display:flex; flex-direction:column;
+        }
+        .canvas-bar {
+            display:flex; align-items:center; gap:6px; padding:0 0 8px;
+            border-bottom:1px solid #f1f5f9; margin-bottom:8px;
+            font-size:0.85rem;
+        }
+        .canvas-bar .right { margin-left:auto; }
+        #canvas {
+            position:relative; aspect-ratio: 16/9; max-height: calc(100vh - 200px);
+            margin: 0 auto; background:#0f172a;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            overflow:hidden;
+        }
+        .ele {
+            position:absolute; box-sizing:border-box;
+            cursor:move; user-select:none;
+            outline: 1px dashed transparent;
+        }
+        .ele:hover { outline-color: rgba(255,255,255,0.4); }
+        .ele.selected {
+            outline: 2px solid #facc15 !important;
+            z-index: 9999 !important;
+        }
+        .ele iframe, .ele img, .ele video {
+            width:100%; height:100%; pointer-events:none;
+            object-fit: contain; display:block;
+        }
+        .ele.fit-cover img, .ele.fit-cover video { object-fit:cover; }
+        .ele-text {
+            display:flex; align-items:center; justify-content:center;
+            text-align:center; padding: 4px;
+            word-break:keep-all; line-height:1.2;
+            overflow:hidden;
+        }
+        .ele-shape { /* color block */ }
+        .ele-web {
+            background:#f1f5f9; position:relative;
+        }
+        .ele-web::after {
+            content: '🌐 ' attr(data-url);
+            position:absolute; top:2px; left:4px;
+            font-size:10px; color:#64748b; background:rgba(255,255,255,0.7);
+            padding:1px 4px; pointer-events:none;
+        }
+        /* 리사이즈 핸들 */
+        .resize-h {
+            position:absolute; width:10px; height:10px;
+            background:#facc15; border:1px solid #0f172a;
+            z-index:10000;
+        }
+        .rh-nw { top:-5px; left:-5px; cursor:nwse-resize; }
+        .rh-ne { top:-5px; right:-5px; cursor:nesw-resize; }
+        .rh-sw { bottom:-5px; left:-5px; cursor:nesw-resize; }
+        .rh-se { bottom:-5px; right:-5px; cursor:nwse-resize; }
+
+        /* 속성 패널 (우) */
+        .props {
+            background:#fff; border:1px solid #e2e8f0; border-radius:2px;
+            padding:10px; overflow-y:auto;
+        }
+        .props h6 {
+            font-size:0.75rem; font-weight:700; color:#64748b;
+            text-transform:uppercase; letter-spacing:0.05em;
+            padding-bottom:6px; border-bottom:1px solid #e2e8f0;
+            margin: 8px 0 6px;
+        }
+        .props h6:first-child { margin-top:0; }
+        .props label.small-l {
+            font-size:0.72rem; color:#475569; margin-bottom:2px;
+            display:block;
+        }
+        .props .row-pair {
+            display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-bottom:6px;
+        }
+        .layer-list {
+            max-height: 200px; overflow-y:auto;
+            border:1px solid #e2e8f0; border-radius:2px;
+        }
+        .layer-item {
+            padding: 4px 8px; font-size:0.78rem; cursor:pointer;
+            border-bottom: 1px solid #f1f5f9;
+            display:flex; align-items:center; gap:6px;
+        }
+        .layer-item:hover { background:#f8fafc; }
+        .layer-item.selected { background:#fef3c7; }
+        .layer-item .li-icon { width:16px; text-align:center; }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_contents' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-2">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}{% endwith %}
+
+    <form method="post" id="slideForm">
+    <div class="editor-wrap">
+        <!-- 좌측: 도구 -->
+        <div class="toolbar">
+            <h6>요소 추가</h6>
+            <button type="button" class="tool-btn" onclick="addText()"><span class="ti">📝</span> 텍스트</button>
+            <button type="button" class="tool-btn" onclick="document.getElementById('imgFile').click()"><span class="ti">🖼</span> 이미지</button>
+            <button type="button" class="tool-btn" onclick="document.getElementById('vidFile').click()"><span class="ti">🎬</span> 영상</button>
+            <button type="button" class="tool-btn" onclick="addWeb()"><span class="ti">🌐</span> 웹사이트</button>
+            <button type="button" class="tool-btn" onclick="addShape()"><span class="ti">🟦</span> 도형(색상박스)</button>
+            <input type="file" id="imgFile" accept="image/*" style="display:none;" onchange="uploadFile(this, 'image')">
+            <input type="file" id="vidFile" accept="video/*" style="display:none;" onchange="uploadFile(this, 'video')">
+
+            <h6 style="margin-top:14px;">정렬</h6>
+            <button type="button" class="tool-btn" onclick="alignSel('left')">⇤ 왼쪽 정렬</button>
+            <button type="button" class="tool-btn" onclick="alignSel('center')">↔ 가운데 정렬</button>
+            <button type="button" class="tool-btn" onclick="alignSel('right')">⇥ 오른쪽 정렬</button>
+            <button type="button" class="tool-btn" onclick="alignSel('top')">⇡ 위쪽 정렬</button>
+            <button type="button" class="tool-btn" onclick="alignSel('middle')">⇕ 중간 정렬</button>
+            <button type="button" class="tool-btn" onclick="alignSel('bottom')">⇣ 아래쪽 정렬</button>
+            <button type="button" class="tool-btn" onclick="fullSize()">↔↕ 전체화면</button>
+
+            <h6 style="margin-top:14px;">레이어</h6>
+            <button type="button" class="tool-btn" onclick="moveLayer(+1)">⬆ 앞으로</button>
+            <button type="button" class="tool-btn" onclick="moveLayer(-1)">⬇ 뒤로</button>
+            <button type="button" class="tool-btn" onclick="duplicateSel()">⎘ 복제 (Ctrl+D)</button>
+            <button type="button" class="tool-btn" style="color:#dc2626;" onclick="deleteSel()">🗑 삭제 (Del)</button>
+        </div>
+
+        <!-- 중앙: 캔버스 -->
+        <div class="canvas-area">
+            <div class="canvas-bar">
+                <input type="text" name="title" class="form-control form-control-sm" style="max-width:300px;"
+                       placeholder="슬라이드 제목"
+                       value="{{ slide.title if slide else '' }}">
+                <span class="text-muted">|</span>
+                <label class="small-l mb-0">시간(초):</label>
+                <input type="number" name="duration_sec" class="form-control form-control-sm" style="width:70px;"
+                       value="{{ slide.duration_sec if slide else 15 }}" min="3" max="600">
+                <label class="small-l mb-0">우선순위:</label>
+                <input type="number" name="priority" class="form-control form-control-sm" style="width:60px;"
+                       value="{{ slide.priority if slide else 0 }}">
+                <select name="status" class="form-select form-select-sm" style="width:90px;">
+                    <option value="active" {{ 'selected' if not slide or slide.status=='active' }}>사용</option>
+                    <option value="draft" {{ 'selected' if slide and slide.status=='draft' }}>임시</option>
+                    <option value="paused" {{ 'selected' if slide and slide.status=='paused' }}>중지</option>
+                </select>
+                <label class="small-l mb-0">배경:</label>
+                <input type="color" name="bg_color" id="canvasBg" style="height:30px; width:40px; padding:0;"
+                       value="{{ slide.bg_color if slide else '#0f172a' }}"
+                       onchange="document.getElementById('canvas').style.background=this.value">
+                <div class="right">
+                    <a href="/signage/contents" class="btn btn-sm btn-outline-secondary">취소</a>
+                    <button type="submit" class="btn btn-sm btn-primary">💾 저장</button>
+                </div>
+            </div>
+            <div id="canvas"></div>
+            <div class="text-muted small mt-2">
+                💡 클릭 → 선택 · 드래그 → 이동 · 모서리 노란 점 → 크기 조절 · Del 키 → 삭제
+            </div>
+        </div>
+
+        <!-- 우측: 속성 -->
+        <div class="props" id="props">
+            <h6>레이어 (z-순서)</h6>
+            <div class="layer-list" id="layerList"></div>
+
+            <div id="propEmpty">
+                <h6 style="margin-top:14px;">선택된 요소 없음</h6>
+                <div class="text-muted small">왼쪽 툴바에서 요소를 추가하거나 캔버스에서 클릭해 선택하세요.</div>
+            </div>
+
+            <div id="propPanel" style="display:none;">
+                <h6 style="margin-top:14px;">위치 · 크기 (%)</h6>
+                <div class="row-pair">
+                    <div>
+                        <label class="small-l">X</label>
+                        <input type="number" id="p_x" class="form-control form-control-sm" min="0" max="100" step="0.1" oninput="updateFromProps()">
+                    </div>
+                    <div>
+                        <label class="small-l">Y</label>
+                        <input type="number" id="p_y" class="form-control form-control-sm" min="0" max="100" step="0.1" oninput="updateFromProps()">
+                    </div>
+                    <div>
+                        <label class="small-l">W</label>
+                        <input type="number" id="p_w" class="form-control form-control-sm" min="1" max="100" step="0.1" oninput="updateFromProps()">
+                    </div>
+                    <div>
+                        <label class="small-l">H</label>
+                        <input type="number" id="p_h" class="form-control form-control-sm" min="1" max="100" step="0.1" oninput="updateFromProps()">
+                    </div>
+                </div>
+
+                <!-- 텍스트 전용 -->
+                <div class="prop-text" style="display:none;">
+                    <h6 style="margin-top:14px;">텍스트</h6>
+                    <textarea id="p_content" class="form-control form-control-sm" rows="4" oninput="updateFromProps()"></textarea>
+                    <div class="row-pair mt-2">
+                        <div>
+                            <label class="small-l">글자크기 (vw)</label>
+                            <input type="number" id="p_fontsize" class="form-control form-control-sm" min="0.5" max="20" step="0.1" oninput="updateFromProps()">
+                        </div>
+                        <div>
+                            <label class="small-l">두께</label>
+                            <select id="p_weight" class="form-select form-select-sm" onchange="updateFromProps()">
+                                <option value="400">보통</option>
+                                <option value="700">굵게</option>
+                                <option value="900">매우굵게</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="small-l">글자색</label>
+                            <input type="color" id="p_color" class="form-control form-control-sm form-control-color" style="height:30px;" oninput="updateFromProps()">
+                        </div>
+                        <div>
+                            <label class="small-l">배경색</label>
+                            <input type="color" id="p_bg" class="form-control form-control-sm form-control-color" style="height:30px;" oninput="updateFromProps()">
+                        </div>
+                    </div>
+                    <label class="small-l mt-2">정렬</label>
+                    <select id="p_textalign" class="form-select form-select-sm" onchange="updateFromProps()">
+                        <option value="center">가운데</option>
+                        <option value="left">왼쪽</option>
+                        <option value="right">오른쪽</option>
+                    </select>
+                    <div class="form-check mt-2">
+                        <input type="checkbox" class="form-check-input" id="p_text_nobg" onchange="updateFromProps()">
+                        <label class="form-check-label small" for="p_text_nobg">배경 투명</label>
+                    </div>
+                </div>
+
+                <!-- 이미지/영상 전용 -->
+                <div class="prop-media" style="display:none;">
+                    <h6 style="margin-top:14px;">미디어</h6>
+                    <label class="small-l">맞춤</label>
+                    <select id="p_fit" class="form-select form-select-sm" onchange="updateFromProps()">
+                        <option value="contain">원본 비율 유지 (contain)</option>
+                        <option value="cover">화면 채움 (cover)</option>
+                    </select>
+                    <div class="prop-video" style="display:none;">
+                        <div class="form-check mt-2">
+                            <input type="checkbox" class="form-check-input" id="p_autoplay" checked onchange="updateFromProps()">
+                            <label class="form-check-label small" for="p_autoplay">자동재생</label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="p_loop" checked onchange="updateFromProps()">
+                            <label class="form-check-label small" for="p_loop">반복</label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="p_muted" checked onchange="updateFromProps()">
+                            <label class="form-check-label small" for="p_muted">음소거</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 웹 전용 -->
+                <div class="prop-web" style="display:none;">
+                    <h6 style="margin-top:14px;">웹사이트</h6>
+                    <label class="small-l">URL</label>
+                    <input type="url" id="p_url" class="form-control form-control-sm" oninput="updateFromProps()" placeholder="https://...">
+                    <div class="form-text">iframe 허용 사이트만 표시됩니다.</div>
+                </div>
+
+                <!-- 도형 전용 -->
+                <div class="prop-shape" style="display:none;">
+                    <h6 style="margin-top:14px;">도형</h6>
+                    <div class="row-pair">
+                        <div>
+                            <label class="small-l">배경색</label>
+                            <input type="color" id="p_shape_bg" class="form-control form-control-sm form-control-color" style="height:30px;" oninput="updateFromProps()">
+                        </div>
+                        <div>
+                            <label class="small-l">모서리(px)</label>
+                            <input type="number" id="p_radius" class="form-control form-control-sm" min="0" max="200" oninput="updateFromProps()">
+                        </div>
+                    </div>
+                    <label class="small-l mt-2">투명도 (%)</label>
+                    <input type="range" id="p_opacity" class="form-range" min="10" max="100" oninput="updateFromProps()">
+                </div>
+            </div>
+        </div>
+    </div>
+    <input type="hidden" name="elements_json" id="elementsJson">
+    </form>
+</div>
+
+<script>
+let elements = {{ slide.elements|tojson if slide else '[]' }};
+let selectedIdx = -1;
+let canvas = document.getElementById('canvas');
+let dragState = null;
+
+function uid() { return 'e' + Date.now() + Math.floor(Math.random()*1000); }
+
+function addText() {
+    elements.push({
+        id: uid(), type: 'text', x: 20, y: 40, w: 60, h: 20,
+        content: '텍스트를 입력하세요',
+        font_size: 4, weight: 700, color: '#ffffff', bg: '#1e40af',
+        text_align: 'center', no_bg: false, z: elements.length,
+    });
+    render(); select(elements.length - 1);
+}
+function addWeb() {
+    const url = prompt('웹사이트 URL을 입력하세요:', 'https://');
+    if (!url) return;
+    elements.push({
+        id: uid(), type: 'web', x: 20, y: 20, w: 60, h: 60,
+        url: url, z: elements.length,
+    });
+    render(); select(elements.length - 1);
+}
+function addShape() {
+    elements.push({
+        id: uid(), type: 'shape', x: 30, y: 30, w: 40, h: 30,
+        bg_color: '#3b82f6', radius: 8, opacity: 100, z: elements.length,
+    });
+    render(); select(elements.length - 1);
+}
+
+async function uploadFile(input, kind) {
+    if (!input.files || !input.files[0]) return;
+    const fd = new FormData();
+    fd.append('file', input.files[0]);
+    try {
+        const res = await fetch('/signage/api/slide/upload', {method:'POST', body: fd});
+        const j = await res.json();
+        if (!j.ok) { alert('업로드 실패: '+j.msg); return; }
+        if (kind === 'image') {
+            elements.push({
+                id: uid(), type: 'image', x: 20, y: 20, w: 60, h: 60,
+                url: j.url, fit: 'contain', z: elements.length,
+            });
+        } else {
+            elements.push({
+                id: uid(), type: 'video', x: 20, y: 20, w: 60, h: 60,
+                url: j.url, fit: 'contain',
+                autoplay: true, loop: true, muted: true,
+                z: elements.length,
+            });
+        }
+        render(); select(elements.length - 1);
+        input.value = '';
+    } catch(e) { alert('네트워크 오류: '+e.message); }
+}
+
+function render() {
+    canvas.innerHTML = '';
+    canvas.style.background = document.getElementById('canvasBg').value;
+    // sort by z
+    const sorted = elements.map((e,i) => ({e, i})).sort((a,b) => (a.e.z||0) - (b.e.z||0));
+    for (const {e, i} of sorted) {
+        const div = document.createElement('div');
+        div.className = 'ele ele-' + e.type + (selectedIdx === i ? ' selected' : '') + (e.fit === 'cover' ? ' fit-cover' : '');
+        div.style.left = e.x + '%';
+        div.style.top = e.y + '%';
+        div.style.width = e.w + '%';
+        div.style.height = e.h + '%';
+        div.style.zIndex = e.z || 0;
+        div.dataset.idx = i;
+
+        if (e.type === 'text') {
+            const cw = canvas.clientWidth;
+            const fs = (e.font_size || 4) * cw / 100;
+            div.style.color = e.color || '#fff';
+            div.style.background = e.no_bg ? 'transparent' : (e.bg || 'transparent');
+            div.style.fontWeight = e.weight || 700;
+            div.style.fontSize = fs + 'px';
+            div.style.textAlign = e.text_align || 'center';
+            div.style.justifyContent = (e.text_align === 'left') ? 'flex-start'
+                                     : (e.text_align === 'right') ? 'flex-end' : 'center';
+            div.innerText = e.content || '';
+        } else if (e.type === 'image') {
+            div.innerHTML = `<img src="${e.url}" alt="">`;
+        } else if (e.type === 'video') {
+            div.innerHTML = `<video src="${e.url}" muted autoplay loop playsinline></video>`;
+        } else if (e.type === 'web') {
+            div.dataset.url = e.url;
+            // 에디터에서는 iframe 대신 placeholder 표시 (성능)
+            div.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#475569;font-size:14px;text-align:center;padding:8px;">${e.url}</div>`;
+        } else if (e.type === 'shape') {
+            div.style.background = e.bg_color || '#3b82f6';
+            div.style.borderRadius = (e.radius || 0) + 'px';
+            div.style.opacity = (e.opacity || 100) / 100;
+        }
+
+        div.onmousedown = (ev) => startDrag(ev, i);
+
+        // 선택된 요소엔 리사이즈 핸들
+        if (selectedIdx === i) {
+            for (const h of ['nw','ne','sw','se']) {
+                const rh = document.createElement('div');
+                rh.className = 'resize-h rh-' + h;
+                rh.onmousedown = (ev) => { ev.stopPropagation(); startResize(ev, i, h); };
+                div.appendChild(rh);
+            }
+        }
+        canvas.appendChild(div);
+    }
+    renderLayerList();
+    renderProps();
+}
+
+function renderLayerList() {
+    const list = document.getElementById('layerList');
+    list.innerHTML = '';
+    const sorted = elements.map((e,i) => ({e,i})).sort((a,b) => (b.e.z||0) - (a.e.z||0));
+    if (!sorted.length) {
+        list.innerHTML = '<div class="text-muted small p-2">요소 없음</div>';
+        return;
+    }
+    const icons = {text:'📝', image:'🖼', video:'🎬', web:'🌐', shape:'🟦'};
+    for (const {e, i} of sorted) {
+        const div = document.createElement('div');
+        div.className = 'layer-item' + (selectedIdx === i ? ' selected' : '');
+        const label = e.type === 'text' ? (e.content || '').slice(0,20)
+                    : e.type === 'image' ? '이미지'
+                    : e.type === 'video' ? '영상'
+                    : e.type === 'web' ? (e.url || '').slice(0,30)
+                    : '도형';
+        div.innerHTML = `<span class="li-icon">${icons[e.type]||'?'}</span> ${label || '(빈)'}`;
+        div.onclick = () => select(i);
+        list.appendChild(div);
+    }
+}
+
+function select(idx) {
+    selectedIdx = idx;
+    render();
+}
+
+function renderProps() {
+    document.getElementById('propEmpty').style.display = (selectedIdx < 0) ? '' : 'none';
+    document.getElementById('propPanel').style.display = (selectedIdx < 0) ? 'none' : '';
+    if (selectedIdx < 0) return;
+    const e = elements[selectedIdx];
+    document.getElementById('p_x').value = e.x.toFixed(1);
+    document.getElementById('p_y').value = e.y.toFixed(1);
+    document.getElementById('p_w').value = e.w.toFixed(1);
+    document.getElementById('p_h').value = e.h.toFixed(1);
+    // 타입별 패널
+    for (const c of ['text','media','web','shape']) {
+        document.querySelector('.prop-' + c).style.display = 'none';
+    }
+    if (e.type === 'text') {
+        document.querySelector('.prop-text').style.display = '';
+        document.getElementById('p_content').value = e.content || '';
+        document.getElementById('p_fontsize').value = e.font_size || 4;
+        document.getElementById('p_weight').value = e.weight || 700;
+        document.getElementById('p_color').value = e.color || '#ffffff';
+        document.getElementById('p_bg').value = e.bg || '#1e40af';
+        document.getElementById('p_textalign').value = e.text_align || 'center';
+        document.getElementById('p_text_nobg').checked = !!e.no_bg;
+    } else if (e.type === 'image' || e.type === 'video') {
+        document.querySelector('.prop-media').style.display = '';
+        document.querySelector('.prop-video').style.display = (e.type === 'video') ? '' : 'none';
+        document.getElementById('p_fit').value = e.fit || 'contain';
+        if (e.type === 'video') {
+            document.getElementById('p_autoplay').checked = e.autoplay !== false;
+            document.getElementById('p_loop').checked = e.loop !== false;
+            document.getElementById('p_muted').checked = e.muted !== false;
+        }
+    } else if (e.type === 'web') {
+        document.querySelector('.prop-web').style.display = '';
+        document.getElementById('p_url').value = e.url || '';
+    } else if (e.type === 'shape') {
+        document.querySelector('.prop-shape').style.display = '';
+        document.getElementById('p_shape_bg').value = e.bg_color || '#3b82f6';
+        document.getElementById('p_radius').value = e.radius || 0;
+        document.getElementById('p_opacity').value = e.opacity || 100;
+    }
+}
+
+function updateFromProps() {
+    if (selectedIdx < 0) return;
+    const e = elements[selectedIdx];
+    e.x = clamp(parseFloat(document.getElementById('p_x').value)||0, 0, 100);
+    e.y = clamp(parseFloat(document.getElementById('p_y').value)||0, 0, 100);
+    e.w = clamp(parseFloat(document.getElementById('p_w').value)||1, 1, 100);
+    e.h = clamp(parseFloat(document.getElementById('p_h').value)||1, 1, 100);
+    if (e.type === 'text') {
+        e.content = document.getElementById('p_content').value;
+        e.font_size = parseFloat(document.getElementById('p_fontsize').value)||4;
+        e.weight = parseInt(document.getElementById('p_weight').value)||700;
+        e.color = document.getElementById('p_color').value;
+        e.bg = document.getElementById('p_bg').value;
+        e.text_align = document.getElementById('p_textalign').value;
+        e.no_bg = document.getElementById('p_text_nobg').checked;
+    } else if (e.type === 'image' || e.type === 'video') {
+        e.fit = document.getElementById('p_fit').value;
+        if (e.type === 'video') {
+            e.autoplay = document.getElementById('p_autoplay').checked;
+            e.loop = document.getElementById('p_loop').checked;
+            e.muted = document.getElementById('p_muted').checked;
+        }
+    } else if (e.type === 'web') {
+        e.url = document.getElementById('p_url').value;
+    } else if (e.type === 'shape') {
+        e.bg_color = document.getElementById('p_shape_bg').value;
+        e.radius = parseInt(document.getElementById('p_radius').value)||0;
+        e.opacity = parseInt(document.getElementById('p_opacity').value)||100;
+    }
+    render();
+}
+
+function clamp(v, mn, mx) { return Math.min(Math.max(v, mn), mx); }
+
+// 드래그 (이동)
+function startDrag(ev, idx) {
+    select(idx);
+    const e = elements[idx];
+    const rect = canvas.getBoundingClientRect();
+    dragState = {
+        type: 'move', idx,
+        startX: ev.clientX, startY: ev.clientY,
+        origX: e.x, origY: e.y,
+        cw: rect.width, ch: rect.height,
+    };
+    ev.preventDefault();
+}
+
+function startResize(ev, idx, handle) {
+    const e = elements[idx];
+    const rect = canvas.getBoundingClientRect();
+    dragState = {
+        type: 'resize', idx, handle,
+        startX: ev.clientX, startY: ev.clientY,
+        origX: e.x, origY: e.y, origW: e.w, origH: e.h,
+        cw: rect.width, ch: rect.height,
+    };
+    ev.preventDefault();
+}
+
+document.addEventListener('mousemove', (ev) => {
+    if (!dragState) return;
+    const d = dragState;
+    const dx = (ev.clientX - d.startX) / d.cw * 100;
+    const dy = (ev.clientY - d.startY) / d.ch * 100;
+    const e = elements[d.idx];
+    if (d.type === 'move') {
+        e.x = clamp(d.origX + dx, 0, 100 - e.w);
+        e.y = clamp(d.origY + dy, 0, 100 - e.h);
+    } else if (d.type === 'resize') {
+        if (d.handle === 'se') {
+            e.w = clamp(d.origW + dx, 2, 100 - e.x);
+            e.h = clamp(d.origH + dy, 2, 100 - e.y);
+        } else if (d.handle === 'ne') {
+            e.w = clamp(d.origW + dx, 2, 100 - e.x);
+            e.y = clamp(d.origY + dy, 0, d.origY + d.origH - 2);
+            e.h = clamp(d.origH - dy, 2, 100 - e.y);
+        } else if (d.handle === 'sw') {
+            e.x = clamp(d.origX + dx, 0, d.origX + d.origW - 2);
+            e.w = clamp(d.origW - dx, 2, 100 - e.x);
+            e.h = clamp(d.origH + dy, 2, 100 - e.y);
+        } else if (d.handle === 'nw') {
+            e.x = clamp(d.origX + dx, 0, d.origX + d.origW - 2);
+            e.w = clamp(d.origW - dx, 2, 100 - e.x);
+            e.y = clamp(d.origY + dy, 0, d.origY + d.origH - 2);
+            e.h = clamp(d.origH - dy, 2, 100 - e.y);
+        }
+    }
+    render();
+});
+document.addEventListener('mouseup', () => { dragState = null; });
+
+// 키보드
+document.addEventListener('keydown', (ev) => {
+    if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA' || ev.target.tagName === 'SELECT') return;
+    if (ev.key === 'Delete' || ev.key === 'Backspace') {
+        if (selectedIdx >= 0) { deleteSel(); ev.preventDefault(); }
+    } else if (ev.key === 'd' && (ev.ctrlKey || ev.metaKey)) {
+        if (selectedIdx >= 0) { duplicateSel(); ev.preventDefault(); }
+    } else if (ev.key.startsWith('Arrow') && selectedIdx >= 0) {
+        const e = elements[selectedIdx];
+        const step = ev.shiftKey ? 5 : 0.5;
+        if (ev.key === 'ArrowLeft')  e.x = clamp(e.x - step, 0, 100 - e.w);
+        if (ev.key === 'ArrowRight') e.x = clamp(e.x + step, 0, 100 - e.w);
+        if (ev.key === 'ArrowUp')    e.y = clamp(e.y - step, 0, 100 - e.h);
+        if (ev.key === 'ArrowDown')  e.y = clamp(e.y + step, 0, 100 - e.h);
+        render(); ev.preventDefault();
+    }
+});
+
+function deleteSel() {
+    if (selectedIdx < 0) return;
+    elements.splice(selectedIdx, 1);
+    selectedIdx = -1;
+    render();
+}
+function duplicateSel() {
+    if (selectedIdx < 0) return;
+    const e = JSON.parse(JSON.stringify(elements[selectedIdx]));
+    e.id = uid(); e.x = Math.min(e.x + 3, 100 - e.w);
+    e.y = Math.min(e.y + 3, 100 - e.h);
+    e.z = elements.length;
+    elements.push(e);
+    select(elements.length - 1);
+}
+function moveLayer(dir) {
+    if (selectedIdx < 0) return;
+    const e = elements[selectedIdx];
+    e.z = (e.z || 0) + dir;
+    render();
+}
+function alignSel(mode) {
+    if (selectedIdx < 0) return;
+    const e = elements[selectedIdx];
+    if (mode === 'left') e.x = 0;
+    if (mode === 'right') e.x = 100 - e.w;
+    if (mode === 'center') e.x = (100 - e.w) / 2;
+    if (mode === 'top') e.y = 0;
+    if (mode === 'bottom') e.y = 100 - e.h;
+    if (mode === 'middle') e.y = (100 - e.h) / 2;
+    render();
+}
+function fullSize() {
+    if (selectedIdx < 0) return;
+    const e = elements[selectedIdx];
+    e.x = 0; e.y = 0; e.w = 100; e.h = 100;
+    render();
+}
+
+// 캔버스 빈 곳 클릭 → 선택해제
+canvas.addEventListener('mousedown', (ev) => {
+    if (ev.target === canvas) { selectedIdx = -1; render(); }
+});
+
+// 저장
+document.getElementById('slideForm').addEventListener('submit', () => {
+    document.getElementById('elementsJson').value = JSON.stringify(elements);
+});
+
+// 창 크기 변경 시 텍스트 폰트 재계산
+window.addEventListener('resize', () => render());
+
+render();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
