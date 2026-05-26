@@ -86,27 +86,47 @@ html, body, #root {
 .workspace.mode-split .doc-area { flex: 1.3; }
 .workspace.mode-split .preview-panel { flex: 1; max-width: 700px; }
 
-/* 본문 (흰 종이) */
+/* 본문 — 16:9 가로형 캔버스 (TV 송출 크기 그대로) */
 .doc-area {
   padding: 28px 20px 60px;
   overflow-y: auto;
-  display: flex; justify-content: center;
+  display: flex; justify-content: center; align-items: flex-start;
 }
 .doc-paper {
   background: var(--writer-paper);
   color: var(--writer-ink);
-  width: 100%; max-width: 880px;
-  min-height: 600px;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04);
-  padding: 32px 48px;
+  width: 100%; max-width: 1600px;
+  aspect-ratio: 16 / 9;            /* TV 와 동일 비율 */
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 10px 24px rgba(0,0,0,0.06);
+  padding: 32px 56px;
+  display: flex; flex-direction: column;
+  overflow-y: auto;                /* 내용 길면 내부 스크롤 */
+  position: relative;
+}
+/* 16:9 경계를 넘긴 콘텐츠 경고용 */
+.doc-paper::after {
+  content: '';
+  pointer-events: none;
 }
 @media (max-width: 767px) {
-  .doc-paper { padding: 20px 16px; }
+  .doc-paper { padding: 20px 16px; aspect-ratio: 16/9; }
 }
 
-/* BlockNote 컨테이너 — 자체 스타일 유지 */
-.bn-container { min-height: 500px; }
+/* BlockNote 컨테이너 — flex로 확장 */
+.bn-container { flex: 1; min-height: 0; }
+.bn-container > * { min-height: 100%; }
+
+/* 종이 위쪽 라벨 (TV 1화면 가이드) */
+.paper-label {
+  position: absolute; top: -22px; right: 8px;
+  font-size: 0.72rem; color: #94a3b8;
+  display: flex; align-items: center; gap: 4px;
+}
+.paper-label::before {
+  content: '📺';
+  font-size: 0.85rem;
+}
 
 /* 미리보기 패널 */
 .preview-panel {

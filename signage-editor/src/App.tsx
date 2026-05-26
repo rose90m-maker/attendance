@@ -119,6 +119,7 @@ export default function App() {
       <div className={`workspace mode-${mode}`}>
         <div className="doc-area">
           <div className="doc-paper">
+            <div className="paper-label">TV 1화면 (16:9 · 4K)</div>
             <ContentEditor
               initialContent={c?.editor_json && c.editor_json.length > 0 ? c.editor_json : undefined}
               onChange={onEditorChange}
