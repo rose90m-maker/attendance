@@ -2360,8 +2360,249 @@ def logs_export():
                     headers={'Content-Disposition': f'attachment; filename={fname}'})
 
 
+# ════════════════════════════════════════════════════════
+#  Phase 7 — 설정 (그룹/태그/권한/시스템)
+# ════════════════════════════════════════════════════════
+
 @signage_bp.route("/settings")
 @_admin_required
 def settings():
-    flash("설정 — Phase 7에서 구현 예정", "info")
-    return redirect(url_for("signage.dashboard"))
+    """통합 설정 페이지: 그룹/태그/부서권한/시스템"""
+    conn = _conn(); cur = conn.cursor()
+
+    # 디스플레이 그룹
+    cur.execute("""SELECT g.id, g.name, g.description, g.created_at,
+                          (SELECT COUNT(*) FROM ds_displays d
+                           WHERE d.group_id=g.id OR EXISTS(
+                              SELECT 1 FROM ds_display_group_map m
+                              WHERE m.display_id=d.id AND m.group_id=g.id)) AS dcnt
+                   FROM ds_display_groups g ORDER BY g.name""")
+    groups = [
+        {'id': r[0], 'name': r[1], 'description': r[2],
+         'created_at': r[3], 'display_count': r[4] or 0}
+        for r in cur.fetchall()
+    ]
+
+    # 태그
+    cur.execute("""SELECT t.id, t.name, t.color, t.created_at,
+                          (SELECT COUNT(*) FROM ds_content_tags WHERE tag_id=t.id) AS ccnt
+                   FROM ds_tags t ORDER BY t.name""")
+    tags = [
+        {'id': r[0], 'name': r[1], 'color': r[2],
+         'created_at': r[3], 'content_count': r[4] or 0}
+        for r in cur.fetchall()
+    ]
+
+    # 부서별 권한 (ds_dept_perms)
+    cur.execute("""SELECT id, dept, action, created_at
+                   FROM ds_dept_perms ORDER BY dept, action""")
+    dept_perms = [
+        {'id': r[0], 'dept': r[1], 'action': r[2], 'created_at': r[3]}
+        for r in cur.fetchall()
+    ]
+    # 부서 목록 (employee_roster에서)
+    try:
+        cur.execute("""SELECT DISTINCT dept FROM employee_roster
+                       WHERE dept IS NOT NULL AND dept <> '' ORDER BY dept""")
+        all_depts = [r[0] for r in cur.fetchall()]
+    except Exception:
+        all_depts = []
+
+    # 시스템 통계
+    sys_stats = {}
+    cur.execute("SELECT COUNT(*) FROM ds_contents"); sys_stats['contents'] = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM ds_playlists"); sys_stats['playlists'] = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM ds_schedules"); sys_stats['schedules'] = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM ds_layouts"); sys_stats['layouts'] = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM ds_displays WHERE paired=1"); sys_stats['displays'] = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM ds_play_logs"); sys_stats['play_logs'] = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM ds_emergency_messages"); sys_stats['emergencies'] = cur.fetchone()[0]
+
+    # 업로드 디스크 사용량
+    upload_size_mb = 0
+    upload_count = 0
+    try:
+        for f in UPLOAD_DIR.rglob('*'):
+            if f.is_file():
+                upload_size_mb += f.stat().st_size
+                upload_count += 1
+        upload_size_mb = round(upload_size_mb / (1024*1024), 1)
+    except Exception:
+        pass
+    sys_stats['upload_size_mb'] = upload_size_mb
+    sys_stats['upload_count'] = upload_count
+
+    conn.close()
+    return render_template("signage/settings.html",
+                           groups=groups, tags=tags,
+                           dept_perms=dept_perms, all_depts=all_depts,
+                           sys_stats=sys_stats,
+                           upload_dir=str(UPLOAD_DIR),
+                           is_admin=True)
+
+
+# ── 디스플레이 그룹 ─────────────────────────────────────
+@signage_bp.route("/settings/groups/new", methods=["POST"])
+@_admin_required
+def group_new():
+    name = request.form.get('name', '').strip()
+    desc = request.form.get('description', '').strip()
+    if not name:
+        flash("그룹명을 입력하세요.", "danger")
+        return redirect(url_for("signage.settings"))
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("INSERT INTO ds_display_groups (name, description) VALUES (%s, %s)", (name, desc))
+        conn.commit()
+        flash(f"그룹 '{name}' 생성.", "success")
+    except Exception as e:
+        conn.rollback()
+        flash(f"생성 실패: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("signage.settings"))
+
+
+@signage_bp.route("/settings/groups/<int:gid>/update", methods=["POST"])
+@_admin_required
+def group_update(gid):
+    name = request.form.get('name', '').strip()
+    desc = request.form.get('description', '').strip()
+    if not name:
+        return jsonify({"ok": False, "msg": "그룹명 필요"}), 400
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("UPDATE ds_display_groups SET name=%s, description=%s WHERE id=%s",
+                    (name, desc, gid))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@signage_bp.route("/settings/groups/<int:gid>/delete", methods=["POST"])
+@_admin_required
+def group_delete(gid):
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("UPDATE ds_displays SET group_id=NULL WHERE group_id=%s", (gid,))
+        cur.execute("DELETE FROM ds_display_group_map WHERE group_id=%s", (gid,))
+        cur.execute("DELETE FROM ds_display_groups WHERE id=%s", (gid,))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ── 태그 관리 ──────────────────────────────────────────
+@signage_bp.route("/settings/tags/<int:tid>/update", methods=["POST"])
+@_admin_required
+def tag_update(tid):
+    name = request.form.get('name', '').strip()
+    color = request.form.get('color', '#64748b').strip()
+    if not name:
+        return jsonify({"ok": False, "msg": "태그명 필요"}), 400
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("UPDATE ds_tags SET name=%s, color=%s WHERE id=%s",
+                    (name, color, tid))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@signage_bp.route("/settings/tags/<int:tid>/delete", methods=["POST"])
+@_admin_required
+def tag_delete(tid):
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM ds_content_tags WHERE tag_id=%s", (tid,))
+        cur.execute("DELETE FROM ds_tags WHERE id=%s", (tid,))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ── 부서별 권한 ────────────────────────────────────────
+@signage_bp.route("/settings/dept_perms/add", methods=["POST"])
+@_admin_required
+def dept_perm_add():
+    dept = request.form.get('dept', '').strip()
+    actions = request.form.getlist('actions')
+    if not dept or not actions:
+        flash("부서와 권한을 선택하세요.", "danger")
+        return redirect(url_for("signage.settings"))
+    conn = _conn(); cur = conn.cursor()
+    try:
+        for a in actions:
+            if a in ('view', 'create', 'update', 'delete', 'publish'):
+                cur.execute("""INSERT IGNORE INTO ds_dept_perms (dept, action)
+                               VALUES (%s, %s)""", (dept, a))
+        conn.commit()
+        flash(f"부서 '{dept}' 권한 추가됨.", "success")
+    except Exception as e:
+        conn.rollback()
+        flash(f"실패: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("signage.settings"))
+
+
+@signage_bp.route("/settings/dept_perms/<int:pid>/delete", methods=["POST"])
+@_admin_required
+def dept_perm_delete(pid):
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM ds_dept_perms WHERE id=%s", (pid,))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ── 로그 정리 ──────────────────────────────────────────
+@signage_bp.route("/settings/maintenance/cleanup_logs", methods=["POST"])
+@_admin_required
+def cleanup_logs():
+    """오래된 재생 로그 삭제 (기본 90일)"""
+    days = int(request.form.get('days', 90) or 90)
+    if days < 7:
+        return jsonify({"ok": False, "msg": "7일 미만 불가"}), 400
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("""DELETE FROM ds_play_logs
+                       WHERE started_at < NOW() - INTERVAL %s DAY""", (days,))
+        play_deleted = cur.rowcount
+        cur.execute("""DELETE FROM ds_display_logs
+                       WHERE created_at < NOW() - INTERVAL %s DAY""", (days,))
+        disp_deleted = cur.rowcount
+        cur.execute("""DELETE FROM ds_emergency_messages
+                       WHERE status='ended' AND ended_at < NOW() - INTERVAL %s DAY""", (days,))
+        em_deleted = cur.rowcount
+        conn.commit()
+        return jsonify({"ok": True,
+                        "play_logs": play_deleted,
+                        "display_logs": disp_deleted,
+                        "emergencies": em_deleted})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()

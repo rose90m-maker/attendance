@@ -142,6 +142,7 @@ files = [
     ("templates/signage/layouts.html", "templates/signage/layouts.html"),
     ("templates/signage/layout_detail.html", "templates/signage/layout_detail.html"),
     ("templates/signage/layout_form.html", "templates/signage/layout_form.html"),
+    ("templates/signage/settings.html", "templates/signage/settings.html"),
     ("templates/tbm/base.html", "templates/tbm/base.html"),
     ("templates/tbm/login.html", "templates/tbm/login.html"),
     ("templates/tbm/dashboard.html", "templates/tbm/dashboard.html"),

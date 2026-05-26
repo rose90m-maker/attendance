@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>설정 — 디지털 사이니지</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=27" rel="stylesheet">
+    <style>
+        .set-card {
+            background:#fff; border:1px solid #e2e8f0; border-radius:2px;
+            margin-bottom:14px;
+        }
+        .set-card-h {
+            background:#f8fafc; border-bottom:1px solid #e2e8f0;
+            padding:10px 14px; font-weight:700; font-size:0.92rem; color:#0f172a;
+            display:flex; align-items:center; gap:8px;
+        }
+        .set-card-b { padding:14px; }
+        .stat-grid {
+            display:grid; grid-template-columns:repeat(4, 1fr); gap:10px;
+        }
+        .stat-cell {
+            border:1px solid #e2e8f0; border-radius:2px; padding:10px 12px;
+            background:#fafbfc;
+        }
+        .stat-cell .lbl { font-size:0.72rem; color:#64748b; }
+        .stat-cell .val { font-size:1.4rem; font-weight:800; color:#1e3a8a; }
+        .stat-cell.warn .val { color:#dc2626; }
+        .stat-cell.ok .val { color:#16a34a; }
+        .tag-chip {
+            display:inline-flex; align-items:center; gap:6px;
+            padding:4px 10px; border-radius:14px; color:#fff;
+            font-size:0.8rem; margin:2px; cursor:pointer;
+        }
+        .perm-pill {
+            display:inline-block; padding:2px 8px; border-radius:10px;
+            font-size:0.72rem; background:#dbeafe; color:#1e3a8a; margin-right:3px;
+        }
+        .small-table th, .small-table td {
+            padding:6px 8px !important; font-size:0.85rem;
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_settings' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}{% endwith %}
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">⚙️ 사이니지 설정</h4>
+        <a href="/signage" class="btn btn-sm btn-outline-secondary">← 대시보드</a>
+    </div>
+
+    <!-- 시스템 통계 -->
+    <div class="set-card">
+        <div class="set-card-h">📊 시스템 현황</div>
+        <div class="set-card-b">
+            <div class="stat-grid">
+                <div class="stat-cell"><div class="lbl">콘텐츠</div><div class="val">{{ sys_stats.contents }}</div></div>
+                <div class="stat-cell"><div class="lbl">플레이리스트</div><div class="val">{{ sys_stats.playlists }}</div></div>
+                <div class="stat-cell"><div class="lbl">편성표</div><div class="val">{{ sys_stats.schedules }}</div></div>
+                <div class="stat-cell"><div class="lbl">레이아웃</div><div class="val">{{ sys_stats.layouts }}</div></div>
+                <div class="stat-cell ok"><div class="lbl">디스플레이 (paired)</div><div class="val">{{ sys_stats.displays }}</div></div>
+                <div class="stat-cell"><div class="lbl">긴급공지 누적</div><div class="val">{{ sys_stats.emergencies }}</div></div>
+                <div class="stat-cell"><div class="lbl">재생로그 행수</div><div class="val">{{ sys_stats.play_logs }}</div></div>
+                <div class="stat-cell {{ 'warn' if sys_stats.upload_size_mb > 5000 else '' }}">
+                    <div class="lbl">업로드 ({{ sys_stats.upload_count }}개)</div>
+                    <div class="val">{{ sys_stats.upload_size_mb }} MB</div>
+                </div>
+            </div>
+            <div class="form-text mt-2">업로드 경로: <code>{{ upload_dir }}</code></div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- 디스플레이 그룹 -->
+        <div class="col-lg-6">
+            <div class="set-card">
+                <div class="set-card-h">👥 디스플레이 그룹 ({{ groups|length }})</div>
+                <div class="set-card-b">
+                    <form method="post" action="/signage/settings/groups/new" class="row g-2 mb-3">
+                        <div class="col-5">
+                            <input type="text" name="name" class="form-control form-control-sm" placeholder="그룹명" required>
+                        </div>
+                        <div class="col-5">
+                            <input type="text" name="description" class="form-control form-control-sm" placeholder="설명 (선택)">
+                        </div>
+                        <div class="col-2">
+                            <button class="btn btn-sm btn-primary w-100">추가</button>
+                        </div>
+                    </form>
+                    <table class="table small-table table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr><th>그룹명</th><th>설명</th><th class="text-center">디스플레이</th><th class="text-end">관리</th></tr>
+                        </thead>
+                        <tbody>
+                        {% for g in groups %}
+                        <tr>
+                            <td><strong>{{ g.name }}</strong></td>
+                            <td class="text-muted">{{ g.description or '-' }}</td>
+                            <td class="text-center"><span class="badge bg-secondary">{{ g.display_count }}</span></td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary" onclick="editGroup({{ g.id }}, '{{ g.name|e }}', '{{ (g.description or '')|e }}')">편집</button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="delGroup({{ g.id }})">×</button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">등록된 그룹 없음</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 태그 관리 -->
+        <div class="col-lg-6">
+            <div class="set-card">
+                <div class="set-card-h">🏷 태그 관리 ({{ tags|length }})</div>
+                <div class="set-card-b">
+                    <div class="form-text mb-2">콘텐츠 등록 시 자동 생성됩니다. 여기서는 이름·색상 변경 및 삭제 가능.</div>
+                    <table class="table small-table table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr><th>태그</th><th class="text-center">콘텐츠</th><th class="text-end">관리</th></tr>
+                        </thead>
+                        <tbody>
+                        {% for t in tags %}
+                        <tr>
+                            <td>
+                                <span class="tag-chip" style="background: {{ t.color }};">{{ t.name }}</span>
+                            </td>
+                            <td class="text-center"><span class="badge bg-secondary">{{ t.content_count }}</span></td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary" onclick="editTag({{ t.id }}, '{{ t.name|e }}', '{{ t.color }}')">편집</button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="delTag({{ t.id }})">×</button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center text-muted py-3">등록된 태그 없음</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 부서별 권한 -->
+    <div class="set-card">
+        <div class="set-card-h">🔐 부서별 권한 ({{ dept_perms|length }})</div>
+        <div class="set-card-b">
+            <div class="form-text mb-2">부서 단위로 사이니지 권한을 부여합니다. (이미 perm_groups 권한이 있으면 합집합 적용)</div>
+            <form method="post" action="/signage/settings/dept_perms/add" class="row g-2 mb-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">부서</label>
+                    <select name="dept" class="form-select form-select-sm" required>
+                        <option value="">— 선택 —</option>
+                        {% for d in all_depts %}
+                        <option value="{{ d }}">{{ d }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-7">
+                    <label class="form-label small mb-1">권한 (복수 선택)</label>
+                    <div class="d-flex gap-2 flex-wrap">
+                        {% for a, lbl in [('view','조회'),('create','생성'),('update','수정'),('delete','삭제'),('publish','발송/송출')] %}
+                        <label class="form-check-label">
+                            <input type="checkbox" class="form-check-input" name="actions" value="{{ a }}">
+                            {{ lbl }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-sm btn-primary w-100">권한 추가</button>
+                </div>
+            </form>
+            <table class="table small-table table-bordered align-middle mb-0">
+                <thead class="table-light">
+                    <tr><th>부서</th><th>권한</th><th>등록일</th><th class="text-end">관리</th></tr>
+                </thead>
+                <tbody>
+                {% set ns = namespace(prev='') %}
+                {% for p in dept_perms %}
+                <tr>
+                    <td>{{ p.dept }}</td>
+                    <td><span class="perm-pill">{{ p.action }}</span></td>
+                    <td class="text-muted small">{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '-' }}</td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-danger" onclick="delDeptPerm({{ p.id }})">×</button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-center text-muted py-3">부서 권한 없음 — 위 폼으로 추가</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 유지보수 -->
+    <div class="set-card">
+        <div class="set-card-h">🧹 유지보수</div>
+        <div class="set-card-b">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-6">
+                    <label class="form-label small mb-1">오래된 로그 삭제 (재생로그 + 이벤트로그 + 종료된 긴급공지)</label>
+                    <div class="input-group input-group-sm">
+                        <input type="number" id="cleanupDays" class="form-control" value="90" min="7" max="3650">
+                        <span class="input-group-text">일 이전</span>
+                        <button class="btn btn-outline-danger" onclick="cleanupLogs()">실행</button>
+                    </div>
+                </div>
+                <div class="col-md-6 small text-muted">
+                    💡 디스크 절약 권장 (최소 7일 보존). 삭제 후 복구 불가.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 그룹 편집 모달 -->
+<div class="modal fade" id="groupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">그룹 편집</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="gm_id">
+                <div class="mb-2">
+                    <label class="form-label small">그룹명</label>
+                    <input type="text" id="gm_name" class="form-control form-control-sm">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">설명</label>
+                    <input type="text" id="gm_desc" class="form-control form-control-sm">
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                <button class="btn btn-sm btn-primary" onclick="saveGroup()">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 태그 편집 모달 -->
+<div class="modal fade" id="tagModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">태그 편집</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="tm_id">
+                <div class="mb-2">
+                    <label class="form-label small">태그명</label>
+                    <input type="text" id="tm_name" class="form-control form-control-sm">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">색상</label>
+                    <input type="color" id="tm_color" class="form-control form-control-sm form-control-color" style="height:38px;">
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                <button class="btn btn-sm btn-primary" onclick="saveTag()">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let groupModal, tagModal;
+document.addEventListener('DOMContentLoaded', () => {
+    groupModal = new bootstrap.Modal(document.getElementById('groupModal'));
+    tagModal = new bootstrap.Modal(document.getElementById('tagModal'));
+});
+
+function editGroup(id, name, desc) {
+    document.getElementById('gm_id').value = id;
+    document.getElementById('gm_name').value = name;
+    document.getElementById('gm_desc').value = desc;
+    groupModal.show();
+}
+async function saveGroup() {
+    const id = document.getElementById('gm_id').value;
+    const fd = new FormData();
+    fd.append('name', document.getElementById('gm_name').value);
+    fd.append('description', document.getElementById('gm_desc').value);
+    const res = await fetch(`/signage/settings/groups/${id}/update`, {method:'POST', body: fd});
+    const j = await res.json();
+    if (j.ok) location.reload(); else alert('실패: '+(j.msg||''));
+}
+async function delGroup(id) {
+    if (!confirm('이 그룹을 삭제할까요? 소속 디스플레이는 그룹 미지정 상태가 됩니다.')) return;
+    const res = await fetch(`/signage/settings/groups/${id}/delete`, {method:'POST'});
+    const j = await res.json();
+    if (j.ok) location.reload(); else alert('실패: '+(j.msg||''));
+}
+
+function editTag(id, name, color) {
+    document.getElementById('tm_id').value = id;
+    document.getElementById('tm_name').value = name;
+    document.getElementById('tm_color').value = color;
+    tagModal.show();
+}
+async function saveTag() {
+    const id = document.getElementById('tm_id').value;
+    const fd = new FormData();
+    fd.append('name', document.getElementById('tm_name').value);
+    fd.append('color', document.getElementById('tm_color').value);
+    const res = await fetch(`/signage/settings/tags/${id}/update`, {method:'POST', body: fd});
+    const j = await res.json();
+    if (j.ok) location.reload(); else alert('실패: '+(j.msg||''));
+}
+async function delTag(id) {
+    if (!confirm('이 태그를 삭제할까요? 콘텐츠 매핑도 함께 끊깁니다.')) return;
+    const res = await fetch(`/signage/settings/tags/${id}/delete`, {method:'POST'});
+    const j = await res.json();
+    if (j.ok) location.reload(); else alert('실패: '+(j.msg||''));
+}
+
+async function delDeptPerm(id) {
+    if (!confirm('이 부서 권한을 제거할까요?')) return;
+    const res = await fetch(`/signage/settings/dept_perms/${id}/delete`, {method:'POST'});
+    const j = await res.json();
+    if (j.ok) location.reload(); else alert('실패: '+(j.msg||''));
+}
+
+async function cleanupLogs() {
+    const days = document.getElementById('cleanupDays').value;
+    if (!confirm(`${days}일 이전 로그를 모두 삭제할까요? (복구 불가)`)) return;
+    const fd = new FormData(); fd.append('days', days);
+    const res = await fetch('/signage/settings/maintenance/cleanup_logs', {method:'POST', body: fd});
+    const j = await res.json();
+    if (j.ok) {
+        alert(`삭제 완료\n재생로그: ${j.play_logs}건\n이벤트로그: ${j.display_logs}건\n긴급공지: ${j.emergencies}건`);
+        location.reload();
+    } else alert('실패: '+(j.msg||''));
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
