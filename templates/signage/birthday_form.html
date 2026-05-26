@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎂 생일자 콘텐츠 만들기</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=27" rel="stylesheet">
+    <style>
+        .form-section {
+            background:#fff; border:1px solid #e2e8f0; border-radius:2px;
+            padding:14px 16px; margin-bottom:10px;
+        }
+        .form-section-title {
+            font-weight:700; font-size:0.9rem; color:#0f172a;
+            border-bottom:1px solid #e2e8f0; padding-bottom:6px; margin-bottom:10px;
+        }
+        .preview-wrap {
+            background:#000; aspect-ratio:16/9; position:relative; overflow:hidden;
+            border-radius:2px;
+        }
+        /* 미리보기 캔버스 - 실제 TV 렌더 로직과 동일 */
+        .bday-stage {
+            position:absolute; inset:0;
+            display:flex; flex-direction:column;
+            background: var(--bg, #fbbf24); color: var(--fg, #0f172a);
+            padding: 2vw 2vw;
+        }
+        .bday-header {
+            text-align:center; font-weight:900; font-size:2.2vw;
+            letter-spacing:0.05em; padding: 0.5vw 0;
+        }
+        .bday-header .em { color: var(--accent, #dc2626); font-size:2.5vw; }
+        .bday-grid {
+            flex:1; display:grid; gap:1vw;
+            place-items:center; align-content:center;
+        }
+        .bday-card {
+            background: rgba(255,255,255,0.85);
+            border-radius:8px; padding:1vw 1.5vw;
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            color: var(--fg, #0f172a);
+            text-align:center; min-width:0; max-width:100%; max-height:100%;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+            box-sizing: border-box;
+        }
+        .bday-card .cake { font-size:2.4vw; line-height:1; }
+        .bday-card .nm { font-weight:900; line-height:1.1; word-break:keep-all; }
+        .bday-card .dp {
+            font-size:0.9vw; margin-top:0.4vw; opacity:0.65;
+            font-weight:500;
+        }
+        /* 인원수별 그리드 */
+        .bday-grid[data-n="1"] { grid-template-columns: 1fr; }
+        .bday-grid[data-n="1"] .bday-card .nm { font-size:8vw; }
+        .bday-grid[data-n="1"] .bday-card .cake { font-size:5vw; }
+        .bday-grid[data-n="2"] { grid-template-columns: 1fr 1fr; }
+        .bday-grid[data-n="2"] .bday-card .nm { font-size:5.5vw; }
+        .bday-grid[data-n="2"] .bday-card .cake { font-size:3.6vw; }
+        .bday-grid[data-n="3"] { grid-template-columns: 1fr 1fr 1fr; }
+        .bday-grid[data-n="3"] .bday-card .nm { font-size:4.5vw; }
+        .bday-grid[data-n="3"] .bday-card .cake { font-size:2.8vw; }
+        .bday-grid[data-n="4"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        .bday-grid[data-n="4"] .bday-card .nm { font-size:4vw; }
+        .bday-grid[data-n="5"], .bday-grid[data-n="6"] {
+            grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 1fr;
+        }
+        .bday-grid[data-n="5"] .bday-card:nth-child(5),
+        .bday-grid[data-n="5"] .bday-card:first-child {
+            grid-column: span 1;
+        }
+        .bday-grid[data-n="5"] .bday-card .nm,
+        .bday-grid[data-n="6"] .bday-card .nm { font-size:3.4vw; }
+        .bday-grid[data-n="7"], .bday-grid[data-n="8"] {
+            grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr 1fr;
+        }
+        .bday-grid[data-n="7"] .bday-card .nm,
+        .bday-grid[data-n="8"] .bday-card .nm { font-size:2.7vw; }
+        .bday-grid[data-n="9"], .bday-grid[data-n="10"] {
+            grid-template-columns: repeat(5, 1fr); grid-template-rows: 1fr 1fr;
+        }
+        .bday-grid[data-n="9"] .bday-card .nm,
+        .bday-grid[data-n="10"] .bday-card .nm { font-size:2.4vw; }
+
+        .bday-grid[data-n="7"] .bday-card .cake,
+        .bday-grid[data-n="8"] .bday-card .cake,
+        .bday-grid[data-n="9"] .bday-card .cake,
+        .bday-grid[data-n="10"] .bday-card .cake { font-size:1.8vw; }
+
+        /* 색종이 떠다님 */
+        .confetti {
+            position:absolute; pointer-events:none;
+            animation: floatup 6s linear infinite;
+            font-size: 2vw; opacity:0.7;
+        }
+        @keyframes floatup {
+            0% { transform: translateY(100%) rotate(0deg); opacity:0; }
+            20% { opacity:0.7; }
+            100% { transform: translateY(-110%) rotate(720deg); opacity:0; }
+        }
+
+        .color-swatch {
+            display:inline-flex; align-items:center; gap:6px; margin-right:8px;
+            font-size:0.8rem;
+        }
+        .color-swatch input { width:38px; height:30px; padding:1px; border:1px solid #cbd5e1; }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_contents' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}{% endwith %}
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">🎂 생일자 콘텐츠 만들기
+            <small class="text-muted" style="font-size:0.55em;">이름만 입력 → 인원수(1~10명)에 따라 자동 배치</small>
+        </h4>
+        <a href="/signage/contents" class="btn btn-sm btn-outline-secondary">← 콘텐츠 목록</a>
+    </div>
+
+    <form method="post">
+        <div class="row g-3">
+            <div class="col-lg-5">
+                <div class="form-section">
+                    <div class="form-section-title">제목 & 기본</div>
+                    <div class="mb-2">
+                        <label class="form-label small">제목</label>
+                        <input type="text" name="title" id="f_title" class="form-control form-control-sm"
+                               value="🎂 {{ current_month }}월 생일자" oninput="updatePreview()">
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <label class="form-label small">표시 시간(초)</label>
+                            <input type="number" name="duration_sec" class="form-control form-control-sm" value="15" min="5" max="120">
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small">우선순위</label>
+                            <input type="number" name="priority" class="form-control form-control-sm" value="10">
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small">상태</label>
+                            <select name="status" class="form-select form-select-sm">
+                                <option value="active" selected>사용</option>
+                                <option value="draft">임시</option>
+                                <option value="paused">중지</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">이름 입력</div>
+                    <div class="d-flex gap-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="autoFill()">
+                            🔍 이번 달 생일자 자동 채우기
+                        </button>
+                        <select id="monthSel" class="form-select form-select-sm" style="width:90px;">
+                            {% for m in range(1,13) %}
+                            <option value="{{ m }}" {% if m == current_month %}selected{% endif %}>{{ m }}월</option>
+                            {% endfor %}
+                        </select>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('f_names').value=''; updatePreview();">초기화</button>
+                    </div>
+                    <textarea name="names" id="f_names" class="form-control" rows="8"
+                              placeholder="한 줄에 한 명씩 입력&#10;예시:&#10;홍길동&#10;김철수 (생산팀)&#10;이영희 - 영업팀"
+                              oninput="updatePreview()"></textarea>
+                    <div class="form-text mt-1">
+                        💡 형식: <code>이름</code> 또는 <code>이름 (부서)</code> 또는 <code>이름 - 부서</code><br>
+                        쉼표(,)로 구분해도 됨. 최대 <strong>10명</strong>까지.
+                    </div>
+                    <div class="form-check mt-2">
+                        <input type="checkbox" class="form-check-input" id="show_dept" name="show_dept" value="1" checked onchange="updatePreview()">
+                        <label class="form-check-label small" for="show_dept">부서 표시</label>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">색상</div>
+                    <div class="d-flex flex-wrap">
+                        <label class="color-swatch">배경
+                            <input type="color" name="bg_color" id="f_bg" value="#fbbf24" oninput="updatePreview()">
+                        </label>
+                        <label class="color-swatch">글자
+                            <input type="color" name="fg_color" id="f_fg" value="#0f172a" oninput="updatePreview()">
+                        </label>
+                        <label class="color-swatch">강조
+                            <input type="color" name="accent" id="f_acc" value="#dc2626" oninput="updatePreview()">
+                        </label>
+                    </div>
+                    <div class="mt-2 d-flex flex-wrap gap-1">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setPalette('#fbbf24','#0f172a','#dc2626')">기본 노랑</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setPalette('#fbcfe8','#9d174d','#be185d')">핑크</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setPalette('#a7f3d0','#065f46','#dc2626')">민트</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setPalette('#bfdbfe','#1e3a8a','#dc2626')">하늘</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setPalette('#0f172a','#fbbf24','#fde047')">검정 골드</button>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">노출 기간 (선택)</div>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label small">시작일시</label>
+                            <input type="datetime-local" name="start_at" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">종료일시</label>
+                            <input type="datetime-local" name="end_at" class="form-control form-control-sm">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-7">
+                <div class="form-section" style="position:sticky; top:12px;">
+                    <div class="form-section-title">🖥 4K 실시간 미리보기 (16:9)</div>
+                    <div class="preview-wrap" id="previewWrap">
+                        <div class="bday-stage" id="bdayStage">
+                            <div class="bday-header"><span class="em" id="pvTitleEm">🎂</span> <span id="pvTitle">생일자</span></div>
+                            <div class="bday-grid" id="bdayGrid" data-n="0">
+                                <div style="opacity:0.5; font-size:1.5vw;">이름을 입력하면 자동으로 배치됩니다</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-text mt-2 small">
+                        실제 4K 화면 비율로 시뮬레이션. 인원수에 따라 글자 크기/배치 자동 조정.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <a href="/signage/contents" class="btn btn-outline-secondary">취소</a>
+            <button type="submit" class="btn btn-primary">🎂 콘텐츠 생성</button>
+        </div>
+    </form>
+</div>
+
+<script>
+function parseNames(text) {
+    const lines = text.replace(/,/g, '\n').split('\n').map(s => s.trim()).filter(Boolean);
+    return lines.map(line => {
+        let m = line.match(/^(.+)\(([^)]+)\)\s*$/);
+        if (m) return {name: m[1].trim(), dept: m[2].trim()};
+        m = line.match(/^(.+?)\s*-\s*(.+)$/);
+        if (m) return {name: m[1].trim(), dept: m[2].trim()};
+        return {name: line, dept: ''};
+    }).slice(0, 10);
+}
+
+function setPalette(bg, fg, acc) {
+    document.getElementById('f_bg').value = bg;
+    document.getElementById('f_fg').value = fg;
+    document.getElementById('f_acc').value = acc;
+    updatePreview();
+}
+
+function updatePreview() {
+    const names = parseNames(document.getElementById('f_names').value);
+    const bg = document.getElementById('f_bg').value;
+    const fg = document.getElementById('f_fg').value;
+    const acc = document.getElementById('f_acc').value;
+    const showDept = document.getElementById('show_dept').checked;
+    const stage = document.getElementById('bdayStage');
+    stage.style.setProperty('--bg', bg);
+    stage.style.setProperty('--fg', fg);
+    stage.style.setProperty('--accent', acc);
+
+    const title = document.getElementById('f_title').value || '🎂 생일자';
+    // 제목 앞 이모지 분리
+    const emojiMatch = title.match(/^([\p{Emoji}\s]+)?(.*)$/u);
+    document.getElementById('pvTitleEm').textContent = emojiMatch && emojiMatch[1] ? emojiMatch[1].trim() : '🎂';
+    document.getElementById('pvTitle').textContent = (emojiMatch ? emojiMatch[2] : title).trim() || '생일자';
+
+    const grid = document.getElementById('bdayGrid');
+    grid.innerHTML = '';
+    grid.dataset.n = names.length;
+
+    if (!names.length) {
+        grid.innerHTML = '<div style="opacity:0.5; font-size:1.5vw;">이름을 입력하면 자동으로 배치됩니다</div>';
+        return;
+    }
+
+    for (const p of names) {
+        const card = document.createElement('div');
+        card.className = 'bday-card';
+        card.innerHTML = `
+            <div class="cake">🎂</div>
+            <div class="nm">${p.name}</div>
+            ${showDept && p.dept ? `<div class="dp">${p.dept}</div>` : ''}
+        `;
+        grid.appendChild(card);
+    }
+}
+
+async function autoFill() {
+    const m = document.getElementById('monthSel').value;
+    try {
+        const res = await fetch(`/signage/api/birthday/this_month?month=${m}`);
+        const j = await res.json();
+        if (!j.ok) {
+            alert('자동조회 실패: ' + (j.msg || ''));
+            return;
+        }
+        if (!j.names.length) {
+            alert(`${m}월 생일자가 없습니다.`);
+            return;
+        }
+        const text = j.names.map(p => p.dept ? `${p.name} (${p.dept})` : p.name).join('\n');
+        document.getElementById('f_names').value = text;
+        document.getElementById('f_title').value = `🎂 ${m}월 생일자`;
+        updatePreview();
+        if (j.names.length > 10) {
+            alert(`${j.names.length}명이 검색되었습니다. 최대 10명까지만 표시 가능하므로 적절히 편집하세요.`);
+        }
+    } catch (e) {
+        alert('네트워크 오류: ' + e.message);
+    }
+}
+
+updatePreview();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

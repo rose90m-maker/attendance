@@ -780,15 +780,22 @@ def content_delete(cid):
 def content_preview(cid):
     """콘텐츠 미리보기 (단독 페이지, 4K 비율 시뮬레이션)"""
     conn = _conn(); cur = conn.cursor()
-    cur.execute("""SELECT id, title, type, body_text, file_path, web_url, duration_sec
+    cur.execute("""SELECT id, title, type, body_text, file_path, web_url, duration_sec, meta
                    FROM ds_contents WHERE id=%s""", (cid,))
     r = cur.fetchone()
     conn.close()
     if not r:
         abort(404)
+    meta = None
+    if r[7]:
+        try:
+            meta = json.loads(r[7]) if isinstance(r[7], str) else r[7]
+        except Exception:
+            meta = None
     content = {
         'id': r[0], 'title': r[1], 'type': r[2], 'body_text': r[3],
         'file_path': r[4], 'web_url': r[5], 'duration_sec': r[6],
+        'meta': meta,
     }
     return render_template("signage/content_preview.html", content=content)
 
@@ -1851,9 +1858,10 @@ def _get_active_playlist_for(display_id, cur):
 
 
 def _get_playlist_items(playlist_id, cur):
-    """플레이리스트 항목 + 콘텐츠 정보"""
+    """플레이리스트 항목 + 콘텐츠 정보 (meta 포함)"""
     cur.execute("""SELECT pi.content_id, IFNULL(pi.duration_sec, c.duration_sec),
-                          c.title, c.type, c.body_text, c.file_path, c.web_url, c.priority
+                          c.title, c.type, c.body_text, c.file_path, c.web_url, c.priority,
+                          c.meta
                    FROM ds_playlist_items pi
                    JOIN ds_contents c ON pi.content_id=c.id
                    WHERE pi.playlist_id=%s
@@ -1862,12 +1870,21 @@ def _get_playlist_items(playlist_id, cur):
                      AND (c.end_at IS NULL OR c.end_at >= NOW())
                    ORDER BY pi.seq""",
                 (playlist_id,))
-    return [
-        {'content_id': r[0], 'duration_sec': r[1],
-         'title': r[2], 'type': r[3], 'body_text': r[4],
-         'file_path': r[5], 'web_url': r[6], 'priority': r[7]}
-        for r in cur.fetchall()
-    ]
+    items = []
+    for r in cur.fetchall():
+        meta = None
+        if r[8]:
+            try:
+                meta = json.loads(r[8]) if isinstance(r[8], str) else r[8]
+            except Exception:
+                meta = None
+        items.append({
+            'content_id': r[0], 'duration_sec': r[1],
+            'title': r[2], 'type': r[3], 'body_text': r[4],
+            'file_path': r[5], 'web_url': r[6], 'priority': r[7],
+            'meta': meta,
+        })
+    return items
 
 
 @signage_bp.route("/api/play/<token>/poll")
@@ -2639,6 +2656,139 @@ def templates_gallery():
                            is_admin=session.get('role') == 'admin')
 
 
+# ── 생일자 콘텐츠 빌더 (이름만 입력 → 자동 레이아웃) ──────────
+@signage_bp.route("/birthday/new", methods=["GET", "POST"])
+@_login_required
+def birthday_new():
+    """생일자 콘텐츠 — 이름 목록만 입력하면 인원수에 맞춰 자동 배치"""
+    if not _has_signage_perm("create") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.contents"))
+
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        title = request.form.get('title', '').strip() or f"🎂 {datetime.now().month}월 생일자"
+        names_raw = request.form.get('names', '').strip()
+        bg_color = request.form.get('bg_color', '#fbbf24').strip()
+        fg_color = request.form.get('fg_color', '#0f172a').strip()
+        accent = request.form.get('accent', '#dc2626').strip()
+        show_dept = 1 if request.form.get('show_dept') else 0
+        duration = int(request.form.get('duration_sec', 15) or 15)
+        priority = int(request.form.get('priority', 10) or 10)
+        status = request.form.get('status', 'active')
+        start_at = request.form.get('start_at') or None
+        end_at = request.form.get('end_at') or None
+
+        # 이름 파싱 — 줄바꿈 또는 쉼표
+        names = []
+        for line in names_raw.replace(',', '\n').split('\n'):
+            n = line.strip()
+            if not n:
+                continue
+            # "이름 (부서)" 또는 "이름 - 부서" 패턴 분리
+            if '(' in n and n.endswith(')'):
+                nm, _, rest = n.rpartition('(')
+                names.append({'name': nm.strip(), 'dept': rest.rstrip(')').strip()})
+            elif ' - ' in n:
+                nm, _, dp = n.partition(' - ')
+                names.append({'name': nm.strip(), 'dept': dp.strip()})
+            else:
+                names.append({'name': n, 'dept': ''})
+
+        if not names:
+            flash("최소 1명 이상 입력하세요.", "danger")
+            conn.close()
+            return redirect(url_for("signage.birthday_new"))
+        if len(names) > 10:
+            flash(f"최대 10명까지 가능합니다. (입력: {len(names)}명)", "danger")
+            conn.close()
+            return redirect(url_for("signage.birthday_new"))
+
+        meta = {
+            'subtype': 'birthday',
+            'names': names,
+            'bg_color': bg_color,
+            'fg_color': fg_color,
+            'accent': accent,
+            'show_dept': bool(show_dept),
+        }
+        fallback = '🎂 ' + ', '.join(n['name'] for n in names) + '님 생신 축하드립니다!'
+
+        try:
+            cur.execute("""INSERT INTO ds_contents
+                (title, type, body_text, duration_sec, priority, status,
+                 start_at, end_at, meta, created_by)
+                VALUES (%s, 'text', %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (title, fallback, duration, priority, status,
+                 start_at, end_at, json.dumps(meta, ensure_ascii=False),
+                 session.get('user_id')))
+            cid = cur.lastrowid
+            cur.execute("INSERT IGNORE INTO ds_tags (name, color) VALUES ('생일', '#fbbf24')")
+            cur.execute("SELECT id FROM ds_tags WHERE name='생일'")
+            tid = cur.fetchone()[0]
+            cur.execute("INSERT IGNORE INTO ds_content_tags (content_id, tag_id) VALUES (%s, %s)", (cid, tid))
+            conn.commit()
+            flash(f"🎂 생일자 콘텐츠 '{title}' 생성 완료 ({len(names)}명).", "success")
+            conn.close()
+            return redirect(url_for("signage.contents"))
+        except Exception as e:
+            conn.rollback()
+            flash(f"생성 실패: {e}", "danger")
+
+    conn.close()
+    return render_template("signage/birthday_form.html",
+                           current_month=datetime.now().month,
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/api/birthday/this_month")
+@_login_required
+def api_birthday_this_month():
+    """이번 달 생일자 자동 조회 (employee_roster 기반)"""
+    if not _has_signage_perm("view") and session.get("role") != "admin":
+        return jsonify({"ok": False, "msg": "권한 없음"}), 403
+
+    month = request.args.get('month', type=int) or datetime.now().month
+    conn = _conn(); cur = conn.cursor()
+
+    try:
+        cur.execute("SHOW COLUMNS FROM employee_roster")
+        cols = [r[0] for r in cur.fetchall()]
+    except Exception:
+        conn.close()
+        return jsonify({"ok": False, "msg": "employee_roster 테이블 없음"})
+
+    bday_col = next((c for c in ('birthday', '생년월일', 'birth_date', 'birthdate', 'dob', '생일') if c in cols), None)
+    name_col = next((c for c in ('name', '이름', 'emp_name') if c in cols), None)
+    dept_col = next((c for c in ('dept', '부서', 'department') if c in cols), None)
+
+    if not bday_col or not name_col:
+        conn.close()
+        return jsonify({"ok": False,
+                        "msg": f"필요 컬럼 없음 (생일={bday_col}, 이름={name_col})",
+                        "cols": cols})
+
+    active_filter = ""
+    for stat in ('status', '재직상태', 'employment_status'):
+        if stat in cols:
+            active_filter = f" AND ({stat} IS NULL OR {stat} NOT IN ('퇴사', 'resigned', '퇴직'))"
+            break
+
+    try:
+        cur.execute(f"""SELECT {name_col}, {dept_col if dept_col else "''"}, DAY({bday_col})
+                        FROM employee_roster
+                        WHERE MONTH({bday_col}) = %s {active_filter}
+                        ORDER BY DAY({bday_col})""", (month,))
+        found = [{'name': r[0] or '', 'dept': r[1] or '', 'day': r[2]}
+                 for r in cur.fetchall() if r[0]]
+    except Exception as e:
+        conn.close()
+        return jsonify({"ok": False, "msg": f"조회 실패: {e}"})
+    conn.close()
+    return jsonify({"ok": True, "month": month, "count": len(found), "names": found})
+
+
 @signage_bp.route("/gallery/<tkey>/use")
 @_login_required
 def template_use(tkey):
@@ -2646,6 +2796,10 @@ def template_use(tkey):
     if not _has_signage_perm("create") and session.get("role") != "admin":
         flash("생성 권한이 없습니다.", "danger")
         return redirect(url_for("signage.templates_gallery"))
+
+    # 'birthday' 키는 전용 빌더로 (이름 목록 → 자동 레이아웃)
+    if tkey == 'birthday':
+        return redirect(url_for("signage.birthday_new"))
 
     t = next((x for x in CONTENT_TEMPLATES if x['key'] == tkey), None)
     if not t:

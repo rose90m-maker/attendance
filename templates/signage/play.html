@@ -91,6 +91,91 @@
         .c-emergency .em-body { font-size: 4vw; line-height: 1.4; }
         .c-emergency img { max-width: 40%; max-height: 30%; margin-top: 3vw; }
 
+        /* 🎂 생일자 콘텐츠 (subtype=birthday) */
+        .c-birthday {
+            position: fixed; inset: 0;
+            background: var(--bg, #fbbf24); color: var(--fg, #0f172a);
+            display: flex; flex-direction: column;
+            padding: 3vh 4vw 4vh;
+        }
+        .bday-h {
+            text-align:center; font-weight:900; font-size:5vw;
+            letter-spacing:0.05em; padding:1.2vh 0;
+            line-height: 1.0;
+        }
+        .bday-h .em { color: var(--accent, #dc2626); font-size:5.5vw; }
+        .bday-g {
+            flex:1; display:grid; gap:2vw;
+            place-items:center; align-content:center;
+        }
+        .bday-cd {
+            background: rgba(255,255,255,0.88);
+            border-radius: 2vw; padding: 2vw 3vw;
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            text-align:center; min-width:0; max-width:100%; max-height:100%;
+            box-shadow: 0 0.6vw 2.5vw rgba(0,0,0,0.18);
+            color: var(--fg, #0f172a);
+            box-sizing: border-box;
+        }
+        .bday-cd .ck { line-height:1; margin-bottom:0.5vw; }
+        .bday-cd .nm { font-weight:900; line-height:1.1; word-break:keep-all; }
+        .bday-cd .dp { opacity:0.65; margin-top:0.8vw; font-weight:500; }
+        /* 인원수별 그리드 */
+        .bday-g[data-n="1"] { grid-template-columns: 1fr; }
+        .bday-g[data-n="1"] .bday-cd .nm { font-size: 18vw; }
+        .bday-g[data-n="1"] .bday-cd .ck { font-size: 10vw; }
+        .bday-g[data-n="1"] .bday-cd .dp { font-size: 3vw; }
+        .bday-g[data-n="2"] { grid-template-columns: 1fr 1fr; }
+        .bday-g[data-n="2"] .bday-cd .nm { font-size: 11vw; }
+        .bday-g[data-n="2"] .bday-cd .ck { font-size: 7vw; }
+        .bday-g[data-n="2"] .bday-cd .dp { font-size: 2.4vw; }
+        .bday-g[data-n="3"] { grid-template-columns: repeat(3,1fr); }
+        .bday-g[data-n="3"] .bday-cd .nm { font-size: 8vw; }
+        .bday-g[data-n="3"] .bday-cd .ck { font-size: 5.5vw; }
+        .bday-g[data-n="3"] .bday-cd .dp { font-size: 2.1vw; }
+        .bday-g[data-n="4"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        .bday-g[data-n="4"] .bday-cd .nm { font-size: 7.5vw; }
+        .bday-g[data-n="4"] .bday-cd .ck { font-size: 4.5vw; }
+        .bday-g[data-n="4"] .bday-cd .dp { font-size: 2vw; }
+        .bday-g[data-n="5"], .bday-g[data-n="6"] {
+            grid-template-columns: repeat(3,1fr); grid-template-rows: 1fr 1fr;
+        }
+        .bday-g[data-n="5"] .bday-cd .nm,
+        .bday-g[data-n="6"] .bday-cd .nm { font-size: 6vw; }
+        .bday-g[data-n="5"] .bday-cd .ck,
+        .bday-g[data-n="6"] .bday-cd .ck { font-size: 3.5vw; }
+        .bday-g[data-n="5"] .bday-cd .dp,
+        .bday-g[data-n="6"] .bday-cd .dp { font-size: 1.7vw; }
+        .bday-g[data-n="7"], .bday-g[data-n="8"] {
+            grid-template-columns: repeat(4,1fr); grid-template-rows: 1fr 1fr;
+        }
+        .bday-g[data-n="7"] .bday-cd .nm,
+        .bday-g[data-n="8"] .bday-cd .nm { font-size: 4.6vw; }
+        .bday-g[data-n="7"] .bday-cd .ck,
+        .bday-g[data-n="8"] .bday-cd .ck { font-size: 2.8vw; }
+        .bday-g[data-n="7"] .bday-cd .dp,
+        .bday-g[data-n="8"] .bday-cd .dp { font-size: 1.4vw; }
+        .bday-g[data-n="9"], .bday-g[data-n="10"] {
+            grid-template-columns: repeat(5,1fr); grid-template-rows: 1fr 1fr;
+        }
+        .bday-g[data-n="9"] .bday-cd .nm,
+        .bday-g[data-n="10"] .bday-cd .nm { font-size: 3.9vw; }
+        .bday-g[data-n="9"] .bday-cd .ck,
+        .bday-g[data-n="10"] .bday-cd .ck { font-size: 2.4vw; }
+        .bday-g[data-n="9"] .bday-cd .dp,
+        .bday-g[data-n="10"] .bday-cd .dp { font-size: 1.2vw; }
+
+        /* 떠다니는 색종이 */
+        .confetti {
+            position:absolute; pointer-events:none; font-size: 3vw;
+            animation: cfup linear infinite;
+        }
+        @keyframes cfup {
+            0%   { transform: translateY(110vh) rotate(0deg); opacity:0; }
+            10%  { opacity:0.85; }
+            100% { transform: translateY(-15vh) rotate(900deg); opacity:0; }
+        }
+
         /* 빈 상태 / 에러 */
         .c-empty {
             color: #475569; font-size: 3vw; text-align: center;
@@ -177,6 +262,12 @@ function renderContent(item) {
         return;
     }
 
+    // 🎂 생일자 subtype (meta.subtype === 'birthday')
+    if (item.meta && item.meta.subtype === 'birthday' && Array.isArray(item.meta.names)) {
+        renderBirthday(item);
+        return;
+    }
+
     let html = '';
     if (item.type === 'text') {
         const body = (item.body_text || item.title || '').replace(/\n/g, '<br>');
@@ -218,6 +309,52 @@ function renderContent(item) {
             });
         }
     }
+}
+
+function escapeHtml(s) {
+    return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderBirthday(item) {
+    const m = item.meta;
+    const names = m.names || [];
+    const n = Math.min(names.length, 10);
+    const bg = m.bg_color || '#fbbf24';
+    const fg = m.fg_color || '#0f172a';
+    const accent = m.accent || '#dc2626';
+    const showDept = m.show_dept !== false;
+
+    // 제목에서 이모지 분리
+    const title = item.title || '🎂 생일자';
+    let em = '🎂', rest = title;
+    const matches = title.match(/^([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\s]+)?(.*)$/u);
+    if (matches) {
+        em = (matches[1] || '🎂').trim();
+        rest = (matches[2] || '').trim() || '생일자';
+    }
+
+    let cards = '';
+    for (const p of names.slice(0, 10)) {
+        const dp = (showDept && p.dept) ? `<div class="dp">${escapeHtml(p.dept)}</div>` : '';
+        cards += `<div class="bday-cd"><div class="ck">🎂</div><div class="nm">${escapeHtml(p.name)}</div>${dp}</div>`;
+    }
+
+    // 떠다니는 색종이 (랜덤 12개)
+    let confetti = '';
+    const cfEmojis = ['🎉','🎊','🎈','✨','🌟','🍰','🎂'];
+    for (let i = 0; i < 14; i++) {
+        const left = Math.random()*100;
+        const delay = Math.random()*6;
+        const dur = 5 + Math.random()*5;
+        const e = cfEmojis[Math.floor(Math.random()*cfEmojis.length)];
+        confetti += `<div class="confetti" style="left:${left}vw; animation-duration:${dur}s; animation-delay:${delay}s;">${e}</div>`;
+    }
+
+    stage.innerHTML = `<div class="c-birthday" style="--bg:${bg};--fg:${fg};--accent:${accent};">
+        <div class="bday-h"><span class="em">${escapeHtml(em)}</span> ${escapeHtml(rest)}</div>
+        <div class="bday-g" data-n="${n}">${cards}</div>
+        ${confetti}
+    </div>`;
 }
 
 function renderEmergency(em) {
@@ -262,6 +399,18 @@ function renderLayout(layout, items) {
 }
 
 function renderItemHtml(item) {
+    if (item.meta && item.meta.subtype === 'birthday' && Array.isArray(item.meta.names)) {
+        const m = item.meta;
+        const names = m.names.slice(0,10);
+        const cards = names.map(p => {
+            const dp = (m.show_dept !== false && p.dept) ? `<div class="dp">${escapeHtml(p.dept)}</div>` : '';
+            return `<div class="bday-cd"><div class="ck">🎂</div><div class="nm">${escapeHtml(p.name)}</div>${dp}</div>`;
+        }).join('');
+        return `<div class="c-birthday" style="position:absolute;inset:0;--bg:${m.bg_color||'#fbbf24'};--fg:${m.fg_color||'#0f172a'};--accent:${m.accent||'#dc2626'};">
+            <div class="bday-h"><span class="em">🎂</span> ${escapeHtml(item.title||'생일자')}</div>
+            <div class="bday-g" data-n="${names.length}">${cards}</div>
+        </div>`;
+    }
     if (item.type === 'text') {
         const body = (item.body_text || item.title || '').replace(/\n/g, '<br>');
         return `<div class="c-text">${body}</div>`;
