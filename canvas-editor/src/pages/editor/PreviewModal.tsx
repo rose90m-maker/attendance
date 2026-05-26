@@ -4,6 +4,7 @@ import TextEl from './elements/TextElement';
 import ImageEl from './elements/ImageElement';
 import VideoEl from './elements/VideoElement';
 import ShapeEl from './elements/ShapeElement';
+import TableEl from './elements/TableElement';
 import ClockWidget from './elements/widgets/ClockWidget';
 import QRWidget from './elements/widgets/QRWidget';
 
@@ -58,6 +59,9 @@ export default function PreviewModal({ project, onClose }: Props) {
         style={{
           width: project.width, height: project.height,
           background: page.background || '#ffffff',
+          backgroundImage: page.backgroundImage ? `url(${page.backgroundImage})` : undefined,
+          backgroundSize: page.backgroundFit === 'contain' ? 'contain' : 'cover',
+          backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
           transform: `scale(${scale})`, transformOrigin: 'center center',
           flexShrink: 0,
         }}
@@ -84,6 +88,7 @@ function PreviewElement({ element }: { element: AnyElement }) {
       {element.type === 'image' && <ImageEl element={element} />}
       {element.type === 'video' && <VideoEl element={element} />}
       {element.type === 'shape' && <ShapeEl element={element} />}
+      {element.type === 'table' && <TableEl element={element} />}
       {element.type === 'widget' && element.props.kind === 'clock' && <ClockWidget element={element} />}
       {element.type === 'widget' && element.props.kind === 'qrcode' && <QRWidget element={element} />}
     </div>

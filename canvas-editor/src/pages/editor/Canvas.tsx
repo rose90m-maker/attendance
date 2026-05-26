@@ -36,6 +36,10 @@ export default function Canvas() {
           transform: `scale(${zoom})`,
           transformOrigin: 'center center',
           background: page.background || '#ffffff',
+          backgroundImage: page.backgroundImage ? `url(${page.backgroundImage})` : undefined,
+          backgroundSize: page.backgroundFit === 'contain' ? 'contain' : 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
           flexShrink: 0,
         }}
         onClick={(e) => { if (e.target === e.currentTarget) clearSelection(); }}

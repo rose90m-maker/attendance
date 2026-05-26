@@ -40,6 +40,37 @@ export default function Toolbar({ onSave, onOpenSettings, onPreview, saving }: {
       props: { kind: 'qrcode', config: { url: 'https://taein.biz' } },
     } as any);
   };
+  const addTable = () => {
+    const cells = [
+      [{ text: '항목' }, { text: '값' }, { text: '비고' }],
+      [{ text: '' }, { text: '' }, { text: '' }],
+      [{ text: '' }, { text: '' }, { text: '' }],
+      [{ text: '' }, { text: '' }, { text: '' }],
+    ];
+    addElement({
+      type: 'table',
+      x: project.width / 2 - 400, y: project.height / 2 - 200,
+      width: 800, height: 400, rotation: 0, opacity: 1,
+      props: {
+        cells, fontSize: 28, color: '#1f2937',
+        borderColor: '#94a3b8', borderWidth: 2,
+        headerStyle: 'first-row',
+        headerBg: '#1e40af', headerColor: '#ffffff',
+        padding: 12,
+      },
+    } as any);
+  };
+  const addIcon = () => {
+    const list = ['🎉','🎊','🎂','🎁','✨','🌟','🏆','⚡','🚨','🦺','🧯','🔥','☀️','❄️','🛡','✅','❌','⚠️','📢','📣','📌','🔔','🎯','💡','🚀','🏭','🏢','📊','📈','💼','👷','🛠','⚙️','📅','🕐','🍰','📺','🍽','💎','🧹'];
+    const e = prompt('아이콘 입력 또는 선택:\n' + list.join(' '), '🎉');
+    if (!e) return;
+    addElement({
+      type: 'text',
+      x: project.width / 2 - 80, y: project.height / 2 - 80,
+      width: 160, height: 160, rotation: 0, opacity: 1,
+      props: { content: e, fontSize: 120, color: '#0f172a', textAlign: 'center' },
+    } as any);
+  };
 
   const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -78,6 +109,8 @@ export default function Toolbar({ onSave, onOpenSettings, onPreview, saving }: {
       <button className="btn" onClick={() => imgRef.current?.click()}>🖼 이미지</button>
       <button className="btn" onClick={() => vidRef.current?.click()}>🎬 영상</button>
       <button className="btn" onClick={addShape}>⬛ 도형</button>
+      <button className="btn" onClick={addTable} title="표 (행/열 추가 가능)">📊 표</button>
+      <button className="btn" onClick={addIcon} title="아이콘/이모지">😀 아이콘</button>
       <button className="btn" onClick={addClock} title="시계 위젯">⏰ 시계</button>
       <button className="btn" onClick={addQR} title="QR코드 위젯">⚡ QR</button>
 

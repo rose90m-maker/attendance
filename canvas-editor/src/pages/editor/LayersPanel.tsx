@@ -2,7 +2,7 @@ import { useEditorStore, useCurrentPage } from '@/stores/editorStore';
 import clsx from 'clsx';
 
 const ICONS: Record<string, string> = {
-  text: 'T', image: '🖼', video: '🎬', shape: '⬛', widget: '🧩',
+  text: 'T', image: '🖼', video: '🎬', shape: '⬛', widget: '🧩', table: '📊',
 };
 
 export default function LayersPanel() {
@@ -22,6 +22,7 @@ export default function LayersPanel() {
             : el.type === 'image' ? '이미지'
             : el.type === 'video' ? '동영상'
             : el.type === 'shape' ? '도형'
+            : el.type === 'table' ? `표 (${(el.props as any).cells?.length || 0}×${Math.max(...((el.props as any).cells || [[]]).map((r: any[]) => r.length))})`
             : `위젯(${(el.props as any).kind})`;
           return (
             <li key={el.id}

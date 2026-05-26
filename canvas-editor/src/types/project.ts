@@ -1,6 +1,6 @@
 // ─── 캔버스 콘텐츠 데이터 스키마 (서버 ds_contents.meta JSON에 저장) ───
 
-export type ElementType = 'text' | 'image' | 'video' | 'shape' | 'widget';
+export type ElementType = 'text' | 'image' | 'video' | 'shape' | 'widget' | 'table';
 export type ShapeKind = 'rect' | 'circle' | 'line';
 export type WidgetKind = 'clock' | 'qrcode';
 export type TransitionType = 'none' | 'fade' | 'slide' | 'zoom';
@@ -59,7 +59,34 @@ export interface WidgetElement extends BaseElement {
   props: { kind: WidgetKind; config: Record<string, any> };
 }
 
-export type AnyElement = TextElement | ImageElement | VideoElement | ShapeElement | WidgetElement;
+export interface TableCell {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  align?: 'left' | 'center' | 'right';
+  bg?: string;
+  color?: string;
+  colspan?: number;
+  rowspan?: number;
+  _covered?: boolean;
+}
+
+export interface TableElement extends BaseElement {
+  type: 'table';
+  props: {
+    cells: TableCell[][];
+    fontSize: number;
+    color: string;
+    borderColor: string;
+    borderWidth: number;
+    headerStyle: 'first-row' | 'first-col' | 'first-both' | 'none';
+    headerBg?: string;
+    headerColor?: string;
+    padding?: number;
+  };
+}
+
+export type AnyElement = TextElement | ImageElement | VideoElement | ShapeElement | WidgetElement | TableElement;
 
 export interface Page {
   id: string;
@@ -67,6 +94,8 @@ export interface Page {
   duration: number;
   transition: TransitionType;
   background?: string;
+  backgroundImage?: string;            // URL — 색상 위에 덮어 렌더
+  backgroundFit?: 'cover' | 'contain'; // 이미지 맞춤
   elements: AnyElement[];
 }
 

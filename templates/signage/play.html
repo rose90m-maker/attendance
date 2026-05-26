@@ -355,8 +355,11 @@ function renderCanvas(item) {
         // viewport에 맞춰 스케일 계산 (4K TV는 1:1, 작은 화면이면 축소)
         const vw = window.innerWidth, vh = window.innerHeight;
         const scale = Math.min(vw / W, vh / H);
+        const bgImgCss = page.backgroundImage
+            ? `background-image:url(${page.backgroundImage});background-size:${page.backgroundFit === 'contain' ? 'contain' : 'cover'};background-position:center;background-repeat:no-repeat;`
+            : '';
         let html = `<div style="position:fixed;inset:0;background:${bg};display:flex;align-items:center;justify-content:center;overflow:hidden;">
-            <div style="width:${W}px;height:${H}px;position:relative;background:${page.background || '#ffffff'};
+            <div style="width:${W}px;height:${H}px;position:relative;background:${page.background || '#ffffff'};${bgImgCss}
                  transform:scale(${scale});transform-origin:center center;flex-shrink:0;">`;
         const sorted = [...(page.elements || [])].sort((a, b) => (a.zIndex||0) - (b.zIndex||0));
         for (const el of sorted) {
@@ -391,6 +394,35 @@ function renderCanvas(item) {
                 } else {
                     html += `<div style="${st};background:${p.fill};border-radius:${p.borderRadius||0}px;${p.stroke ? `border:${p.strokeWidth||1}px solid ${p.stroke};`:''}"></div>`;
                 }
+            } else if (el.type === 'table') {
+                const cells = p.cells || [[]];
+                let tableHtml = `<table style="width:100%;height:100%;border-collapse:collapse;table-layout:fixed;color:${p.color||'#1f2937'};font-size:${p.fontSize||24}px;">`;
+                for (let ri = 0; ri < cells.length; ri++) {
+                    tableHtml += '<tr>';
+                    for (let ci = 0; ci < cells[ri].length; ci++) {
+                        const cell = cells[ri][ci];
+                        if (cell._covered) continue;
+                        const isHeader = (p.headerStyle === 'first-row' && ri === 0)
+                            || (p.headerStyle === 'first-col' && ci === 0)
+                            || (p.headerStyle === 'first-both' && (ri === 0 || ci === 0));
+                        const cs = cell.colspan ? ` colspan="${cell.colspan}"` : '';
+                        const rs = cell.rowspan ? ` rowspan="${cell.rowspan}"` : '';
+                        const tdSt = [
+                            `border:${p.borderWidth||1}px solid ${p.borderColor||'#d1d5db'}`,
+                            `padding:${p.padding ?? 8}px`,
+                            `text-align:${cell.align||'center'}`,
+                            cell.bold || isHeader ? 'font-weight:700' : '',
+                            cell.italic ? 'font-style:italic' : '',
+                            isHeader ? `background:${cell.bg||p.headerBg||'#1e40af'};color:${cell.color||p.headerColor||'#fff'}` :
+                                (cell.bg ? `background:${cell.bg}` : '') + (cell.color ? `;color:${cell.color}` : ''),
+                            'vertical-align:middle', 'overflow:hidden',
+                        ].filter(Boolean).join(';');
+                        tableHtml += `<td${cs}${rs} style="${tdSt}">${escapeHtml(cell.text||'')}</td>`;
+                    }
+                    tableHtml += '</tr>';
+                }
+                tableHtml += '</table>';
+                html += `<div style="${st}">${tableHtml}</div>`;
             } else if (el.type === 'widget' && p.kind === 'clock') {
                 const id = 'cv_clk_' + el.id;
                 const showDate = p.config?.showDate !== false;
