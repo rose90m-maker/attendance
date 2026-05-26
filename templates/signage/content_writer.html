@@ -885,6 +885,45 @@ let selectedIdx = -1;
 let activeUploadIdx = null;
 let lastFocusBlockIdx = -1;
 
+// ─── 본문 포커스/선택 추적 (툴바 클릭 시 활용) ───
+let lastFocusedEditable = null;
+let savedRange = null;
+
+document.addEventListener('focusin', (e) => {
+    if (e.target && e.target.isContentEditable) {
+        lastFocusedEditable = e.target;
+    }
+});
+
+document.addEventListener('selectionchange', () => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const r = sel.getRangeAt(0);
+    let node = r.commonAncestorContainer;
+    if (node.nodeType !== 1) node = node.parentNode;
+    if (node && node.closest && node.closest('[contenteditable=true]')) {
+        savedRange = r.cloneRange();
+    }
+});
+
+// 툴바에서 호출 시 selection 복원
+function restoreSelection() {
+    if (lastFocusedEditable) lastFocusedEditable.focus();
+    if (savedRange) {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(savedRange);
+    }
+}
+
+// 활성 contenteditable 반환 (툴바 클릭 후에도 OK)
+function getActiveEditable() {
+    if (document.activeElement && document.activeElement.isContentEditable) {
+        return document.activeElement;
+    }
+    return lastFocusedEditable;
+}
+
 function uid() { return 'b' + Date.now().toString(36) + Math.floor(Math.random()*1000); }
 function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -1306,11 +1345,12 @@ function toggleAlignMenu() {
 }
 function doAlign(mode) {
     document.getElementById('alignMenu').classList.remove('show');
-    // 1) execCommand로 선택 영역 정렬 (브라우저가 contenteditable 안에서 처리)
+    restoreSelection();
+    // 1) execCommand로 선택 영역 정렬
     const cmd = {left:'justifyLeft', center:'justifyCenter', right:'justifyRight', justify:'justifyFull'}[mode];
     document.execCommand(cmd, false, null);
-    // 2) 블록 style.align도 동기화 (저장+미리보기용)
-    const ed = document.activeElement;
+    // 2) 블록 style.align도 동기화
+    const ed = getActiveEditable();
     if (ed && ed.isContentEditable) {
         const wrap = ed.closest('[data-idx]');
         if (wrap) {
@@ -1319,6 +1359,7 @@ function doAlign(mode) {
                 blocks[idx].style = blocks[idx].style || {};
                 blocks[idx].style.align = mode === 'justify' ? 'justify' : mode;
                 blocks[idx].content = ed.innerHTML;
+                ed.style.textAlign = mode === 'justify' ? 'justify' : mode;
                 renderPreview();
             }
         }
@@ -1441,11 +1482,12 @@ function tblOp(idx, op, arg) {
 //  서식 (execCommand 기반)
 // ════════════════════════════════════════════════════════
 function exec(cmd, val) {
+    restoreSelection();
     document.execCommand(cmd, false, val);
     syncFromActive();
 }
 function syncFromActive() {
-    const ed = document.activeElement;
+    const ed = getActiveEditable();
     if (ed && ed.isContentEditable) {
         const wrap = ed.closest('[data-idx]');
         if (wrap) {
@@ -1459,8 +1501,13 @@ function syncFromActive() {
 }
 function applyFontSize(vw) {
     if (!vw) return;
-    const ed = document.activeElement;
-    if (!ed || !ed.isContentEditable) return;
+    // 본문에 포커스 복원 (select 클릭으로 잃은 selection 복원)
+    restoreSelection();
+    const ed = getActiveEditable();
+    if (!ed || !ed.isContentEditable) {
+        document.getElementById('tb_fontsize').value = '';
+        return;
+    }
 
     const px = Math.round(parseFloat(vw) * 7);  // 편집 화면 표시용
     const sel = window.getSelection();
@@ -1477,45 +1524,56 @@ function applyFontSize(vw) {
             f.replaceWith(span);
         });
         syncFromActive();
-        // 셀렉트 박스 초기화
         document.getElementById('tb_fontsize').value = '';
         return;
     }
 
     // ─── 2) 선택 영역 없으면 → 활성 블록 전체에 적용
     const wrap = ed.closest('[data-idx]');
-    if (!wrap) return;
+    if (!wrap) {
+        document.getElementById('tb_fontsize').value = '';
+        return;
+    }
     const idx = parseInt(wrap.dataset.idx);
     if (isNaN(idx) || !blocks[idx]) return;
 
     blocks[idx].style = blocks[idx].style || {};
     blocks[idx].style.font_size = parseFloat(vw);
-    // 포커스 유지: 직접 style만 변경 (renderAll 호출 X)
+    // 포커스 유지: 직접 style만 변경
     ed.style.fontSize = px + 'px';
     renderPreview();
     document.getElementById('tb_fontsize').value = '';
 }
 function setAlign(a) {
-    const ed = document.activeElement;
-    if (ed && ed.isContentEditable) {
-        const idx = parseInt(ed.closest('[data-idx]').dataset.idx);
-        if (!isNaN(idx)) {
-            blocks[idx].style = blocks[idx].style || {};
-            blocks[idx].style.align = a;
-            renderAll();
-        }
+    restoreSelection();
+    const ed = getActiveEditable();
+    if (!ed || !ed.isContentEditable) return;
+    const wrap = ed.closest('[data-idx]');
+    if (!wrap) return;
+    const idx = parseInt(wrap.dataset.idx);
+    if (!isNaN(idx) && blocks[idx]) {
+        blocks[idx].style = blocks[idx].style || {};
+        blocks[idx].style.align = a;
+        ed.style.textAlign = a;  // 포커스 유지 위해 직접 변경
+        renderPreview();
     }
 }
 function setLineHeight(lh) {
     if (!lh) return;
-    const ed = document.activeElement;
-    if (ed && ed.isContentEditable) {
-        const idx = parseInt(ed.closest('[data-idx]').dataset.idx);
-        if (!isNaN(idx)) {
-            blocks[idx].style = blocks[idx].style || {};
-            blocks[idx].style.line_height = parseFloat(lh);
-            renderAll();
-        }
+    restoreSelection();
+    const ed = getActiveEditable();
+    if (!ed || !ed.isContentEditable) {
+        document.getElementById('tb_lh').value = '';
+        return;
+    }
+    const wrap = ed.closest('[data-idx]');
+    if (!wrap) return;
+    const idx = parseInt(wrap.dataset.idx);
+    if (!isNaN(idx) && blocks[idx]) {
+        blocks[idx].style = blocks[idx].style || {};
+        blocks[idx].style.line_height = parseFloat(lh);
+        ed.style.lineHeight = lh;  // 포커스 유지
+        renderPreview();
     }
 }
 function insertEmoji() {
