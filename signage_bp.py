@@ -686,6 +686,9 @@ def content_edit(cid):
                 if meta and meta.get('subtype') in ('blocks', 'blocknote'):
                     conn.close()
                     return redirect(url_for("signage.editor_edit", cid=cid))
+                if meta and meta.get('subtype') == 'canvas':
+                    conn.close()
+                    return redirect(url_for("signage.canvas_edit", cid=cid))
             except Exception:
                 pass
 
@@ -2675,6 +2678,175 @@ def templates_gallery():
 # ════════════════════════════════════════════════════════
 #  블록형 콘텐츠 에디터 (Notion 스타일) — 새 콘텐츠 기본
 # ════════════════════════════════════════════════════════
+
+# ════════════════════════════════════════════════════════
+#  Canvas Editor (Canva 스타일) — SPA + JSON API
+# ════════════════════════════════════════════════════════
+
+def _serve_canvas_spa(cid):
+    """캔버스 에디터 React SPA 서빙 + initial_data 주입."""
+    spa_path = Path(current_app.static_folder) / "canvas-editor" / "index.html"
+    if not spa_path.exists():
+        return ("⚠️ Canvas Editor 빌드 없음. canvas-editor/에서 'npm run build' 실행.<br>"
+                "또는 <a href='/signage/editor/new'>BlockNote 에디터</a> 사용."), 503
+
+    conn = _conn(); cur = conn.cursor()
+    initial = {
+        "mode": "edit" if cid else "new",
+        "content_id": cid,
+        "content": None,
+        "displays": [],
+        "all_tags": [],
+    }
+    cur.execute("""SELECT id, name, location FROM ds_displays
+                   WHERE paired=1 ORDER BY name""")
+    initial["displays"] = [{"id": r[0], "name": r[1], "location": r[2]} for r in cur.fetchall()]
+    cur.execute("SELECT name FROM ds_tags ORDER BY name")
+    initial["all_tags"] = [r[0] for r in cur.fetchall()]
+
+    if cid:
+        cur.execute("""SELECT id, title, duration_sec, priority, status, meta, start_at, end_at
+                       FROM ds_contents WHERE id=%s""", (cid,))
+        r = cur.fetchone()
+        if r:
+            meta = {}
+            if r[5]:
+                try: meta = json.loads(r[5]) if isinstance(r[5], str) else r[5]
+                except Exception: meta = {}
+            cur.execute("""SELECT t.name FROM ds_tags t
+                           JOIN ds_content_tags ct ON ct.tag_id=t.id
+                           WHERE ct.content_id=%s ORDER BY t.name""", (cid,))
+            tags = [rr[0] for rr in cur.fetchall()]
+            initial["content"] = {
+                "id": r[0], "title": r[1],
+                "project": meta.get("project"),
+                "duration_sec": r[2], "priority": r[3], "status": r[4],
+                "bg_color": meta.get("bg_color", "#0f172a"),
+                "start_at": r[6].strftime("%Y-%m-%dT%H:%M") if r[6] else None,
+                "end_at": r[7].strftime("%Y-%m-%dT%H:%M") if r[7] else None,
+                "target_displays": meta.get("target_displays", []),
+                "tags": tags,
+            }
+    conn.close()
+
+    html = spa_path.read_text(encoding="utf-8")
+    payload = json.dumps(initial, ensure_ascii=False, default=str)
+    import re
+    html = re.sub(
+        r'<script id="__initial_data__" type="application/json">[\s\S]*?</script>',
+        f'<script id="__initial_data__" type="application/json">{payload}</script>',
+        html, count=1
+    )
+    return html
+
+
+@signage_bp.route("/canvas/new", methods=["GET"])
+@_login_required
+def canvas_new():
+    if not _has_signage_perm("create") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.contents"))
+    return _serve_canvas_spa(cid=None)
+
+
+@signage_bp.route("/canvas/<int:cid>/edit", methods=["GET"])
+@_login_required
+def canvas_edit(cid):
+    if not _has_signage_perm("update") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.contents"))
+    return _serve_canvas_spa(cid=cid)
+
+
+@signage_bp.route("/api/canvas/save", methods=["POST"])
+@signage_bp.route("/api/canvas/<int:cid>/save", methods=["POST"])
+@_login_required
+def api_canvas_save(cid=None):
+    if cid is None and not (_has_signage_perm("create") or session.get("role") == "admin"):
+        return jsonify({"ok": False, "msg": "권한 없음"}), 403
+    if cid is not None and not (_has_signage_perm("update") or session.get("role") == "admin"):
+        return jsonify({"ok": False, "msg": "권한 없음"}), 403
+
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "새 콘텐츠").strip()
+    proj = data.get("project") or {}
+    sig = data.get("signage") or {}
+
+    duration = int(sig.get("duration_sec", 15) or 15)
+    priority = int(sig.get("priority", 0) or 0)
+    status = sig.get("status", "active")
+    bg_color = sig.get("bg_color", "#0f172a")
+    start_at = sig.get("start_at") or None
+    end_at = sig.get("end_at") or None
+    target_displays = [int(x) for x in (sig.get("target_displays") or []) if isinstance(x, (int, str)) and str(x).isdigit()]
+    tags = [t.strip() for t in (sig.get("tags") or []) if t and isinstance(t, str)]
+    add_to_default = bool(sig.get("add_to_default"))
+
+    meta = {
+        "subtype": "canvas",
+        "bg_color": bg_color,
+        "project": proj,
+        "target_displays": target_displays,
+    }
+
+    # 평문 fallback (검색용) — 모든 페이지 텍스트 추출
+    text_parts = []
+    for pg in proj.get("pages", []):
+        for el in pg.get("elements", []):
+            if el.get("type") == "text":
+                c = el.get("props", {}).get("content", "")
+                if c: text_parts.append(c)
+    fallback = (title + " — " + " | ".join(text_parts))[:500]
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        if cid is None:
+            cur.execute("""INSERT INTO ds_contents
+                (title, type, body_text, duration_sec, priority, status,
+                 start_at, end_at, meta, created_by)
+                VALUES (%s, 'text', %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (title, fallback, duration, priority, status,
+                 start_at, end_at,
+                 json.dumps(meta, ensure_ascii=False),
+                 session.get("user_id")))
+            cid = cur.lastrowid
+        else:
+            cur.execute("""UPDATE ds_contents SET
+                title=%s, body_text=%s, duration_sec=%s, priority=%s, status=%s,
+                start_at=%s, end_at=%s, meta=%s
+                WHERE id=%s""",
+                (title, fallback, duration, priority, status,
+                 start_at, end_at,
+                 json.dumps(meta, ensure_ascii=False), cid))
+
+        cur.execute("DELETE FROM ds_content_tags WHERE content_id=%s", (cid,))
+        for tname in tags:
+            cur.execute("INSERT IGNORE INTO ds_tags (name) VALUES (%s)", (tname,))
+            cur.execute("SELECT id FROM ds_tags WHERE name=%s", (tname,))
+            tr = cur.fetchone()
+            if tr:
+                cur.execute("INSERT IGNORE INTO ds_content_tags (content_id, tag_id) VALUES (%s, %s)", (cid, tr[0]))
+
+        if add_to_default:
+            cur.execute("SELECT id FROM ds_playlists WHERE is_default=1 LIMIT 1")
+            dp = cur.fetchone()
+            if dp:
+                cur.execute("SELECT COUNT(*) FROM ds_playlist_items WHERE playlist_id=%s AND content_id=%s", (dp[0], cid))
+                if cur.fetchone()[0] == 0:
+                    cur.execute("SELECT IFNULL(MAX(seq),0)+1 FROM ds_playlist_items WHERE playlist_id=%s", (dp[0],))
+                    next_seq = cur.fetchone()[0]
+                    cur.execute("""INSERT INTO ds_playlist_items
+                        (playlist_id, content_id, seq) VALUES (%s, %s, %s)""",
+                        (dp[0], cid, next_seq))
+
+        conn.commit()
+        return jsonify({"ok": True, "id": cid})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
+
 
 # ── BlockNote SPA shell 라우트 ──
 def _serve_editor_spa(cid):

@@ -200,6 +200,8 @@
         }
         .status-dot.disconnected { background: #dc2626; opacity: 0.8; }
     </style>
+    <!-- QR 렌더 (canvas 에디터 위젯용) -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" defer></script>
 </head>
 <body>
     <div id="stage">
@@ -282,6 +284,11 @@ function renderContent(item) {
         renderBlockNoteHtml(item);
         return;
     }
+    // 🎨 Canvas 에디터 subtype (project + pages 자유 배치)
+    if (item.meta && item.meta.subtype === 'canvas' && item.meta.project) {
+        renderCanvas(item);
+        return;
+    }
 
     let html = '';
     if (item.type === 'text') {
@@ -328,6 +335,126 @@ function renderContent(item) {
 
 function escapeHtml(s) {
     return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// 캔버스 에디터: project.pages를 viewport에 맞춰 transform scale로 렌더
+function renderCanvas(item) {
+    const proj = item.meta.project;
+    const bg = item.meta.bg_color || '#0f172a';
+    if (!proj || !proj.pages || proj.pages.length === 0) {
+        stage.innerHTML = `<div class="c-empty"><div class="icon">🎨</div><div class="label">캔버스 데이터 없음</div></div>`;
+        return;
+    }
+    // 첫 페이지 렌더 — 다중 페이지는 setTimeout으로 자동 전환
+    let pageIdx = 0;
+    let pageTimer = null;
+    const renderOnePage = () => {
+        const page = proj.pages[pageIdx];
+        if (!page) return;
+        const W = proj.width || 1920, H = proj.height || 1080;
+        // viewport에 맞춰 스케일 계산 (4K TV는 1:1, 작은 화면이면 축소)
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const scale = Math.min(vw / W, vh / H);
+        let html = `<div style="position:fixed;inset:0;background:${bg};display:flex;align-items:center;justify-content:center;overflow:hidden;">
+            <div style="width:${W}px;height:${H}px;position:relative;background:${page.background || '#ffffff'};
+                 transform:scale(${scale});transform-origin:center center;flex-shrink:0;">`;
+        const sorted = [...(page.elements || [])].sort((a, b) => (a.zIndex||0) - (b.zIndex||0));
+        for (const el of sorted) {
+            if (el.hidden) continue;
+            const st = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;
+                opacity:${el.opacity};z-index:${el.zIndex||0};
+                transform:rotate(${el.rotation||0}deg);transform-origin:center center;`;
+            const p = el.props || {};
+            if (el.type === 'text') {
+                const just = p.textAlign === 'right' ? 'flex-end' : p.textAlign === 'center' ? 'center' : 'flex-start';
+                html += `<div style="${st};font-size:${p.fontSize}px;color:${p.color};
+                    background:${p.backgroundColor||'transparent'};
+                    font-weight:${p.fontWeight||400};font-style:${p.fontStyle||'normal'};
+                    text-align:${p.textAlign||'left'};line-height:${p.lineHeight||1.4};
+                    padding:${p.padding ?? 8}px;border-radius:${p.borderRadius||0}px;
+                    display:flex;align-items:center;justify-content:${just};
+                    word-break:keep-all;white-space:pre-wrap;overflow:hidden;box-sizing:border-box;">${escapeHtml(p.content||'')}</div>`;
+            } else if (el.type === 'image') {
+                const fit = p.fit === 'stretch' ? 'fill' : (p.fit || 'contain');
+                html += `<div style="${st}"><img src="${escapeHtml(p.src)}" style="width:100%;height:100%;object-fit:${fit};display:block;border-radius:${p.borderRadius||0}px;"></div>`;
+            } else if (el.type === 'video') {
+                const fit = p.fit === 'stretch' ? 'fill' : (p.fit || 'contain');
+                const ap = p.autoplay !== false ? 'autoplay' : '';
+                const lp = p.loop !== false ? 'loop' : '';
+                const mu = p.muted !== false ? 'muted' : '';
+                html += `<div style="${st}"><video src="${escapeHtml(p.src)}" ${ap} ${lp} ${mu} playsinline style="width:100%;height:100%;object-fit:${fit};display:block;"></video></div>`;
+            } else if (el.type === 'shape') {
+                if (p.kind === 'circle') {
+                    html += `<div style="${st};background:${p.fill};border-radius:50%;${p.stroke ? `border:${p.strokeWidth||1}px solid ${p.stroke};`:''}"></div>`;
+                } else if (p.kind === 'line') {
+                    html += `<div style="${st};height:0;border-top:${p.strokeWidth||2}px solid ${p.stroke||p.fill};margin-top:${el.height/2}px;"></div>`;
+                } else {
+                    html += `<div style="${st};background:${p.fill};border-radius:${p.borderRadius||0}px;${p.stroke ? `border:${p.strokeWidth||1}px solid ${p.stroke};`:''}"></div>`;
+                }
+            } else if (el.type === 'widget' && p.kind === 'clock') {
+                const id = 'cv_clk_' + el.id;
+                const showDate = p.config?.showDate !== false;
+                html += `<div style="${st};display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,0.4);">
+                    <div id="${id}_time" style="font-size:${el.height*0.46}px;font-weight:900;line-height:1;letter-spacing:0.05em;">--:--</div>
+                    ${showDate ? `<div id="${id}_date" style="font-size:${el.height*0.12}px;opacity:0.85;margin-top:${el.height*0.04}px;">----.--.--</div>` : ''}
+                </div>`;
+            } else if (el.type === 'widget' && p.kind === 'qrcode') {
+                const id = 'cv_qr_' + el.id;
+                html += `<div style="${st};background:#fff;display:flex;align-items:center;justify-content:center;padding:${Math.min(el.width,el.height)*0.05}px;">
+                    <canvas id="${id}" style="width:100%;height:100%;"></canvas>
+                </div>`;
+            }
+        }
+        html += `</div></div>`;
+        stage.innerHTML = html;
+
+        // 시계 위젯 갱신
+        const updateClocks = () => {
+            for (const el of sorted) {
+                if (el.type === 'widget' && (el.props||{}).kind === 'clock') {
+                    const id = 'cv_clk_' + el.id;
+                    const t = document.getElementById(id + '_time');
+                    const d = document.getElementById(id + '_date');
+                    if (t) {
+                        const now = new Date();
+                        const hh = String(now.getHours()).padStart(2,'0');
+                        const mm = String(now.getMinutes()).padStart(2,'0');
+                        const ss = String(now.getSeconds()).padStart(2,'0');
+                        t.innerHTML = `${hh}:${mm}<span style="opacity:0.6">:${ss}</span>`;
+                        if (d) {
+                            const weeks = ['일','월','화','수','목','금','토'];
+                            d.textContent = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')} (${weeks[now.getDay()]})`;
+                        }
+                    }
+                }
+            }
+        };
+        updateClocks();
+        // 매 페이지 렌더마다 인터벌 재설정 (간소화)
+        if (window._clockTimer) clearInterval(window._clockTimer);
+        window._clockTimer = setInterval(updateClocks, 1000);
+
+        // QR 렌더 (CDN 스크립트가 로드되어 있다면)
+        for (const el of sorted) {
+            if (el.type === 'widget' && (el.props||{}).kind === 'qrcode') {
+                const id = 'cv_qr_' + el.id;
+                const canvas = document.getElementById(id);
+                if (canvas && window.QRCode) {
+                    try { window.QRCode.toCanvas(canvas, el.props.config?.url || ' ', { width: 600, margin: 1 }, ()=>{}); } catch(e){}
+                }
+            }
+        }
+
+        // 다음 페이지 전환
+        if (proj.pages.length > 1) {
+            if (pageTimer) clearTimeout(pageTimer);
+            pageTimer = setTimeout(() => {
+                pageIdx = (pageIdx + 1) % proj.pages.length;
+                renderOnePage();
+            }, (page.duration || 8) * 1000);
+        }
+    };
+    renderOnePage();
 }
 
 function renderBlockNoteHtml(item) {
