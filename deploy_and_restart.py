@@ -168,6 +168,25 @@ DOCKER_MAIN = "attendance-app"
 DOCKER_TBM  = "attendance-tbm"
 DOCKER_APP_DIR = "/app"
 
+# ── 0) BlockNote 에디터 빌드 (signage-editor/) ──────────────────
+import subprocess as _sp
+_editor_dir = "signage-editor"
+_editor_built = "static/signage-editor/index.html"
+if os.path.exists(_editor_dir):
+    if "--skip-editor-build" not in sys.argv:
+        print("[██░░░░░░░░░░░░░░░░░░]  10% signage-editor 빌드중...")
+        try:
+            r = _sp.run(["npm", "run", "build"], cwd=_editor_dir, capture_output=True, text=True, timeout=180)
+            if r.returncode != 0:
+                print("  ⚠️  npm build 실패 — 기존 빌드 산출물 사용")
+                print("    " + (r.stderr or r.stdout)[-300:])
+            else:
+                print("  ✅ signage-editor 빌드 완료")
+        except FileNotFoundError:
+            print("  ⚠️  npm 없음 (Mac에 Node.js 필요) — 기존 빌드 산출물 사용")
+        except Exception as e:
+            print(f"  ⚠️  빌드 오류: {e}")
+
 # ── 1) tar.gz 생성 ──────────────────────────────────────────────
 print("[████░░░░░░░░░░░░░░░░]  20% tar.gz 생성중...")
 buf = io.BytesIO()
@@ -177,6 +196,13 @@ with tarfile.open(fileobj=buf, mode='w:gz') as tar:
             tar.add(local, arcname=remote)
         else:
             print(f"  ⚠️  {local} 없음 — 건너뜀")
+    # static/signage-editor/ 전체 트리 추가
+    if os.path.exists("static/signage-editor"):
+        for root, dirs, fs in os.walk("static/signage-editor"):
+            for f in fs:
+                full = os.path.join(root, f)
+                arc = full  # static/signage-editor/...
+                tar.add(full, arcname=arc)
 tar_b64 = base64.b64encode(buf.getvalue()).decode()
 print(f"[████████░░░░░░░░░░░░]  40% tar.gz 완료 ({len(buf.getvalue())//1024}KB)")
 
@@ -211,7 +237,7 @@ def sudo_nas(cmd):
         out = out[len("Password: "):]
     return out.strip()
 
-nas(f"mkdir -p {STAGE_DIR}/static {STAGE_DIR}/templates {STAGE_DIR}/templates/tbm {STAGE_DIR}/templates/signage {STAGE_DIR}/uploads/documents {STAGE_DIR}/uploads/signage")
+nas(f"mkdir -p {STAGE_DIR}/static {STAGE_DIR}/static/signage-editor {STAGE_DIR}/templates {STAGE_DIR}/templates/tbm {STAGE_DIR}/templates/signage {STAGE_DIR}/uploads/documents {STAGE_DIR}/uploads/signage")
 
 chunks = [tar_b64[i:i+60000] for i in range(0, len(tar_b64), 60000)]
 nas(f"> /tmp/_deploy.tar.gz.b64")
@@ -254,6 +280,12 @@ for ext in ["*.css", "*.GIF", "*.gif", "*.json", "*.png", "*.js"]:
             f"{STAGE_DIR}/{f_path}",
             f"{DOCKER_APP_DIR}/{f_path}"
         ))
+# static/signage-editor/ 빌드 산출물 (디렉토리 통째로 docker cp)
+if os.path.exists("static/signage-editor"):
+    docker_files_main.append((
+        f"{STAGE_DIR}/static/signage-editor",
+        f"{DOCKER_APP_DIR}/static/"   # /app/static/ 안에 signage-editor 디렉토리로 복사
+    ))
 docker_files_tbm = [
     (f"{STAGE_DIR}/tbm_app.py",    f"{DOCKER_APP_DIR}/tbm_app.py"),
     (f"{STAGE_DIR}/.env",          f"{DOCKER_APP_DIR}/.env"),
@@ -264,7 +296,9 @@ for local, remote in files:
 
 cp_ok = True
 # 메인 컨테이너 안에 신규 디렉토리 보장 (signage 등)
-sudo_nas(f"docker exec {DOCKER_MAIN} mkdir -p {DOCKER_APP_DIR}/templates/signage {DOCKER_APP_DIR}/uploads/signage")
+sudo_nas(f"docker exec {DOCKER_MAIN} mkdir -p {DOCKER_APP_DIR}/templates/signage {DOCKER_APP_DIR}/uploads/signage {DOCKER_APP_DIR}/static/signage-editor")
+# 컨테이너 안 옛 빌드 제거 (assets/ 안에 hashed 파일이 누적되지 않도록)
+sudo_nas(f"docker exec {DOCKER_MAIN} sh -c 'rm -rf {DOCKER_APP_DIR}/static/signage-editor/assets'")
 for src, dst in docker_files_main:
     r = sudo_nas(f"docker cp {src} {DOCKER_MAIN}:{dst}; echo EXIT_$?")
     if "EXIT_0" not in r:
