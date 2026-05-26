@@ -1043,7 +1043,8 @@ function makeBlockEl(b, idx) {
         ed.onfocus = () => { selectedIdx = idx; lastFocusBlockIdx = idx; };
         // 텍스트 스타일은 폰트 크기/굵기 정도만 본문에 반영 — 색상은 미리보기에서
         const s = b.style || {};
-        if (s.font_size) ed.style.fontSize = Math.min(s.font_size * 4.5, 44) + 'px';
+        // 1vw ≈ 7px (편집 화면) — TV 4K에선 vw 그대로 적용되어 거대해짐
+        if (s.font_size) ed.style.fontSize = (s.font_size * 7) + 'px';
         if (s.bold) ed.style.fontWeight = '800';
         if (s.italic) ed.style.fontStyle = 'italic';
         if (s.align) ed.style.textAlign = s.align;
@@ -1459,14 +1460,40 @@ function syncFromActive() {
 function applyFontSize(vw) {
     if (!vw) return;
     const ed = document.activeElement;
-    if (ed && ed.isContentEditable) {
-        const idx = parseInt(ed.closest('[data-idx]').dataset.idx);
-        if (!isNaN(idx)) {
-            blocks[idx].style = blocks[idx].style || {};
-            blocks[idx].style.font_size = parseFloat(vw);
-            renderAll();
-        }
+    if (!ed || !ed.isContentEditable) return;
+
+    const px = Math.round(parseFloat(vw) * 7);  // 편집 화면 표시용
+    const sel = window.getSelection();
+
+    // ─── 1) 선택 영역이 있으면 → 선택 부분에만 span으로 감싸 적용
+    if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+        // execCommand('fontSize', '7') 를 마커로 사용 → font tag 생성 → span으로 변환
+        document.execCommand('fontSize', false, '7');
+        ed.querySelectorAll('font[size="7"]').forEach(f => {
+            const span = document.createElement('span');
+            span.style.fontSize = px + 'px';
+            span.setAttribute('data-vw', vw);
+            while (f.firstChild) span.appendChild(f.firstChild);
+            f.replaceWith(span);
+        });
+        syncFromActive();
+        // 셀렉트 박스 초기화
+        document.getElementById('tb_fontsize').value = '';
+        return;
     }
+
+    // ─── 2) 선택 영역 없으면 → 활성 블록 전체에 적용
+    const wrap = ed.closest('[data-idx]');
+    if (!wrap) return;
+    const idx = parseInt(wrap.dataset.idx);
+    if (isNaN(idx) || !blocks[idx]) return;
+
+    blocks[idx].style = blocks[idx].style || {};
+    blocks[idx].style.font_size = parseFloat(vw);
+    // 포커스 유지: 직접 style만 변경 (renderAll 호출 X)
+    ed.style.fontSize = px + 'px';
+    renderPreview();
+    document.getElementById('tb_fontsize').value = '';
 }
 function setAlign(a) {
     const ed = document.activeElement;
