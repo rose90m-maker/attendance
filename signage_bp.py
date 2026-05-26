@@ -1546,11 +1546,196 @@ def emergency_end(eid):
         conn.close()
 
 
+# ════════════════════════════════════════════════════════
+#  Phase 6 — 재생로그 / 증빙
+# ════════════════════════════════════════════════════════
+
 @signage_bp.route("/logs")
 @_login_required
 def logs():
-    flash("재생로그 — Phase 6에서 구현 예정", "info")
-    return redirect(url_for("signage.dashboard"))
+    """재생로그 + 통계 + 장애이력"""
+    if not _has_signage_perm("view") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("dashboard"))
+
+    from datetime import timedelta
+    # 필터
+    date_from = request.args.get('from', '').strip()
+    date_to = request.args.get('to', '').strip()
+    f_display = request.args.get('display_id', '').strip()
+    f_content = request.args.get('content_id', '').strip()
+    tab = request.args.get('tab', 'recent')   # recent / content / display / event
+
+    if not date_from:
+        date_from = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    if not date_to:
+        date_to = datetime.now().strftime('%Y-%m-%d')
+
+    conn = _conn(); cur = conn.cursor()
+
+    where = ["pl.started_at >= %s", "pl.started_at < DATE_ADD(%s, INTERVAL 1 DAY)"]
+    params = [date_from, date_to]
+    if f_display:
+        where.append("pl.display_id = %s"); params.append(f_display)
+    if f_content:
+        where.append("pl.content_id = %s"); params.append(f_content)
+    where_sql = " AND ".join(where)
+
+    # 최근 로그 200건
+    cur.execute(f"""SELECT pl.id, pl.started_at, pl.ended_at, pl.duration_sec,
+                          d.name AS dname, d.location,
+                          c.title AS ctitle, c.type AS ctype,
+                          p.name AS pname
+                   FROM ds_play_logs pl
+                   LEFT JOIN ds_displays d ON pl.display_id = d.id
+                   LEFT JOIN ds_contents c ON pl.content_id = c.id
+                   LEFT JOIN ds_playlists p ON pl.playlist_id = p.id
+                   WHERE {where_sql}
+                   ORDER BY pl.started_at DESC LIMIT 200""", params)
+    recent_logs = [
+        {'id': r[0], 'started_at': r[1], 'ended_at': r[2], 'duration_sec': r[3],
+         'display_name': r[4], 'location': r[5],
+         'content_title': r[6], 'content_type': r[7],
+         'playlist_name': r[8]}
+        for r in cur.fetchall()
+    ]
+
+    # 콘텐츠별 통계
+    cur.execute(f"""SELECT c.id, c.title, c.type,
+                          COUNT(*) AS play_count,
+                          SUM(IFNULL(pl.duration_sec,0)) AS total_sec
+                   FROM ds_play_logs pl
+                   JOIN ds_contents c ON pl.content_id = c.id
+                   WHERE {where_sql}
+                   GROUP BY c.id, c.title, c.type
+                   ORDER BY play_count DESC LIMIT 50""", params)
+    content_stats = [
+        {'id': r[0], 'title': r[1], 'type': r[2],
+         'play_count': r[3], 'total_sec': int(r[4] or 0)}
+        for r in cur.fetchall()
+    ]
+
+    # 디스플레이별 통계
+    cur.execute(f"""SELECT d.id, d.name, d.location, d.status,
+                          COUNT(*) AS play_count,
+                          SUM(IFNULL(pl.duration_sec,0)) AS total_sec,
+                          MAX(pl.started_at) AS last_play
+                   FROM ds_play_logs pl
+                   JOIN ds_displays d ON pl.display_id = d.id
+                   WHERE {where_sql}
+                   GROUP BY d.id, d.name, d.location, d.status
+                   ORDER BY play_count DESC""", params)
+    display_stats = [
+        {'id': r[0], 'name': r[1], 'location': r[2], 'status': r[3],
+         'play_count': r[4], 'total_sec': int(r[5] or 0), 'last_play': r[6]}
+        for r in cur.fetchall()
+    ]
+
+    # 장애/이벤트 로그
+    cur.execute(f"""SELECT dl.id, dl.created_at, dl.event_type, dl.message,
+                          d.name AS dname
+                   FROM ds_display_logs dl
+                   LEFT JOIN ds_displays d ON dl.display_id = d.id
+                   WHERE dl.created_at >= %s AND dl.created_at < DATE_ADD(%s, INTERVAL 1 DAY)
+                   ORDER BY dl.created_at DESC LIMIT 100""", [date_from, date_to])
+    event_logs = [
+        {'id': r[0], 'time': r[1], 'type': r[2], 'message': r[3], 'display': r[4]}
+        for r in cur.fetchall()
+    ]
+
+    # 디스플레이/콘텐츠 목록 (필터 dropdown)
+    cur.execute("SELECT id, name FROM ds_displays WHERE paired=1 ORDER BY name")
+    all_displays = [{'id': r[0], 'name': r[1]} for r in cur.fetchall()]
+    cur.execute("SELECT id, title FROM ds_contents ORDER BY title LIMIT 500")
+    all_contents = [{'id': r[0], 'title': r[1]} for r in cur.fetchall()]
+
+    # 총합 카드
+    cur.execute(f"""SELECT COUNT(*) AS total_plays,
+                           COUNT(DISTINCT pl.display_id) AS active_disp,
+                           COUNT(DISTINCT pl.content_id) AS uniq_content,
+                           SUM(IFNULL(pl.duration_sec,0)) AS total_sec
+                    FROM ds_play_logs pl
+                    WHERE {where_sql}""", params)
+    s = cur.fetchone()
+    summary = {
+        'total_plays': s[0] or 0,
+        'active_disp': s[1] or 0,
+        'uniq_content': s[2] or 0,
+        'total_sec': int(s[3] or 0)
+    }
+
+    conn.close()
+    return render_template("signage/logs.html",
+                           recent_logs=recent_logs,
+                           content_stats=content_stats,
+                           display_stats=display_stats,
+                           event_logs=event_logs,
+                           summary=summary,
+                           all_displays=all_displays, all_contents=all_contents,
+                           date_from=date_from, date_to=date_to,
+                           filter_display=f_display, filter_content=f_content,
+                           tab=tab,
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/logs/export")
+@_login_required
+def logs_export():
+    """재생로그 CSV 다운로드"""
+    if not _has_signage_perm("view") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.logs"))
+
+    from datetime import timedelta
+    import csv, io as _io
+    from flask import Response
+
+    date_from = request.args.get('from', '').strip()
+    date_to = request.args.get('to', '').strip()
+    f_display = request.args.get('display_id', '').strip()
+    f_content = request.args.get('content_id', '').strip()
+    if not date_from:
+        date_from = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    if not date_to:
+        date_to = datetime.now().strftime('%Y-%m-%d')
+
+    where = ["pl.started_at >= %s", "pl.started_at < DATE_ADD(%s, INTERVAL 1 DAY)"]
+    params = [date_from, date_to]
+    if f_display:
+        where.append("pl.display_id = %s"); params.append(f_display)
+    if f_content:
+        where.append("pl.content_id = %s"); params.append(f_content)
+    where_sql = " AND ".join(where)
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute(f"""SELECT pl.started_at, pl.ended_at, pl.duration_sec,
+                          d.name, d.location,
+                          c.title, c.type, p.name
+                   FROM ds_play_logs pl
+                   LEFT JOIN ds_displays d ON pl.display_id = d.id
+                   LEFT JOIN ds_contents c ON pl.content_id = c.id
+                   LEFT JOIN ds_playlists p ON pl.playlist_id = p.id
+                   WHERE {where_sql}
+                   ORDER BY pl.started_at DESC LIMIT 50000""", params)
+    rows = cur.fetchall()
+    conn.close()
+
+    out = _io.StringIO()
+    out.write('﻿')  # UTF-8 BOM (Excel 한글)
+    w = csv.writer(out)
+    w.writerow(['시작시각', '종료시각', '재생시간(초)', '디스플레이', '위치', '콘텐츠', '유형', '플레이리스트'])
+    for r in rows:
+        w.writerow([
+            r[0].strftime('%Y-%m-%d %H:%M:%S') if r[0] else '',
+            r[1].strftime('%Y-%m-%d %H:%M:%S') if r[1] else '',
+            r[2] or 0,
+            r[3] or '', r[4] or '', r[5] or '', r[6] or '', r[7] or ''
+        ])
+
+    fname = f"signage_logs_{date_from}_{date_to}.csv"
+    return Response(out.getvalue().encode('utf-8'),
+                    mimetype='text/csv; charset=utf-8',
+                    headers={'Content-Disposition': f'attachment; filename={fname}'})
 
 
 @signage_bp.route("/settings")

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>재생로그 — 디지털 사이니지</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=27" rel="stylesheet">
+    <style>
+        .stat-mini {
+            background:#fff; border:1px solid #e2e8f0; border-radius:2px;
+            padding:10px 12px;
+        }
+        .stat-mini .label { font-size:0.72rem; color:#64748b; font-weight:600; }
+        .stat-mini .value { font-size:1.3rem; font-weight:800; color:#0f172a; }
+        .stat-mini .sub { font-size:0.7rem; color:#94a3b8; }
+        .filter-bar-logs {
+            background:#fff; border:1px solid #e2e8f0; padding:10px 14px;
+            margin-bottom:10px; border-radius:2px;
+        }
+        .tab-nav {
+            display:flex; gap:0; border-bottom:2px solid #e2e8f0;
+            margin-bottom:10px;
+        }
+        .tab-nav a {
+            padding:8px 14px; font-size:0.85rem; color:#64748b;
+            text-decoration:none; border-bottom:2px solid transparent;
+            margin-bottom:-2px;
+        }
+        .tab-nav a.active { color:#1e40af; border-bottom-color:#1e40af; font-weight:700; }
+        .signage-tbl thead th {
+            position:sticky; top:0; background:#f9fafb;
+            font-size:0.78rem; padding:8px 10px; border-bottom:2px solid #e2e8f0;
+        }
+        .signage-tbl tbody td { font-size:0.82rem; padding:5px 10px; vertical-align:middle; }
+        .ev-online { color:#16a34a; }
+        .ev-offline { color:#dc2626; }
+        .ev-error { color:#dc2626; }
+        .ev-paired { color:#1e40af; }
+        .ev-reload { color:#d97706; }
+        .ev-version_check { color:#94a3b8; }
+        .panel { background:#fff; border:1px solid #e2e8f0; border-radius:2px; }
+        .duration-pretty {
+            font-variant-numeric: tabular-nums; font-size:0.8rem; color:#475569;
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_logs' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}{% endwith %}
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">📋 재생로그 / 증빙
+            <small class="text-muted" style="font-size:0.55em;">{{ date_from }} ~ {{ date_to }}</small>
+        </h4>
+        <div>
+            <a href="/signage/logs/export?from={{ date_from }}&to={{ date_to }}&display_id={{ filter_display }}&content_id={{ filter_content }}" class="btn btn-sm btn-success">📥 CSV 다운로드</a>
+            <a href="/signage" class="btn btn-sm btn-outline-secondary">← 대시보드</a>
+        </div>
+    </div>
+
+    <!-- 필터 -->
+    <form method="get" class="filter-bar-logs">
+        <input type="hidden" name="tab" value="{{ tab }}">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small mb-1">시작일</label>
+                <input type="date" name="from" value="{{ date_from }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">종료일</label>
+                <input type="date" name="to" value="{{ date_to }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">디스플레이</label>
+                <select name="display_id" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for d in all_displays %}
+                    <option value="{{ d.id }}" {{ 'selected' if filter_display == d.id|string }}>{{ d.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">콘텐츠</label>
+                <select name="content_id" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for c in all_contents %}
+                    <option value="{{ c.id }}" {{ 'selected' if filter_content == c.id|string }}>{{ c.title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 d-flex gap-1">
+                <button type="submit" class="btn btn-sm btn-dark">🔍 조회</button>
+                <a href="/signage/logs" class="btn btn-sm btn-outline-secondary">초기화</a>
+            </div>
+        </div>
+    </form>
+
+    <!-- 요약 카드 -->
+    <div class="row g-2 mb-3">
+        <div class="col-md-3 col-sm-6">
+            <div class="stat-mini">
+                <div class="label">총 재생 횟수</div>
+                <div class="value">{{ summary.total_plays }}</div>
+                <div class="sub">기간 내</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="stat-mini">
+                <div class="label">활성 디스플레이</div>
+                <div class="value">{{ summary.active_disp }}</div>
+                <div class="sub">로그 발생 디스플레이 수</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="stat-mini">
+                <div class="label">노출 콘텐츠 수</div>
+                <div class="value">{{ summary.uniq_content }}</div>
+                <div class="sub">고유 콘텐츠</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="stat-mini">
+                <div class="label">총 재생 시간</div>
+                <div class="value duration-pretty" id="totalDur">{{ summary.total_sec }}</div>
+                <div class="sub">초 (아래 변환)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 탭 -->
+    <div class="tab-nav">
+        <a href="?tab=recent&from={{ date_from }}&to={{ date_to }}&display_id={{ filter_display }}&content_id={{ filter_content }}" class="{{ 'active' if tab=='recent' or not tab }}">📋 최근 재생 ({{ recent_logs|length }})</a>
+        <a href="?tab=content&from={{ date_from }}&to={{ date_to }}&display_id={{ filter_display }}&content_id={{ filter_content }}" class="{{ 'active' if tab=='content' }}">🎬 콘텐츠별 통계 ({{ content_stats|length }})</a>
+        <a href="?tab=display&from={{ date_from }}&to={{ date_to }}&display_id={{ filter_display }}&content_id={{ filter_content }}" class="{{ 'active' if tab=='display' }}">🖥️ 디스플레이별 통계 ({{ display_stats|length }})</a>
+        <a href="?tab=event&from={{ date_from }}&to={{ date_to }}&display_id={{ filter_display }}&content_id={{ filter_content }}" class="{{ 'active' if tab=='event' }}">⚡ 장애/이벤트 ({{ event_logs|length }})</a>
+    </div>
+
+    <div class="panel">
+        <div style="max-height:calc(100vh - 380px); overflow-y:auto;">
+        {% if tab == 'recent' or not tab %}
+        <table class="table signage-tbl mb-0">
+            <thead><tr>
+                <th style="width:32px;">#</th>
+                <th style="width:160px;">시작</th>
+                <th style="width:80px;">재생</th>
+                <th style="width:140px;">디스플레이</th>
+                <th>콘텐츠</th>
+                <th style="width:140px;">플레이리스트</th>
+            </tr></thead>
+            <tbody>
+            {% for log in recent_logs %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ log.started_at.strftime('%m/%d %H:%M:%S') if log.started_at else '-' }}</td>
+                <td class="duration-pretty">{{ log.duration_sec or '-' }}s</td>
+                <td><strong>{{ log.display_name or '-' }}</strong><br><small class="text-muted">{{ log.location or '' }}</small></td>
+                <td>{{ log.content_title or '(삭제됨)' }}<br><small class="text-muted">{{ log.content_type }}</small></td>
+                <td><small>{{ log.playlist_name or '-' }}</small></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center py-4 text-muted">기록 없음</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        {% elif tab == 'content' %}
+        <table class="table signage-tbl mb-0">
+            <thead><tr>
+                <th style="width:32px;">#</th>
+                <th>콘텐츠</th>
+                <th style="width:80px;">유형</th>
+                <th style="width:120px;text-align:right;">재생 횟수</th>
+                <th style="width:180px;text-align:right;">총 노출시간</th>
+                <th style="width:120px;text-align:right;">평균</th>
+            </tr></thead>
+            <tbody>
+            {% for s in content_stats %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ s.title }}</td>
+                <td><small class="text-muted">{{ s.type }}</small></td>
+                <td class="text-end fw-bold">{{ s.play_count }}</td>
+                <td class="text-end duration-pretty" data-sec="{{ s.total_sec }}">{{ s.total_sec }}s</td>
+                <td class="text-end duration-pretty">{{ (s.total_sec / s.play_count)|round(1) if s.play_count else 0 }}s</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center py-4 text-muted">기록 없음</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        {% elif tab == 'display' %}
+        <table class="table signage-tbl mb-0">
+            <thead><tr>
+                <th style="width:32px;">#</th>
+                <th>디스플레이</th>
+                <th style="width:140px;">위치</th>
+                <th style="width:80px;text-align:center;">상태</th>
+                <th style="width:100px;text-align:right;">재생 수</th>
+                <th style="width:180px;text-align:right;">총 가동시간</th>
+                <th style="width:160px;">마지막 재생</th>
+            </tr></thead>
+            <tbody>
+            {% for s in display_stats %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td><strong>{{ s.name }}</strong></td>
+                <td><small class="text-muted">{{ s.location or '-' }}</small></td>
+                <td class="text-center">
+                    {% if s.status == 'online' %}<span class="text-success">●</span>
+                    {% elif s.status == 'offline' %}<span class="text-secondary">●</span>
+                    {% else %}<span class="text-warning">●</span>{% endif %}
+                    <small>{{ s.status }}</small>
+                </td>
+                <td class="text-end fw-bold">{{ s.play_count }}</td>
+                <td class="text-end duration-pretty" data-sec="{{ s.total_sec }}">{{ s.total_sec }}s</td>
+                <td><small>{{ s.last_play.strftime('%m/%d %H:%M') if s.last_play else '-' }}</small></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center py-4 text-muted">기록 없음</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        {% elif tab == 'event' %}
+        <table class="table signage-tbl mb-0">
+            <thead><tr>
+                <th style="width:32px;">#</th>
+                <th style="width:160px;">시각</th>
+                <th style="width:160px;">디스플레이</th>
+                <th style="width:120px;">이벤트</th>
+                <th>메시지</th>
+            </tr></thead>
+            <tbody>
+            {% for log in event_logs %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ log.time.strftime('%m/%d %H:%M:%S') if log.time else '-' }}</td>
+                <td><strong>{{ log.display or '-' }}</strong></td>
+                <td><span class="ev-{{ log.type }}">●</span> <small>{{ log.type }}</small></td>
+                <td><small>{{ log.message or '' }}</small></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center py-4 text-muted">이벤트 없음</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+// 초 → 시:분:초 변환 표시
+function fmtSec(sec) {
+    sec = parseInt(sec) || 0;
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    if (h > 0) return `${h}시간 ${m}분`;
+    if (m > 0) return `${m}분 ${s}초`;
+    return `${s}초`;
+}
+document.querySelectorAll('[data-sec]').forEach(el => {
+    el.textContent = fmtSec(el.dataset.sec) + ` (${el.dataset.sec}s)`;
+});
+const td = document.getElementById('totalDur');
+if (td) td.textContent = fmtSec(td.textContent);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
