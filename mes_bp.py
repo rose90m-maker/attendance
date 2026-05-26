@@ -121,19 +121,19 @@ def _mqtt_save_count(device_id, count):
                     INSERT INTO mes_label_count (device_id, count)
                     VALUES (%s, %s)
                 """, (device_id, count))
-                today = date.today().isoformat()
+                # NOTE: Python date.today()는 컨테이너 타임존(UTC) 의존 → DB의 CURDATE()(KST) 사용
                 cur.execute("SELECT target_day FROM mes_devices WHERE device_id=%s LIMIT 1", (device_id,))
                 _trow = cur.fetchone()
                 _dev_target = (_trow[0] if _trow else 0) or 0
                 cur.execute("""
                     INSERT INTO mes_daily_summary (device_id, work_date, total_count, peak_count, peak_hour, target)
-                    SELECT %s, %s,
+                    SELECT %s, CURDATE(),
                            COALESCE(SUM(count), 0),
                            COALESCE(MAX(count), 0),
                            HOUR(recorded_at),
                            %s
                     FROM mes_label_count
-                    WHERE device_id=%s AND DATE(recorded_at)=%s
+                    WHERE device_id=%s AND DATE(recorded_at)=CURDATE()
                     GROUP BY device_id, DATE(recorded_at), HOUR(recorded_at)
                     ORDER BY SUM(count) DESC LIMIT 1
                     ON DUPLICATE KEY UPDATE
@@ -142,7 +142,7 @@ def _mqtt_save_count(device_id, count):
                         peak_hour   = VALUES(peak_hour),
                         target      = COALESCE(target, VALUES(target)),
                         updated_at  = NOW()
-                """, (device_id, today, _dev_target, device_id, today))
+                """, (device_id, _dev_target, device_id))
                 conn.commit()
                 print(f"[MQTT] count 저장: {device_id} = {count}")
             finally:
@@ -293,20 +293,19 @@ def receive_count():
             VALUES (%s, %s)
         """, (device_id, count))
 
-        # 일별 집계 UPSERT
-        today = date.today().isoformat()
+        # 일별 집계 UPSERT — CURDATE()로 DB 타임존 기준 (KST) 사용
         cur.execute("SELECT target_day FROM mes_devices WHERE device_id=%s LIMIT 1", (device_id,))
         _trow = cur.fetchone()
         _dev_target = (_trow[0] if _trow else 0) or 0
         cur.execute("""
             INSERT INTO mes_daily_summary (device_id, work_date, total_count, peak_count, peak_hour, target)
-            SELECT %s, %s,
+            SELECT %s, CURDATE(),
                    COALESCE(SUM(count), 0),
                    COALESCE(MAX(count), 0),
                    HOUR(recorded_at),
                    %s
             FROM mes_label_count
-            WHERE device_id=%s AND DATE(recorded_at)=%s
+            WHERE device_id=%s AND DATE(recorded_at)=CURDATE()
             GROUP BY device_id, DATE(recorded_at), HOUR(recorded_at)
             ORDER BY SUM(count) DESC LIMIT 1
             ON DUPLICATE KEY UPDATE
@@ -315,7 +314,7 @@ def receive_count():
                 peak_hour   = VALUES(peak_hour),
                 target      = COALESCE(target, VALUES(target)),
                 updated_at  = NOW()
-        """, (device_id, today, _dev_target, device_id, today))
+        """, (device_id, _dev_target, device_id))
 
         conn.commit()
         conn.close()
