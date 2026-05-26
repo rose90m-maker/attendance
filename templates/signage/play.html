@@ -272,6 +272,11 @@ function renderContent(item) {
         renderSlide(item);
         return;
     }
+    // 📝 블록형 subtype (Notion 스타일)
+    if (item.meta && item.meta.subtype === 'blocks' && Array.isArray(item.meta.blocks)) {
+        renderBlocks(item);
+        return;
+    }
 
     let html = '';
     if (item.type === 'text') {
@@ -318,6 +323,100 @@ function renderContent(item) {
 
 function escapeHtml(s) {
     return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderBlocks(item) {
+    const m = item.meta;
+    const bg = m.bg_color || '#0f172a';
+    const blocks = m.blocks || [];
+    const mainBlocks = blocks.filter(b => b.type !== 'ticker');
+    const tickers = blocks.filter(b => b.type === 'ticker');
+
+    let body = '';
+    for (const b of mainBlocks) {
+        const s = b.style || {};
+        const css = [];
+        if (s.font_size) css.push(`font-size:${s.font_size}vw`);
+        if (s.bold) css.push('font-weight:800');
+        if (s.italic) css.push('font-style:italic');
+        if (s.align) css.push(`text-align:${s.align}`);
+        if (s.color) css.push(`color:${s.color}`);
+        if (s.bg && s.bg !== 'transparent') css.push(`background:${s.bg}`);
+        if (s.padding) css.push(`padding:${s.padding}vw`);
+        const just = s.align === 'left' ? 'flex-start' : s.align === 'right' ? 'flex-end' : 'center';
+        css.push('display:flex;', `justify-content:${just}`, 'align-items:center', 'word-break:keep-all', 'overflow:hidden');
+        const styleStr = css.join(';');
+
+        if (b.type === 'heading' || b.type === 'text') {
+            body += `<div style="${styleStr}">${escapeHtml(b.content||'').replace(/\n/g,'<br>')}</div>`;
+        } else if (b.type === 'image' && b.url) {
+            const fit = b.fit || 'contain';
+            body += `<div style="${styleStr};flex:1;min-height:10vw;"><img src="${escapeHtml(b.url)}" style="max-width:100%;max-height:100%;object-fit:${fit};"></div>`;
+        } else if (b.type === 'video' && b.url) {
+            const fit = b.fit || 'contain';
+            const ap = b.autoplay !== false ? 'autoplay' : '';
+            const lp = b.loop !== false ? 'loop' : '';
+            const mu = b.muted !== false ? 'muted' : '';
+            body += `<div style="${styleStr};flex:1;min-height:10vw;"><video src="${escapeHtml(b.url)}" ${ap} ${lp} ${mu} playsinline style="max-width:100%;max-height:100%;object-fit:${fit};"></video></div>`;
+        } else if (b.type === 'pdf' && b.url) {
+            body += `<div style="${styleStr};flex:1;min-height:15vw;"><embed src="${escapeHtml(b.url)}#toolbar=0&navpanes=0" type="application/pdf" style="width:100%;height:100%;"></div>`;
+        } else if (b.type === 'web' && b.url) {
+            if (b.mode === 'card') {
+                const hostMatch = b.url.match(/^https?:\/\/([^/]+)/);
+                const host = hostMatch ? hostMatch[1] : b.url;
+                body += `<div style="${styleStr};"><div style="background:rgba(255,255,255,0.95);color:#0f172a;border-radius:0.6vw;padding:1.5vw;max-width:80%;">
+                    <div style="font-weight:800;font-size:2vw;">${escapeHtml(b.card_title || host)}</div>
+                    ${b.card_desc ? `<div style="font-size:1.2vw;opacity:0.7;margin-top:0.5vw;">${escapeHtml(b.card_desc)}</div>` : ''}
+                    <div style="font-size:0.9vw;color:#1e40af;margin-top:0.5vw;">🔗 ${escapeHtml(b.url)}</div>
+                </div></div>`;
+            } else {
+                body += `<div style="${styleStr};flex:1;min-height:15vw;"><iframe src="${escapeHtml(b.url)}" sandbox="allow-scripts allow-same-origin allow-forms" style="width:100%;height:100%;border:0;"></iframe></div>`;
+            }
+        } else if (b.type === 'divider') {
+            const c = s.color || '#94a3b8';
+            const p = s.padding || 0.5;
+            body += `<div style="border-bottom:0.25vw solid ${c};opacity:0.5;margin:${p}vw 2vw;"></div>`;
+        } else if (b.type === 'table') {
+            let tableHtml = '<table style="border-collapse:collapse;width:100%;height:100%;">';
+            for (const row of (b.cells || [])) {
+                tableHtml += '<tr>';
+                for (const cell of row) {
+                    if (cell._covered) continue;
+                    const cspan = cell.colspan ? ` colspan="${cell.colspan}"` : '';
+                    const rspan = cell.rowspan ? ` rowspan="${cell.rowspan}"` : '';
+                    const cellCss = [
+                        'border:1px solid rgba(255,255,255,0.3)',
+                        'padding:0.4vw 0.8vw',
+                        `text-align:${cell.align||s.align||'center'}`,
+                        cell.bold ? 'font-weight:800' : '',
+                        cell.bg ? `background:${cell.bg}` : '',
+                        cell.color ? `color:${cell.color}` : '',
+                    ].filter(Boolean).join(';');
+                    tableHtml += `<td${cspan}${rspan} style="${cellCss};">${escapeHtml(cell.text||'')}</td>`;
+                }
+                tableHtml += '</tr>';
+            }
+            tableHtml += '</table>';
+            body += `<div style="${styleStr};flex:1;">${tableHtml}</div>`;
+        }
+    }
+
+    let tickerHtml = '';
+    for (const b of tickers) {
+        const s = b.style || {};
+        const pos = b.position === 'top' ? 'top:0' : 'bottom:0';
+        tickerHtml += `<div style="position:absolute;left:0;right:0;${pos};overflow:hidden;white-space:nowrap;
+            background:${s.bg||'#000000'};color:${s.color||'#fbbf24'};
+            padding:0.5vw 1vw;font-weight:${s.bold!==false?800:400};font-size:${s.font_size||2}vw;">
+            <span style="display:inline-block;animation:tickerScroll ${b.speed||25}s linear infinite;">${escapeHtml(b.content||'')}</span>
+        </div>`;
+    }
+
+    stage.innerHTML = `<div style="position:fixed;inset:0;background:${bg};display:flex;flex-direction:column;padding:1vw 2vw;overflow:hidden;">
+        ${body}
+        ${tickerHtml}
+    </div>
+    <style>@keyframes tickerScroll {0%{transform:translateX(100%);}100%{transform:translateX(-100%);}}</style>`;
 }
 
 function renderSlide(item) {

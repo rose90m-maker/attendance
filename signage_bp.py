@@ -673,7 +673,7 @@ def content_edit(cid):
 
     conn = _conn(); cur = conn.cursor()
 
-    # GET 시 slide/birthday subtype이면 전용 에디터로 리다이렉트
+    # GET 시 slide/blocks/birthday subtype이면 전용 에디터로 리다이렉트
     if request.method == "GET":
         cur.execute("SELECT meta FROM ds_contents WHERE id=%s", (cid,))
         r = cur.fetchone()
@@ -683,6 +683,9 @@ def content_edit(cid):
                 if meta and meta.get('subtype') == 'slide':
                     conn.close()
                     return redirect(url_for("signage.slide_edit", cid=cid))
+                if meta and meta.get('subtype') == 'blocks':
+                    conn.close()
+                    return redirect(url_for("signage.editor_edit", cid=cid))
             except Exception:
                 pass
 
@@ -2666,6 +2669,114 @@ def templates_gallery():
                            templates_by_cat=cats,
                            total=len(tmpls),
                            can_create=_has_signage_perm("create") or session.get('role') == 'admin',
+                           is_admin=session.get('role') == 'admin')
+
+
+# ════════════════════════════════════════════════════════
+#  블록형 콘텐츠 에디터 (Notion 스타일) — 새 콘텐츠 기본
+# ════════════════════════════════════════════════════════
+
+@signage_bp.route("/editor/new", methods=["GET", "POST"])
+@_login_required
+def editor_new():
+    if not _has_signage_perm("create") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.contents"))
+    return _editor_save_or_form(cid=None)
+
+
+@signage_bp.route("/editor/<int:cid>/edit", methods=["GET", "POST"])
+@_login_required
+def editor_edit(cid):
+    if not _has_signage_perm("update") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.contents"))
+    return _editor_save_or_form(cid=cid)
+
+
+def _editor_save_or_form(cid):
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        try:
+            title = request.form.get('title', '').strip() or '새 콘텐츠'
+            duration = int(request.form.get('duration_sec', 15) or 15)
+            priority = int(request.form.get('priority', 0) or 0)
+            status = request.form.get('status', 'active')
+            bg_color = request.form.get('bg_color', '#0f172a').strip()
+            blocks_json = request.form.get('blocks_json', '[]')
+            try:
+                blocks = json.loads(blocks_json)
+            except Exception:
+                blocks = []
+
+            meta = {
+                'subtype': 'blocks',
+                'bg_color': bg_color,
+                'blocks': blocks,
+            }
+            # fallback body_text (구버전/검색용)
+            text_parts = []
+            for b in blocks:
+                if b.get('type') in ('text', 'heading', 'ticker') and b.get('content'):
+                    text_parts.append(b['content'])
+            fallback = (title + ' — ' + ' | '.join(text_parts))[:500]
+
+            if cid is None:
+                cur.execute("""INSERT INTO ds_contents
+                    (title, type, body_text, duration_sec, priority, status, meta, created_by)
+                    VALUES (%s, 'text', %s, %s, %s, %s, %s, %s)""",
+                    (title, fallback, duration, priority, status,
+                     json.dumps(meta, ensure_ascii=False),
+                     session.get('user_id')))
+                cid = cur.lastrowid
+            else:
+                cur.execute("""UPDATE ds_contents SET
+                    title=%s, body_text=%s, duration_sec=%s, priority=%s, status=%s, meta=%s
+                    WHERE id=%s""",
+                    (title, fallback, duration, priority, status,
+                     json.dumps(meta, ensure_ascii=False), cid))
+            conn.commit()
+            flash(f"콘텐츠 '{title}' 저장 완료 ({len(blocks)}개 블록).", "success")
+            conn.close()
+            return redirect(url_for("signage.contents"))
+        except Exception as e:
+            conn.rollback()
+            flash(f"저장 실패: {e}", "danger")
+
+    # GET
+    content = None
+    if cid:
+        cur.execute("""SELECT id, title, duration_sec, priority, status, meta, body_text
+                       FROM ds_contents WHERE id=%s""", (cid,))
+        r = cur.fetchone()
+        if not r:
+            conn.close()
+            flash("존재하지 않는 콘텐츠.", "danger")
+            return redirect(url_for("signage.contents"))
+        meta = {}
+        if r[5]:
+            try:
+                meta = json.loads(r[5]) if isinstance(r[5], str) else r[5]
+            except Exception:
+                meta = {}
+        blocks = meta.get('blocks', [])
+        # 구버전(blocks subtype 아님) → 본문을 단일 텍스트 블록으로 마이그레이션
+        if not blocks and r[6]:
+            blocks = [{
+                'id': 'mig1', 'type': 'text', 'content': r[6],
+                'style': {'font_size': 4, 'align': 'center', 'color': '#ffffff'},
+            }]
+        content = {
+            'id': r[0], 'title': r[1], 'duration_sec': r[2],
+            'priority': r[3], 'status': r[4],
+            'bg_color': meta.get('bg_color', '#0f172a'),
+            'blocks': blocks,
+        }
+    conn.close()
+    return render_template("signage/block_editor.html",
+                           mode='edit' if cid else 'new',
+                           cid=cid, content=content,
                            is_admin=session.get('role') == 'admin')
 
 
