@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>콘텐츠 템플릿 — 디지털 사이니지</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=27" rel="stylesheet">
+    <style>
+        .cat-h {
+            font-size:1rem; font-weight:800; color:#0f172a;
+            margin: 12px 0 6px; padding-bottom:4px;
+            border-bottom:2px solid #e2e8f0;
+            display:flex; align-items:center; gap:6px;
+        }
+        .tmpl-card {
+            background:#fff; border:1px solid #e2e8f0; border-radius:2px;
+            overflow:hidden; transition:.15s; cursor:pointer;
+            height: 100%;
+            display:flex; flex-direction:column;
+        }
+        .tmpl-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+            border-color: #1e40af;
+        }
+        .tmpl-preview {
+            aspect-ratio: 16/9;
+            display:flex; align-items:center; justify-content:center;
+            text-align:center; padding:10px;
+            font-weight:700; font-size:0.78rem; line-height:1.4;
+            white-space:pre-line;
+            overflow:hidden;
+        }
+        .tmpl-preview .icon {
+            font-size:2.6rem; line-height:1; margin-bottom:6px;
+        }
+        .tmpl-body {
+            padding:10px 12px; flex:1;
+            display:flex; flex-direction:column;
+        }
+        .tmpl-name { font-weight:700; font-size:0.9rem; }
+        .tmpl-desc { font-size:0.75rem; color:#64748b; margin-top:2px; flex:1; }
+        .tmpl-tags { margin-top:6px; }
+        .tmpl-tag {
+            font-size:0.66rem; padding:2px 6px; border-radius:8px;
+            background:#f1f5f9; color:#475569; margin-right:3px;
+        }
+        .tmpl-action {
+            border-top:1px solid #e2e8f0; padding:6px 12px;
+            display:flex; gap:6px;
+        }
+        .cat-icon {
+            background:#0f172a; color:#fff; padding:2px 8px;
+            border-radius:2px; font-size:0.75rem;
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_contents' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}{% endwith %}
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">🎨 콘텐츠 템플릿
+            <small class="text-muted" style="font-size:0.55em;">총 {{ total }}개 · 1-클릭으로 콘텐츠 생성</small>
+        </h4>
+        <a href="/signage/contents" class="btn btn-sm btn-outline-secondary">← 콘텐츠 목록</a>
+    </div>
+
+    <div class="alert alert-light border" style="font-size:0.82rem;">
+        💡 원하는 템플릿을 클릭하면 <strong>새 콘텐츠</strong> 폼에 자동으로 내용이 채워집니다.
+        [대괄호] 표시된 부분만 실제 내용으로 교체하고 저장하세요.
+    </div>
+
+    {% for cat, items in templates_by_cat.items() %}
+    <div class="cat-h">
+        <span class="cat-icon">{{ cat }}</span>
+        <span class="text-muted" style="font-size:0.75rem;">{{ items|length }}개</span>
+    </div>
+    <div class="row g-3 mb-3">
+        {% for t in items %}
+        <div class="col-md-4 col-lg-3">
+            <div class="tmpl-card" onclick="useTmpl('{{ t.key }}')">
+                <div class="tmpl-preview" style="background: {{ t.bg }}; color: {{ t.fg }};">
+                    <div>
+                        <div class="icon">{{ t.icon }}</div>
+                        <div>{{ t.fields.title }}</div>
+                    </div>
+                </div>
+                <div class="tmpl-body">
+                    <div class="tmpl-name">{{ t.name }}</div>
+                    <div class="tmpl-desc">{{ t.desc }}</div>
+                    <div class="tmpl-tags">
+                        {% for tg in t.fields.tags %}
+                        <span class="tmpl-tag">{{ tg }}</span>
+                        {% endfor %}
+                        <span class="tmpl-tag">⏱ {{ t.fields.duration_sec }}s</span>
+                    </div>
+                </div>
+                <div class="tmpl-action">
+                    {% if can_create %}
+                    <button class="btn btn-sm btn-primary flex-grow-1" onclick="event.stopPropagation(); useTmpl('{{ t.key }}')">+ 사용</button>
+                    {% else %}
+                    <button class="btn btn-sm btn-outline-secondary flex-grow-1" disabled>권한 없음</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+function useTmpl(key) {
+    location.href = `/signage/templates/${key}/use`;
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -66,8 +66,16 @@
         <h4 class="fw-bold mb-0">
             📁 {{ '새 콘텐츠' if mode=='new' else '콘텐츠 편집' }}
             {% if mode=='edit' %}<small class="text-muted" style="font-size:0.55em;">#{{ content.id }}</small>{% endif %}
+            {% if prefill and prefill.tmpl_key %}
+            <span class="badge bg-success ms-2" style="font-size:0.55em;">🎨 템플릿: {{ prefill.tmpl_key }}</span>
+            {% endif %}
         </h4>
-        <a href="/signage/contents" class="btn btn-sm btn-outline-secondary">← 목록</a>
+        <div class="d-flex gap-2">
+            {% if mode == 'new' %}
+            <a href="/signage/templates" class="btn btn-sm btn-outline-success">🎨 템플릿에서 시작</a>
+            {% endif %}
+            <a href="/signage/contents" class="btn btn-sm btn-outline-secondary">← 목록</a>
+        </div>
     </div>
 
     <form method="post" enctype="multipart/form-data" id="cform">
@@ -80,7 +88,7 @@
                     <div class="mb-3">
                         <label class="form-label">제목 *</label>
                         <input type="text" name="title" class="form-control" required
-                               value="{{ content.title if content else '' }}" autofocus>
+                               value="{{ content.title if content else (prefill.title if prefill else '') }}" autofocus>
                     </div>
 
                     <div class="mb-3">
@@ -88,7 +96,7 @@
                         <div class="type-radio-group" id="typeGroup">
                             {% for v, lbl, icon in [('text','텍스트','📝'),('image','이미지','🖼️'),('web','웹URL','🌐'),('video','영상','🎬'),('pdf','PDF','📄')] %}
                             <input type="radio" name="type" id="type-{{ v }}" value="{{ v }}"
-                                   {{ 'checked' if (content and content.type == v) or (not content and v == 'text') }}
+                                   {{ 'checked' if (content and content.type == v) or (not content and not prefill and v == 'text') or (prefill and prefill.type == v) }}
                                    onchange="onTypeChange()">
                             <label for="type-{{ v }}">{{ icon }} {{ lbl }}</label>
                             {% endfor %}
@@ -99,7 +107,7 @@
                     <div class="mb-3 type-section" data-type="text">
                         <label class="form-label">텍스트 본문</label>
                         <textarea name="body_text" class="form-control" rows="6"
-                                  placeholder="화면에 표시할 텍스트 (대화면용 큰 폰트로 자동 표시)">{{ content.body_text if content else '' }}</textarea>
+                                  placeholder="화면에 표시할 텍스트 (대화면용 큰 폰트로 자동 표시)">{{ content.body_text if content else (prefill.body_text if prefill else '') }}</textarea>
                     </div>
 
                     <!-- 이미지 업로드 -->
@@ -154,7 +162,7 @@
                         <div class="col-md-4">
                             <label class="form-label">재생 시간 (초)</label>
                             <input type="number" name="duration_sec" class="form-control" min="1" max="600"
-                                   value="{{ content.duration_sec if content else 10 }}">
+                                   value="{{ content.duration_sec if content else (prefill.duration_sec if prefill else 10) }}">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">우선순위</label>
@@ -187,7 +195,7 @@
                     <div class="form-section-title">태그</div>
                     <div class="tag-input-wrap">
                         <input type="text" name="tags" class="form-control" id="tagsInput"
-                               value="{{ content.tags|join(', ') if content and content.tags else '' }}"
+                               value="{{ content.tags|join(', ') if content and content.tags else (prefill.tags if prefill else '') }}"
                                placeholder="쉼표로 구분 (예: 안전, 공지, TBM)">
                     </div>
                     {% if all_tags %}

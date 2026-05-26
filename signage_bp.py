@@ -641,12 +641,25 @@ def content_new():
             conn.rollback()
             flash(f"등록 실패: {e}", "danger")
 
-    # GET — 폼 표시
+    # GET — 폼 표시 (템플릿에서 온 경우 prefill)
     cur.execute("SELECT name FROM ds_tags ORDER BY name")
     all_tags = [t[0] for t in cur.fetchall()]
     conn.close()
+
+    prefill = None
+    if request.args.get('tmpl'):
+        prefill = {
+            'title': request.args.get('title', ''),
+            'type': request.args.get('type', 'text'),
+            'body_text': request.args.get('body_text', ''),
+            'duration_sec': request.args.get('duration_sec', 10),
+            'tags': request.args.get('tags', ''),
+            'tmpl_key': request.args.get('tmpl', ''),
+        }
+
     return render_template("signage/content_form.html",
                            mode='new', content=None, all_tags=all_tags,
+                           prefill=prefill,
                            is_admin=session.get('role') == 'admin')
 
 
@@ -2358,6 +2371,298 @@ def logs_export():
     return Response(out.getvalue().encode('utf-8'),
                     mimetype='text/csv; charset=utf-8',
                     headers={'Content-Disposition': f'attachment; filename={fname}'})
+
+
+# ════════════════════════════════════════════════════════
+#  콘텐츠 템플릿 갤러리 (1-클릭 시작)
+# ════════════════════════════════════════════════════════
+
+# 색상 팔레트 (4K 송출에서 가독성 좋은 채도 위주)
+_C = {
+    'red':    {'bg': '#dc2626', 'fg': '#ffffff'},
+    'orange': {'bg': '#ea580c', 'fg': '#ffffff'},
+    'yellow': {'bg': '#facc15', 'fg': '#0f172a'},
+    'green':  {'bg': '#16a34a', 'fg': '#ffffff'},
+    'blue':   {'bg': '#1e40af', 'fg': '#ffffff'},
+    'navy':   {'bg': '#0f172a', 'fg': '#ffffff'},
+    'purple': {'bg': '#7c3aed', 'fg': '#ffffff'},
+    'pink':   {'bg': '#db2777', 'fg': '#ffffff'},
+    'gray':   {'bg': '#475569', 'fg': '#ffffff'},
+}
+
+CONTENT_TEMPLATES = [
+    # ── 인사/축하 ──
+    {
+        'key': 'birthday',
+        'category': '축하',
+        'icon': '🎂',
+        'name': '생일자 축하',
+        'desc': '이달의 생일자 알림',
+        'palette': 'yellow',
+        'fields': {
+            'title': '🎂 이달의 생일자',
+            'type': 'text',
+            'body_text': '오늘은 [이름]님의 생일입니다!\n진심으로 축하드립니다 🎉\n\n— ㈜태인 임직원 일동',
+            'duration_sec': 15,
+            'tags': ['축하', '생일'],
+        },
+    },
+    {
+        'key': 'new_employee',
+        'category': '축하',
+        'icon': '👋',
+        'name': '신입사원 환영',
+        'desc': '환영 인사 + 부서 소개',
+        'palette': 'green',
+        'fields': {
+            'title': '👋 신입사원 환영합니다',
+            'type': 'text',
+            'body_text': '[부서] [이름]님이 합류했습니다.\n따뜻한 환영 부탁드립니다 🌱',
+            'duration_sec': 15,
+            'tags': ['환영', '신입'],
+        },
+    },
+    {
+        'key': 'recognition',
+        'category': '축하',
+        'icon': '🏆',
+        'name': '이달의 우수사원',
+        'desc': '칭찬/우수사례 게시',
+        'palette': 'purple',
+        'fields': {
+            'title': '🏆 이달의 우수사원',
+            'type': 'text',
+            'body_text': '[부서] [이름]\n\n[우수 사례 또는 칭찬 내용]\n\n축하드립니다 👏',
+            'duration_sec': 20,
+            'tags': ['칭찬', '우수사원'],
+        },
+    },
+    # ── 안전 ──
+    {
+        'key': 'safety_check',
+        'category': '안전',
+        'icon': '🛡',
+        'name': '안전점검 안내',
+        'desc': '월간/주간 안전점검',
+        'palette': 'orange',
+        'fields': {
+            'title': '🛡 정기 안전점검 실시',
+            'type': 'text',
+            'body_text': '일시: [YYYY-MM-DD HH:MM]\n장소: [점검 장소]\n대상: [점검 항목]\n\n부서별 점검 협조 부탁드립니다.',
+            'duration_sec': 15,
+            'tags': ['안전', '점검'],
+        },
+    },
+    {
+        'key': 'tbm',
+        'category': '안전',
+        'icon': '👷',
+        'name': 'TBM 안내',
+        'desc': '일일 작업 전 안전미팅',
+        'palette': 'blue',
+        'fields': {
+            'title': '👷 오늘의 TBM',
+            'type': 'text',
+            'body_text': '주제: [오늘의 안전 주제]\n시간: 09:00 / 13:00\n장소: 각 현장 작업조 앞\n\n☞ TBM 미참여 시 작업 투입 불가',
+            'duration_sec': 15,
+            'tags': ['TBM', '안전'],
+        },
+    },
+    {
+        'key': 'fire_drill',
+        'category': '안전',
+        'icon': '🔥',
+        'name': '화재대피훈련',
+        'desc': '대피훈련 일정 안내',
+        'palette': 'red',
+        'fields': {
+            'title': '🔥 화재대피훈련 예고',
+            'type': 'text',
+            'body_text': '일시: [YYYY-MM-DD HH:MM]\n경보 발령 → 비상구로 신속 대피\n집결지: [주차장 / 옥상]\n\n전 직원 의무 참여',
+            'duration_sec': 20,
+            'tags': ['안전', '대피훈련'],
+        },
+    },
+    {
+        'key': 'ppe',
+        'category': '안전',
+        'icon': '🦺',
+        'name': '안전보호구 착용',
+        'desc': '보호구 착용 강조',
+        'palette': 'orange',
+        'fields': {
+            'title': '🦺 안전보호구 착용 필수',
+            'type': 'text',
+            'body_text': '✔ 안전모\n✔ 안전화\n✔ 안전대 (고소작업)\n✔ 보안경 / 방진마스크\n\n착용 없이 작업장 출입 금지',
+            'duration_sec': 12,
+            'tags': ['안전', 'PPE'],
+        },
+    },
+    # ── 공지 ──
+    {
+        'key': 'announcement',
+        'category': '공지',
+        'icon': '📢',
+        'name': '일반 공지',
+        'desc': '사내 공지사항',
+        'palette': 'navy',
+        'fields': {
+            'title': '📢 공지사항',
+            'type': 'text',
+            'body_text': '[공지 제목]\n\n[공지 본문 — 줄바꿈으로 구분]',
+            'duration_sec': 15,
+            'tags': ['공지'],
+        },
+    },
+    {
+        'key': 'meeting',
+        'category': '공지',
+        'icon': '🗓',
+        'name': '회의 일정',
+        'desc': '주요 회의 안내',
+        'palette': 'blue',
+        'fields': {
+            'title': '🗓 회의 일정',
+            'type': 'text',
+            'body_text': '[회의명]\n\n일시: [YYYY-MM-DD HH:MM]\n장소: [회의실]\n참석: [부서/명단]\n\n안건: [주요 안건]',
+            'duration_sec': 15,
+            'tags': ['회의'],
+        },
+    },
+    {
+        'key': 'holiday',
+        'category': '공지',
+        'icon': '🏖',
+        'name': '휴무 안내',
+        'desc': '공휴일/사내휴무',
+        'palette': 'pink',
+        'fields': {
+            'title': '🏖 휴무 안내',
+            'type': 'text',
+            'body_text': '[YYYY-MM-DD ~ YYYY-MM-DD]\n[휴무 사유 — 공휴일/임시휴무]\n\n익일 정상 출근',
+            'duration_sec': 12,
+            'tags': ['휴무'],
+        },
+    },
+    # ── 캠페인 ──
+    {
+        'key': 'campaign_5s',
+        'category': '캠페인',
+        'icon': '🧹',
+        'name': '5S 캠페인',
+        'desc': '정리/정돈/청소/청결/습관',
+        'palette': 'green',
+        'fields': {
+            'title': '🧹 5S 캠페인 — 깨끗한 일터',
+            'type': 'text',
+            'body_text': '정리 (Seiri) · 정돈 (Seiton)\n청소 (Seiso) · 청결 (Seiketsu)\n습관 (Shitsuke)\n\n오늘의 점검 포인트: [구역명]',
+            'duration_sec': 15,
+            'tags': ['5S', '캠페인'],
+        },
+    },
+    {
+        'key': 'quality',
+        'category': '캠페인',
+        'icon': '💎',
+        'name': '품질 캠페인',
+        'desc': '품질 슬로건 강조',
+        'palette': 'purple',
+        'fields': {
+            'title': '💎 품질이 곧 경쟁력',
+            'type': 'text',
+            'body_text': '불량 ZERO\n공정 준수 100%\n검사 누락 0건\n\n— ㈜태인 품질방침',
+            'duration_sec': 12,
+            'tags': ['품질', '캠페인'],
+        },
+    },
+    # ── 긴급 (긴급공지 페이지에서도 사용 가능) ──
+    {
+        'key': 'urgent_evac',
+        'category': '긴급',
+        'icon': '🚨',
+        'name': '비상 대피',
+        'desc': '즉시 대피 명령',
+        'palette': 'red',
+        'fields': {
+            'title': '🚨 화재 발생 — 즉시 대피',
+            'type': 'text',
+            'body_text': '비상구로 신속히 대피하십시오.\n엘리베이터 사용 금지.\n집결지: [주차장]\n\n인원 점호 후 책임자에게 보고',
+            'duration_sec': 30,
+            'tags': ['긴급', '대피'],
+        },
+    },
+    {
+        'key': 'urgent_weather',
+        'category': '긴급',
+        'icon': '⛈',
+        'name': '기상 특보',
+        'desc': '폭우/폭설/한파 안내',
+        'palette': 'navy',
+        'fields': {
+            'title': '⛈ 기상특보 — 안전 주의',
+            'type': 'text',
+            'body_text': '[특보 종류 — 호우/폭설/한파]\n\n야외작업 일시 중단\n현장 안전조치 후 대피',
+            'duration_sec': 20,
+            'tags': ['긴급', '기상'],
+        },
+    },
+]
+
+
+def _enrich_template(t):
+    """팔레트 색상 동적 주입"""
+    p = _C.get(t['palette'], _C['navy'])
+    t = dict(t)
+    t['bg'] = p['bg']
+    t['fg'] = p['fg']
+    return t
+
+
+@signage_bp.route("/templates")
+@_login_required
+def templates_gallery():
+    """콘텐츠 템플릿 갤러리"""
+    if not _has_signage_perm("view") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("dashboard"))
+
+    tmpls = [_enrich_template(t) for t in CONTENT_TEMPLATES]
+    # 카테고리별 그룹화
+    cats = {}
+    for t in tmpls:
+        cats.setdefault(t['category'], []).append(t)
+
+    return render_template("signage/templates.html",
+                           templates_by_cat=cats,
+                           total=len(tmpls),
+                           can_create=_has_signage_perm("create") or session.get('role') == 'admin',
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/templates/<tkey>/use")
+@_login_required
+def template_use(tkey):
+    """템플릿 → 콘텐츠 신규 폼으로 (쿼리스트링 prefill)"""
+    if not _has_signage_perm("create") and session.get("role") != "admin":
+        flash("생성 권한이 없습니다.", "danger")
+        return redirect(url_for("signage.templates_gallery"))
+
+    t = next((x for x in CONTENT_TEMPLATES if x['key'] == tkey), None)
+    if not t:
+        flash("존재하지 않는 템플릿.", "danger")
+        return redirect(url_for("signage.templates_gallery"))
+
+    # 콘텐츠 신규 폼으로 prefill 파라미터 전달
+    from urllib.parse import urlencode
+    qs = {
+        'tmpl': tkey,
+        'title': t['fields']['title'],
+        'type': t['fields']['type'],
+        'body_text': t['fields']['body_text'],
+        'duration_sec': t['fields']['duration_sec'],
+        'tags': ', '.join(t['fields'].get('tags', [])),
+    }
+    return redirect(url_for("signage.content_new") + '?' + urlencode(qs))
 
 
 # ════════════════════════════════════════════════════════
