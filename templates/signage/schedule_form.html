@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ '새 편성' if mode=='new' else '편성 편집' }} — 디지털 사이니지</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=27" rel="stylesheet">
+    <style>
+        .form-section {
+            background:#fff; border:1px solid #e2e8f0; border-radius:2px;
+            padding:14px 16px; margin-bottom:10px;
+        }
+        .form-section-title {
+            font-weight:700; font-size:0.9rem; color:#0f172a;
+            border-bottom:1px solid #e2e8f0; padding-bottom:6px; margin-bottom:10px;
+        }
+        .wd-pick { display:flex; gap:4px; flex-wrap:wrap; }
+        .wd-pick label {
+            cursor:pointer; padding:6px 12px; border:1px solid #cbd5e1;
+            border-radius:2px; background:#fff; font-size:0.85rem; min-width:44px; text-align:center;
+        }
+        .wd-pick input[type=checkbox] { display:none; }
+        .wd-pick input[type=checkbox]:checked + label {
+            background:#1e40af; color:#fff; border-color:#1e3a8a;
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_schedules' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}{% endwith %}
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">🗓 {{ '새 편성' if mode=='new' else '편성 편집' }}
+            {% if mode=='edit' %}<small class="text-muted" style="font-size:0.55em;">#{{ schedule.id }}</small>{% endif %}
+        </h4>
+        <a href="/signage/schedules" class="btn btn-sm btn-outline-secondary">← 목록</a>
+    </div>
+
+    <form method="post">
+        <div class="row g-3">
+            <div class="col-lg-7">
+                <div class="form-section">
+                    <div class="form-section-title">기본 정보</div>
+                    <div class="mb-3">
+                        <label class="form-label">이름 *</label>
+                        <input type="text" name="name" class="form-control" required
+                               value="{{ schedule.name if schedule else '' }}"
+                               placeholder="예: 평일 출근시간 — 안전공지">
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">우선순위</label>
+                            <input type="number" name="priority" class="form-control" min="-100" max="100"
+                                   value="{{ schedule.priority if schedule else 0 }}">
+                            <div class="form-text">높을수록 우선</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">상태</label>
+                            <select name="status" class="form-select">
+                                <option value="active" {{ 'selected' if (schedule and schedule.status=='active') or not schedule }}>활성</option>
+                                <option value="paused" {{ 'selected' if schedule and schedule.status=='paused' else '' }}>중지</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">반복 방식</label>
+                            <select name="recurrence" class="form-select">
+                                <option value="daily" {{ 'selected' if (schedule and schedule.recurrence=='daily') or not schedule }}>매일</option>
+                                <option value="weekly" {{ 'selected' if schedule and schedule.recurrence=='weekly' else '' }}>주간 (요일 지정)</option>
+                                <option value="once" {{ 'selected' if schedule and schedule.recurrence=='once' else '' }}>1회 (시작일에만)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">대상</div>
+                    <div class="mb-3">
+                        <div class="d-flex gap-3">
+                            {% for v, lbl in [('all','전체 디스플레이'),('group','그룹'),('display','개별 디스플레이')] %}
+                            <label>
+                                <input type="radio" name="target_type" value="{{ v }}"
+                                       {{ 'checked' if (schedule and schedule.target_type==v) or (not schedule and v=='all') }}
+                                       onchange="onTargetChange()">
+                                {{ lbl }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="mb-3" id="targetIdGroup" style="display:none;">
+                        <label class="form-label">그룹 선택</label>
+                        <select name="target_id_group" class="form-select">
+                            <option value="">— 선택 —</option>
+                            {% for g in groups %}
+                            <option value="{{ g.id }}" {{ 'selected' if schedule and schedule.target_type=='group' and schedule.target_id==g.id else '' }}>{{ g.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3" id="targetIdDisplay" style="display:none;">
+                        <label class="form-label">디스플레이 선택</label>
+                        <select name="target_id_display" class="form-select">
+                            <option value="">— 선택 —</option>
+                            {% for d in displays %}
+                            <option value="{{ d.id }}" {{ 'selected' if schedule and schedule.target_type=='display' and schedule.target_id==d.id else '' }}>
+                                {{ d.name }}{% if d.location %} ({{ d.location }}){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <input type="hidden" name="target_id" id="targetIdFinal" value="{{ schedule.target_id if schedule else '' }}">
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">송출 내용</div>
+                    <div class="mb-3">
+                        <label class="form-label">레이아웃 (선택)</label>
+                        <select name="layout_id" class="form-select">
+                            <option value="">— 기본 (전체화면) —</option>
+                            {% for l in layouts %}
+                            <option value="{{ l.id }}" {{ 'selected' if schedule and schedule.layout_id==l.id else '' }}>{{ l.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">플레이리스트</label>
+                        <select name="playlist_id" class="form-select">
+                            <option value="">— 선택 —</option>
+                            {% for p in playlists %}
+                            <option value="{{ p.id }}" {{ 'selected' if schedule and schedule.playlist_id==p.id else '' }}>
+                                {{ p.name }}{% if p.is_default %} (기본){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">또는 아래에서 단일 콘텐츠 직접 선택 가능</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">단일 콘텐츠 (선택)</label>
+                        <select name="content_id" class="form-select">
+                            <option value="">— 사용 안 함 —</option>
+                            {% for c in contents %}
+                            <option value="{{ c.id }}" {{ 'selected' if schedule and schedule.content_id==c.id else '' }}>{{ c.title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-5">
+                <div class="form-section">
+                    <div class="form-section-title">기간 설정</div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small">시작일</label>
+                            <input type="date" name="start_date" class="form-control form-control-sm"
+                                   value="{{ schedule.start_date.strftime('%Y-%m-%d') if schedule and schedule.start_date else '' }}">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">종료일</label>
+                            <input type="date" name="end_date" class="form-control form-control-sm"
+                                   value="{{ schedule.end_date.strftime('%Y-%m-%d') if schedule and schedule.end_date else '' }}">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small">시작 시각</label>
+                            <input type="time" name="start_time" class="form-control form-control-sm"
+                                   value="{{ schedule.start_time.strftime('%H:%M') if schedule and schedule.start_time else '' }}">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">종료 시각</label>
+                            <input type="time" name="end_time" class="form-control form-control-sm"
+                                   value="{{ schedule.end_time.strftime('%H:%M') if schedule and schedule.end_time else '' }}">
+                        </div>
+                    </div>
+                    <div class="form-text">⊙ 비워두면 종일 적용</div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">요일 선택</div>
+                    <div class="wd-pick">
+                        {% for wd in range(7) %}
+                        <input type="checkbox" name="weekdays" value="{{ wd }}" id="wd{{ wd }}"
+                               {{ 'checked' if schedule and wd in schedule.weekdays else '' }}>
+                        <label for="wd{{ wd }}">{{ weekday_ko[wd] }}</label>
+                        {% endfor %}
+                    </div>
+                    <div class="form-text mt-2">⊙ 미체크 시 매일 적용</div>
+                    <div class="mt-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="exclude_holidays" name="exclude_holidays" value="1"
+                               {{ 'checked' if schedule and schedule.exclude_holidays else '' }}>
+                        <label class="form-check-label" for="exclude_holidays">공휴일 제외</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <a href="/signage/schedules" class="btn btn-outline-secondary">취소</a>
+            <button type="submit" class="btn btn-primary">{{ '등록' if mode=='new' else '저장' }}</button>
+        </div>
+    </form>
+</div>
+
+<script>
+function onTargetChange() {
+    const t = document.querySelector('input[name=target_type]:checked').value;
+    document.getElementById('targetIdGroup').style.display = (t === 'group') ? '' : 'none';
+    document.getElementById('targetIdDisplay').style.display = (t === 'display') ? '' : 'none';
+    syncTargetId();
+}
+function syncTargetId() {
+    const t = document.querySelector('input[name=target_type]:checked').value;
+    let v = '';
+    if (t === 'group') v = document.querySelector('select[name=target_id_group]').value;
+    else if (t === 'display') v = document.querySelector('select[name=target_id_display]').value;
+    document.getElementById('targetIdFinal').value = v;
+}
+document.querySelector('select[name=target_id_group]').addEventListener('change', syncTargetId);
+document.querySelector('select[name=target_id_display]').addEventListener('change', syncTargetId);
+onTargetChange();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

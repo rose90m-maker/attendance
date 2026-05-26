@@ -21,6 +21,17 @@
             overflow: hidden;
         }
 
+        /* 멀티존 레이아웃 */
+        #layoutStage {
+            position: fixed; inset: 0;
+            background: #000;
+        }
+        .layout-zone {
+            position: absolute; overflow: hidden;
+            background: #000;
+        }
+        .layout-zone .c-text { font-size: 3vw; padding: 1vw; }
+
         /* 텍스트 콘텐츠 */
         .c-text {
             font-size: 6vw; font-weight: 800;
@@ -41,6 +52,25 @@
 
         /* 웹 URL */
         .c-web { width: 100%; height: 100%; border: 0; }
+
+        /* 영상 */
+        .c-video {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            background: #000;
+        }
+        .c-video video {
+            max-width: 100%; max-height: 100%;
+            object-fit: contain;
+        }
+
+        /* PDF */
+        .c-pdf {
+            width: 100%; height: 100%; background: #fff;
+        }
+        .c-pdf embed, .c-pdf iframe {
+            width: 100%; height: 100%; border: 0;
+        }
 
         /* 긴급공지 */
         .c-emergency {
@@ -109,6 +139,7 @@ let currentIdx = 0;
 let currentEmergency = null;
 let currentPlaylistId = null;
 let currentLoopMode = 'sequential';
+let currentLayout = null;  // {id, name, template_type, zones: [...]}
 let lastPollHash = null;   // 변경 감지용
 let playTimer = null;
 let logStartTime = null;
@@ -154,13 +185,39 @@ function renderContent(item) {
         html = `<div class="c-image"><img src="/signage/uploads/${item.file_path}" alt=""></div>`;
     } else if (item.type === 'web' && item.web_url) {
         html = `<iframe class="c-web" src="${item.web_url}" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`;
+    } else if (item.type === 'video' && item.file_path) {
+        // muted + autoplay (TV 자동재생 정책 우회) + loop는 duration 처리에 맡김
+        html = `<div class="c-video"><video src="/signage/uploads/${item.file_path}" autoplay muted playsinline></video></div>`;
+    } else if (item.type === 'pdf' && item.file_path) {
+        // PDF는 브라우저 내장 뷰어 사용 (#toolbar=0 으로 깔끔하게)
+        html = `<div class="c-pdf"><embed src="/signage/uploads/${item.file_path}#toolbar=0&navpanes=0&view=FitH" type="application/pdf"></div>`;
     } else {
         html = `<div class="c-empty">
             <div class="icon">❓</div>
-            <div class="label">${item.type} 유형 미지원 (Phase 2 예정)</div>
+            <div class="label">${item.type} 유형 미지원 또는 파일 없음</div>
         </div>`;
     }
     stage.innerHTML = html;
+
+    // 영상은 끝나면 다음 항목으로 자동 진행 (duration_sec보다 영상이 짧을 때)
+    if (item.type === 'video') {
+        const v = stage.querySelector('video');
+        if (v) {
+            v.addEventListener('ended', () => {
+                if (currentItems.length > 1) {
+                    clearTimeout(playTimer);
+                    currentIdx = (currentIdx + 1) % currentItems.length;
+                    playNext();
+                } else {
+                    // 단일 영상이면 루프
+                    v.currentTime = 0; v.play();
+                }
+            });
+            v.addEventListener('error', () => {
+                debug(`video 로드 실패: ${item.file_path}`);
+            });
+        }
+    }
 }
 
 function renderEmergency(em) {
@@ -172,6 +229,52 @@ function renderEmergency(em) {
         <div class="em-body">${(em.body || '').replace(/\n/g, '<br>')}</div>
         ${imgHtml}
     </div>`;
+}
+
+// ─── 멀티존 레이아웃 렌더링 ────────────────────────
+function renderLayout(layout, items) {
+    // 레이아웃이 단일 영역(full)이거나 영역이 없으면 일반 단일 재생으로 폴백
+    if (!layout || !layout.zones || layout.zones.length <= 1) {
+        return false;
+    }
+    // 영역별로 콘텐츠를 라운드로빈 할당 (zone_key 첫 글자/순서 기반)
+    stage.innerHTML = '';
+    stage.id = 'layoutStage';
+    stage.style.background = '#000';
+    layout.zones.forEach((z, i) => {
+        const zd = document.createElement('div');
+        zd.className = 'layout-zone';
+        zd.style.left = z.x_pct + '%';
+        zd.style.top = z.y_pct + '%';
+        zd.style.width = z.w_pct + '%';
+        zd.style.height = z.h_pct + '%';
+        zd.style.zIndex = z.z_index || 0;
+        // 해당 영역에 할당된 콘텐츠 (items 순환)
+        const item = items[i % items.length];
+        if (item) {
+            zd.innerHTML = renderItemHtml(item);
+        } else {
+            zd.innerHTML = `<div class="c-empty" style="font-size:1.5vw;">${z.zone_key}</div>`;
+        }
+        stage.appendChild(zd);
+    });
+    return true;
+}
+
+function renderItemHtml(item) {
+    if (item.type === 'text') {
+        const body = (item.body_text || item.title || '').replace(/\n/g, '<br>');
+        return `<div class="c-text">${body}</div>`;
+    } else if (item.type === 'image' && item.file_path) {
+        return `<div class="c-image"><img src="/signage/uploads/${item.file_path}" alt=""></div>`;
+    } else if (item.type === 'web' && item.web_url) {
+        return `<iframe class="c-web" src="${item.web_url}" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`;
+    } else if (item.type === 'video' && item.file_path) {
+        return `<div class="c-video"><video src="/signage/uploads/${item.file_path}" autoplay muted loop playsinline></video></div>`;
+    } else if (item.type === 'pdf' && item.file_path) {
+        return `<div class="c-pdf"><embed src="/signage/uploads/${item.file_path}#toolbar=0&navpanes=0&view=FitH" type="application/pdf"></div>`;
+    }
+    return `<div class="c-empty"><div class="icon">❓</div></div>`;
 }
 
 // ─── 재생 로직 ─────────────────────────────────────
@@ -188,6 +291,16 @@ function playNext() {
         renderEmergency(currentEmergency);
         // 긴급공지는 다음 폴링까지 유지
         return;
+    }
+
+    // 멀티존 레이아웃 활성 → 영역별 동시 송출
+    if (currentLayout && currentLayout.zones && currentLayout.zones.length > 1 && currentItems.length) {
+        if (renderLayout(currentLayout, currentItems)) {
+            // 레이아웃 모드에서는 다음 항목 자동 진행 안 함 (각 영역이 자체 루프)
+            logStartTime = Date.now();
+            debug(`▶ 레이아웃 ${currentLayout.name} · ${currentLayout.zones.length}영역`);
+            return;
+        }
     }
 
     if (!currentItems.length) {
@@ -235,13 +348,18 @@ async function poll() {
         const hash = JSON.stringify([j.emergency_id, j.playlist_id, j.items?.length,
                                     j.items?.map(i=>i.content_id+'@'+i.duration_sec).join(',')]);
 
-        if (hash !== lastPollHash) {
-            lastPollHash = hash;
-            debug(`poll: 변경 감지 (items=${j.items?.length||0}, emergency=${!!j.emergency})`);
+        // 레이아웃까지 해시에 포함
+        const layoutHash = j.layout ? `L${j.layout.id}#${j.layout.zones?.length||0}` : 'L0';
+        const fullHash = hash + '|' + layoutHash;
+
+        if (fullHash !== lastPollHash) {
+            lastPollHash = fullHash;
+            debug(`poll: 변경 감지 (items=${j.items?.length||0}, emergency=${!!j.emergency}, layout=${j.layout?.name||'none'})`);
 
             currentItems = j.items || [];
             currentPlaylistId = j.playlist_id;
             currentLoopMode = j.loop_mode || 'sequential';
+            currentLayout = j.layout || null;
             currentEmergency = j.emergency ? {
                 title: j.title, body: j.body, image_path: j.image_path,
                 bg_color: j.bg_color, id: j.emergency_id

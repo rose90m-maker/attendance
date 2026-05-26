@@ -609,11 +609,11 @@ def content_new():
             conn.close()
             return redirect(url_for("signage.content_new"))
 
-        # 파일 업로드 처리
+        # 파일 업로드 처리 (image/video/pdf)
         file_path = None
-        if ctype == 'image' and 'file' in request.files:
+        if ctype in ('image', 'video', 'pdf') and 'file' in request.files:
             try:
-                file_path = _save_upload(request.files['file'], 'image')
+                file_path = _save_upload(request.files['file'], ctype)
             except ValueError as e:
                 flash(str(e), "danger")
                 conn.close()
@@ -681,9 +681,9 @@ def content_edit(cid):
             return redirect(url_for("signage.contents"))
         file_path = row[0]
 
-        if ctype == 'image' and 'file' in request.files and request.files['file'].filename:
+        if ctype in ('image', 'video', 'pdf') and 'file' in request.files and request.files['file'].filename:
             try:
-                file_path = _save_upload(request.files['file'], 'image')
+                file_path = _save_upload(request.files['file'], ctype)
             except ValueError as e:
                 flash(str(e), "danger")
                 conn.close()
@@ -993,18 +993,570 @@ def playlist_delete(pid):
         conn.close()
 
 
+# ════════════════════════════════════════════════════════
+#  Phase 3 — 편성표 (시간대/요일별 자동 전환)
+# ════════════════════════════════════════════════════════
+
+WEEKDAY_KO = ['월', '화', '수', '목', '금', '토', '일']
+
+
+def _parse_weekdays(s):
+    """'0,1,2,3,4' → [0,1,2,3,4] (월=0 ... 일=6)"""
+    if not s:
+        return []
+    out = []
+    for x in str(s).split(','):
+        x = x.strip()
+        if x.isdigit() and 0 <= int(x) <= 6:
+            out.append(int(x))
+    return sorted(set(out))
+
+
+def _get_active_schedule_for(display_id, cur):
+    """현재 시각/요일에 활성화된 편성을 priority DESC 순으로 1건 반환"""
+    cur.execute("""SELECT s.id, s.layout_id, s.playlist_id, s.content_id,
+                          s.start_date, s.end_date, s.start_time, s.end_time,
+                          s.recurrence, s.weekdays, s.exclude_holidays,
+                          s.target_type, s.target_id, s.priority
+                   FROM ds_schedules s
+                   WHERE s.status='active'
+                     AND (s.start_date IS NULL OR s.start_date <= CURDATE())
+                     AND (s.end_date IS NULL OR s.end_date >= CURDATE())
+                     AND (s.start_time IS NULL OR s.start_time <= CURTIME())
+                     AND (s.end_time IS NULL OR s.end_time >= CURTIME())
+                   ORDER BY s.priority DESC, s.id DESC""")
+    rows = cur.fetchall()
+    if not rows:
+        return None
+
+    # 디스플레이의 그룹 멤버십
+    cur.execute("SELECT group_id FROM ds_display_group_map WHERE display_id=%s", (display_id,))
+    disp_groups = {r[0] for r in cur.fetchall()}
+    # primary group (legacy)
+    cur.execute("SELECT group_id FROM ds_displays WHERE id=%s", (display_id,))
+    rr = cur.fetchone()
+    if rr and rr[0]:
+        disp_groups.add(rr[0])
+
+    today_weekday = datetime.now().weekday()   # 0=Mon
+    today_str = datetime.now().strftime('%Y-%m-%d')
+
+    # 공휴일 체크 (있으면)
+    is_holiday = False
+    try:
+        import holidays as _holidays
+        is_holiday = today_str in _holidays.KR(years=datetime.now().year)
+    except Exception:
+        pass
+
+    for r in rows:
+        (sid, layout_id, playlist_id, content_id,
+         sd, ed, st, et, recurrence, weekdays, exclude_holidays,
+         target_type, target_id, prio) = r
+
+        # 대상 매칭
+        if target_type == 'display':
+            if target_id != display_id:
+                continue
+        elif target_type == 'group':
+            if target_id not in disp_groups:
+                continue
+        # 'all'은 무조건 통과
+
+        # 요일 필터 (weekly 또는 daily 둘 다 적용 가능)
+        wkd = _parse_weekdays(weekdays)
+        if wkd and today_weekday not in wkd:
+            continue
+
+        # 공휴일 제외 옵션
+        if exclude_holidays and is_holiday:
+            continue
+
+        # once: 시작일에만
+        if recurrence == 'once' and sd and sd.strftime('%Y-%m-%d') != today_str:
+            continue
+
+        return {
+            'id': sid, 'layout_id': layout_id, 'playlist_id': playlist_id,
+            'content_id': content_id, 'priority': prio
+        }
+
+    return None
+
+
 @signage_bp.route("/schedules")
 @_login_required
 def schedules():
-    flash("편성표 — Phase 3에서 구현 예정", "info")
-    return redirect(url_for("signage.dashboard"))
+    """편성표 목록"""
+    if not _has_signage_perm("view") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("dashboard"))
 
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT s.id, s.name, s.target_type, s.target_id,
+                          s.layout_id, s.playlist_id, s.content_id,
+                          s.start_date, s.end_date, s.start_time, s.end_time,
+                          s.recurrence, s.weekdays, s.exclude_holidays,
+                          s.priority, s.status, s.created_at,
+                          p.name AS pname, l.name AS lname, c.title AS ctitle,
+                          d.name AS dname, g.name AS gname
+                   FROM ds_schedules s
+                   LEFT JOIN ds_playlists p ON s.playlist_id=p.id
+                   LEFT JOIN ds_layouts l ON s.layout_id=l.id
+                   LEFT JOIN ds_contents c ON s.content_id=c.id
+                   LEFT JOIN ds_displays d ON (s.target_type='display' AND s.target_id=d.id)
+                   LEFT JOIN ds_display_groups g ON (s.target_type='group' AND s.target_id=g.id)
+                   ORDER BY s.status='active' DESC, s.priority DESC, s.id DESC""")
+    items = []
+    for r in cur.fetchall():
+        items.append({
+            'id': r[0], 'name': r[1], 'target_type': r[2], 'target_id': r[3],
+            'layout_id': r[4], 'playlist_id': r[5], 'content_id': r[6],
+            'start_date': r[7], 'end_date': r[8],
+            'start_time': r[9], 'end_time': r[10],
+            'recurrence': r[11], 'weekdays': _parse_weekdays(r[12]),
+            'exclude_holidays': bool(r[13]),
+            'priority': r[14], 'status': r[15], 'created_at': r[16],
+            'playlist_name': r[17], 'layout_name': r[18], 'content_title': r[19],
+            'display_name': r[20], 'group_name': r[21]
+        })
+    conn.close()
+    return render_template("signage/schedules.html",
+                           schedules=items,
+                           weekday_ko=WEEKDAY_KO,
+                           is_admin=session.get('role') == 'admin',
+                           can_edit=_has_signage_perm("create") or session.get('role') == 'admin')
+
+
+def _schedule_form_data(cur):
+    """폼 dropdown 데이터"""
+    cur.execute("SELECT id, name, is_default FROM ds_playlists WHERE status='active' ORDER BY is_default DESC, name")
+    playlists = [{'id': r[0], 'name': r[1], 'is_default': r[2]} for r in cur.fetchall()]
+    cur.execute("SELECT id, name FROM ds_layouts ORDER BY is_system DESC, name")
+    layouts = [{'id': r[0], 'name': r[1]} for r in cur.fetchall()]
+    cur.execute("SELECT id, title FROM ds_contents WHERE status='active' ORDER BY title LIMIT 200")
+    contents = [{'id': r[0], 'title': r[1]} for r in cur.fetchall()]
+    cur.execute("SELECT id, name, location FROM ds_displays WHERE paired=1 ORDER BY name")
+    displays = [{'id': r[0], 'name': r[1], 'location': r[2]} for r in cur.fetchall()]
+    cur.execute("SELECT id, name FROM ds_display_groups ORDER BY name")
+    groups = [{'id': r[0], 'name': r[1]} for r in cur.fetchall()]
+    return playlists, layouts, contents, displays, groups
+
+
+@signage_bp.route("/schedules/new", methods=["GET", "POST"])
+@_login_required
+def schedule_new():
+    if not _has_signage_perm("create") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.schedules"))
+
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        try:
+            name = request.form.get('name', '').strip()
+            target_type = request.form.get('target_type', 'all')
+            target_id = request.form.get('target_id') or None
+            layout_id = request.form.get('layout_id') or None
+            playlist_id = request.form.get('playlist_id') or None
+            content_id = request.form.get('content_id') or None
+            start_date = request.form.get('start_date') or None
+            end_date = request.form.get('end_date') or None
+            start_time = request.form.get('start_time') or None
+            end_time = request.form.get('end_time') or None
+            recurrence = request.form.get('recurrence', 'daily')
+            weekdays = ','.join(request.form.getlist('weekdays'))
+            exclude_holidays = 1 if request.form.get('exclude_holidays') else 0
+            priority = int(request.form.get('priority', 0) or 0)
+            status = request.form.get('status', 'active')
+
+            if not name:
+                flash("이름을 입력하세요.", "danger")
+                conn.close()
+                return redirect(url_for("signage.schedule_new"))
+
+            cur.execute("""INSERT INTO ds_schedules
+                (name, target_type, target_id, layout_id, playlist_id, content_id,
+                 start_date, end_date, start_time, end_time,
+                 recurrence, weekdays, exclude_holidays, priority, status, created_by)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (name, target_type,
+                 int(target_id) if target_id and target_type != 'all' else None,
+                 int(layout_id) if layout_id else None,
+                 int(playlist_id) if playlist_id else None,
+                 int(content_id) if content_id else None,
+                 start_date, end_date, start_time, end_time,
+                 recurrence, weekdays, exclude_holidays, priority, status,
+                 session.get('user_id')))
+            conn.commit()
+            flash(f"편성표 '{name}' 등록 완료.", "success")
+            conn.close()
+            return redirect(url_for("signage.schedules"))
+        except Exception as e:
+            conn.rollback()
+            flash(f"등록 실패: {e}", "danger")
+
+    playlists, layouts, contents, displays, groups = _schedule_form_data(cur)
+    conn.close()
+    return render_template("signage/schedule_form.html",
+                           mode='new', schedule=None,
+                           playlists=playlists, layouts=layouts, contents=contents,
+                           displays=displays, groups=groups,
+                           weekday_ko=WEEKDAY_KO,
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/schedules/<int:sid>/edit", methods=["GET", "POST"])
+@_login_required
+def schedule_edit(sid):
+    if not _has_signage_perm("update") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.schedules"))
+
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        try:
+            name = request.form.get('name', '').strip()
+            target_type = request.form.get('target_type', 'all')
+            target_id = request.form.get('target_id') or None
+            layout_id = request.form.get('layout_id') or None
+            playlist_id = request.form.get('playlist_id') or None
+            content_id = request.form.get('content_id') or None
+            start_date = request.form.get('start_date') or None
+            end_date = request.form.get('end_date') or None
+            start_time = request.form.get('start_time') or None
+            end_time = request.form.get('end_time') or None
+            recurrence = request.form.get('recurrence', 'daily')
+            weekdays = ','.join(request.form.getlist('weekdays'))
+            exclude_holidays = 1 if request.form.get('exclude_holidays') else 0
+            priority = int(request.form.get('priority', 0) or 0)
+            status = request.form.get('status', 'active')
+
+            cur.execute("""UPDATE ds_schedules SET
+                name=%s, target_type=%s, target_id=%s,
+                layout_id=%s, playlist_id=%s, content_id=%s,
+                start_date=%s, end_date=%s, start_time=%s, end_time=%s,
+                recurrence=%s, weekdays=%s, exclude_holidays=%s,
+                priority=%s, status=%s
+                WHERE id=%s""",
+                (name, target_type,
+                 int(target_id) if target_id and target_type != 'all' else None,
+                 int(layout_id) if layout_id else None,
+                 int(playlist_id) if playlist_id else None,
+                 int(content_id) if content_id else None,
+                 start_date, end_date, start_time, end_time,
+                 recurrence, weekdays, exclude_holidays, priority, status, sid))
+            conn.commit()
+            flash("저장됨.", "success")
+            conn.close()
+            return redirect(url_for("signage.schedules"))
+        except Exception as e:
+            conn.rollback()
+            flash(f"저장 실패: {e}", "danger")
+
+    cur.execute("""SELECT id, name, target_type, target_id, layout_id, playlist_id, content_id,
+                          start_date, end_date, start_time, end_time,
+                          recurrence, weekdays, exclude_holidays, priority, status
+                   FROM ds_schedules WHERE id=%s""", (sid,))
+    r = cur.fetchone()
+    if not r:
+        conn.close()
+        flash("존재하지 않는 편성.", "danger")
+        return redirect(url_for("signage.schedules"))
+    schedule = {
+        'id': r[0], 'name': r[1], 'target_type': r[2], 'target_id': r[3],
+        'layout_id': r[4], 'playlist_id': r[5], 'content_id': r[6],
+        'start_date': r[7], 'end_date': r[8], 'start_time': r[9], 'end_time': r[10],
+        'recurrence': r[11], 'weekdays': _parse_weekdays(r[12]),
+        'exclude_holidays': bool(r[13]),
+        'priority': r[14], 'status': r[15]
+    }
+    playlists, layouts, contents, displays, groups = _schedule_form_data(cur)
+    conn.close()
+    return render_template("signage/schedule_form.html",
+                           mode='edit', schedule=schedule,
+                           playlists=playlists, layouts=layouts, contents=contents,
+                           displays=displays, groups=groups,
+                           weekday_ko=WEEKDAY_KO,
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/schedules/<int:sid>/delete", methods=["POST"])
+@_login_required
+def schedule_delete(sid):
+    if not _has_signage_perm("delete") and session.get("role") != "admin":
+        return jsonify({"ok": False, "msg": "권한 없음"}), 403
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM ds_schedules WHERE id=%s", (sid,))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@signage_bp.route("/schedules/<int:sid>/toggle", methods=["POST"])
+@_login_required
+def schedule_toggle(sid):
+    """active <-> paused 토글"""
+    if not _has_signage_perm("update") and session.get("role") != "admin":
+        return jsonify({"ok": False, "msg": "권한 없음"}), 403
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("""UPDATE ds_schedules
+                       SET status=CASE WHEN status='active' THEN 'paused' ELSE 'active' END
+                       WHERE id=%s""", (sid,))
+        conn.commit()
+        cur.execute("SELECT status FROM ds_schedules WHERE id=%s", (sid,))
+        st = cur.fetchone()
+        return jsonify({"ok": True, "status": st[0] if st else None})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ════════════════════════════════════════════════════════
+#  Phase 4 — 멀티 레이아웃 (split2/3/overlay …)
+# ════════════════════════════════════════════════════════
 
 @signage_bp.route("/layouts")
 @_login_required
 def layouts():
-    flash("레이아웃 — Phase 4에서 구현 예정", "info")
-    return redirect(url_for("signage.dashboard"))
+    """레이아웃 목록"""
+    if not _has_signage_perm("view") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT l.id, l.name, l.template_type, l.resolution, l.is_system,
+                          l.created_at,
+                          (SELECT COUNT(*) FROM ds_layout_zones WHERE layout_id=l.id) AS zone_cnt
+                   FROM ds_layouts l
+                   ORDER BY l.is_system DESC, l.name""")
+    items = [
+        {'id': r[0], 'name': r[1], 'template_type': r[2], 'resolution': r[3],
+         'is_system': r[4], 'created_at': r[5], 'zone_cnt': r[6] or 0}
+        for r in cur.fetchall()
+    ]
+    conn.close()
+    return render_template("signage/layouts.html",
+                           layouts=items,
+                           is_admin=session.get('role') == 'admin',
+                           can_edit=_has_signage_perm("create") or session.get('role') == 'admin')
+
+
+@signage_bp.route("/layouts/<int:lid>")
+@_login_required
+def layout_detail(lid):
+    """레이아웃 상세 — 영역 시각화"""
+    if not _has_signage_perm("view") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT id, name, template_type, resolution, is_system FROM ds_layouts WHERE id=%s", (lid,))
+    r = cur.fetchone()
+    if not r:
+        conn.close()
+        flash("존재하지 않는 레이아웃.", "danger")
+        return redirect(url_for("signage.layouts"))
+    layout = {
+        'id': r[0], 'name': r[1], 'template_type': r[2],
+        'resolution': r[3], 'is_system': r[4]
+    }
+    # 해상도 파싱 (3840x2160 → 3840, 2160)
+    try:
+        rw, rh = layout['resolution'].split('x')
+        layout['res_w'] = int(rw); layout['res_h'] = int(rh)
+    except Exception:
+        layout['res_w'] = 3840; layout['res_h'] = 2160
+
+    cur.execute("""SELECT id, zone_key, x, y, w, h, z_index FROM ds_layout_zones
+                   WHERE layout_id=%s ORDER BY z_index, id""", (lid,))
+    zones = [
+        {'id': r[0], 'zone_key': r[1], 'x': r[2], 'y': r[3],
+         'w': r[4], 'h': r[5], 'z_index': r[6]}
+        for r in cur.fetchall()
+    ]
+    conn.close()
+    return render_template("signage/layout_detail.html",
+                           layout=layout, zones=zones,
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/layouts/new", methods=["GET", "POST"])
+@_login_required
+def layout_new():
+    if not _has_signage_perm("create") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.layouts"))
+
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        try:
+            name = request.form.get('name', '').strip()
+            template_type = request.form.get('template_type', 'full')
+            resolution = request.form.get('resolution', '3840x2160').strip()
+            zones_json = request.form.get('zones_json', '[]')
+
+            if not name:
+                flash("이름을 입력하세요.", "danger")
+                conn.close()
+                return redirect(url_for("signage.layout_new"))
+
+            cur.execute("""INSERT INTO ds_layouts (name, template_type, resolution, is_system)
+                           VALUES (%s,%s,%s,0)""",
+                        (name, template_type, resolution))
+            lid = cur.lastrowid
+
+            try:
+                zones = json.loads(zones_json)
+            except Exception:
+                zones = []
+            for z in zones:
+                cur.execute("""INSERT INTO ds_layout_zones
+                    (layout_id, zone_key, x, y, w, h, z_index)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                    (lid, str(z.get('zone_key', 'main'))[:20],
+                     int(z.get('x', 0)), int(z.get('y', 0)),
+                     int(z.get('w', 100)), int(z.get('h', 100)),
+                     int(z.get('z_index', 0))))
+            conn.commit()
+            flash(f"레이아웃 '{name}' 생성 완료.", "success")
+            conn.close()
+            return redirect(url_for("signage.layout_detail", lid=lid))
+        except Exception as e:
+            conn.rollback()
+            flash(f"생성 실패: {e}", "danger")
+
+    conn.close()
+    return render_template("signage/layout_form.html",
+                           mode='new', layout=None, zones=[],
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/layouts/<int:lid>/edit", methods=["GET", "POST"])
+@_login_required
+def layout_edit(lid):
+    if not _has_signage_perm("update") and session.get("role") != "admin":
+        flash("권한 없음.", "danger")
+        return redirect(url_for("signage.layouts"))
+
+    conn = _conn(); cur = conn.cursor()
+
+    # 시스템 레이아웃 보호
+    cur.execute("SELECT id, name, template_type, resolution, is_system FROM ds_layouts WHERE id=%s", (lid,))
+    r = cur.fetchone()
+    if not r:
+        conn.close()
+        flash("존재하지 않는 레이아웃.", "danger")
+        return redirect(url_for("signage.layouts"))
+    if r[4]:
+        conn.close()
+        flash("시스템 기본 레이아웃은 수정할 수 없습니다.", "danger")
+        return redirect(url_for("signage.layout_detail", lid=lid))
+
+    if request.method == "POST":
+        try:
+            name = request.form.get('name', '').strip()
+            template_type = request.form.get('template_type', 'full')
+            resolution = request.form.get('resolution', '3840x2160').strip()
+            zones_json = request.form.get('zones_json', '[]')
+
+            cur.execute("""UPDATE ds_layouts SET name=%s, template_type=%s, resolution=%s
+                           WHERE id=%s AND is_system=0""",
+                        (name, template_type, resolution, lid))
+            # 영역 전체 재구성
+            cur.execute("DELETE FROM ds_layout_zones WHERE layout_id=%s", (lid,))
+            try:
+                zones = json.loads(zones_json)
+            except Exception:
+                zones = []
+            for z in zones:
+                cur.execute("""INSERT INTO ds_layout_zones
+                    (layout_id, zone_key, x, y, w, h, z_index)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                    (lid, str(z.get('zone_key', 'main'))[:20],
+                     int(z.get('x', 0)), int(z.get('y', 0)),
+                     int(z.get('w', 100)), int(z.get('h', 100)),
+                     int(z.get('z_index', 0))))
+            conn.commit()
+            flash("저장됨.", "success")
+            conn.close()
+            return redirect(url_for("signage.layout_detail", lid=lid))
+        except Exception as e:
+            conn.rollback()
+            flash(f"저장 실패: {e}", "danger")
+
+    layout = {
+        'id': r[0], 'name': r[1], 'template_type': r[2],
+        'resolution': r[3], 'is_system': r[4]
+    }
+    cur.execute("""SELECT id, zone_key, x, y, w, h, z_index FROM ds_layout_zones
+                   WHERE layout_id=%s ORDER BY z_index, id""", (lid,))
+    zones = [
+        {'id': r[0], 'zone_key': r[1], 'x': r[2], 'y': r[3],
+         'w': r[4], 'h': r[5], 'z_index': r[6]}
+        for r in cur.fetchall()
+    ]
+    conn.close()
+    return render_template("signage/layout_form.html",
+                           mode='edit', layout=layout, zones=zones,
+                           is_admin=session.get('role') == 'admin')
+
+
+@signage_bp.route("/api/layouts/<int:lid>/zones")
+@_login_required
+def api_layout_zones(lid):
+    """레이아웃 영역 JSON (썸네일용)"""
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT resolution FROM ds_layouts WHERE id=%s", (lid,))
+    r = cur.fetchone()
+    if not r:
+        conn.close()
+        return jsonify({"ok": False, "msg": "없음"}), 404
+    try:
+        rw, rh = r[0].split('x'); rw = int(rw); rh = int(rh)
+    except Exception:
+        rw, rh = 3840, 2160
+    cur.execute("""SELECT zone_key, x, y, w, h, z_index FROM ds_layout_zones
+                   WHERE layout_id=%s ORDER BY z_index, id""", (lid,))
+    zones = [{'zone_key': r[0], 'x': r[1], 'y': r[2], 'w': r[3], 'h': r[4], 'z_index': r[5]}
+             for r in cur.fetchall()]
+    conn.close()
+    return jsonify({"ok": True, "res_w": rw, "res_h": rh, "zones": zones})
+
+
+@signage_bp.route("/layouts/<int:lid>/delete", methods=["POST"])
+@_login_required
+def layout_delete(lid):
+    if not _has_signage_perm("delete") and session.get("role") != "admin":
+        return jsonify({"ok": False, "msg": "권한 없음"}), 403
+    conn = _conn(); cur = conn.cursor()
+    try:
+        # 시스템 레이아웃 보호
+        cur.execute("SELECT is_system FROM ds_layouts WHERE id=%s", (lid,))
+        r = cur.fetchone()
+        if not r:
+            return jsonify({"ok": False, "msg": "없음"}), 404
+        if r[0]:
+            return jsonify({"ok": False, "msg": "시스템 기본 레이아웃은 삭제 불가"}), 400
+        cur.execute("DELETE FROM ds_layout_zones WHERE layout_id=%s", (lid,))
+        cur.execute("DELETE FROM ds_layouts WHERE id=%s AND is_system=0", (lid,))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "msg": str(e)}), 500
+    finally:
+        conn.close()
 
 
 # ════════════════════════════════════════════════════════
@@ -1339,11 +1891,48 @@ def play_poll(token):
             "items": [], "playlist_id": None, "loop_mode": "sequential"
         })
 
-    # 플레이리스트
-    pid = _get_active_playlist_for(did, cur)
+    # 편성표 우선 적용 (시간대/요일/그룹 일치하면 schedule이 결정)
+    sched = _get_active_schedule_for(did, cur)
+    schedule_id = None
+    layout_payload = None
+    pid = None
+
+    if sched:
+        schedule_id = sched['id']
+        # 편성표가 단일 콘텐츠를 직접 지정한 경우 → 임시 단일 항목 플레이리스트
+        if sched['content_id'] and not sched['playlist_id']:
+            cur.execute("""SELECT id, title, type, body_text, file_path, web_url,
+                                  duration_sec, priority
+                           FROM ds_contents WHERE id=%s AND status='active'""",
+                        (sched['content_id'],))
+            c = cur.fetchone()
+            if c:
+                items = [{'content_id': c[0], 'title': c[1], 'type': c[2],
+                          'body_text': c[3], 'file_path': c[4], 'web_url': c[5],
+                          'duration_sec': c[6], 'priority': c[7]}]
+                # 레이아웃 동봉
+                if sched['layout_id']:
+                    layout_payload = _build_layout_payload(sched['layout_id'], cur)
+                conn.commit(); conn.close()
+                return jsonify({"ok": True, "items": items,
+                                "playlist_id": None, "schedule_id": schedule_id,
+                                "loop_mode": "sequential",
+                                "layout": layout_payload, "emergency": False})
+        # 편성표 플레이리스트
+        if sched['playlist_id']:
+            pid = sched['playlist_id']
+        # 레이아웃
+        if sched['layout_id']:
+            layout_payload = _build_layout_payload(sched['layout_id'], cur)
+
+    # 편성표가 없거나 playlist가 비면 → 디스플레이 기본 플레이리스트
+    if not pid:
+        pid = _get_active_playlist_for(did, cur)
+
     if not pid:
         conn.commit(); conn.close()
         return jsonify({"ok": True, "items": [], "playlist_id": None,
+                        "schedule_id": schedule_id, "layout": layout_payload,
                         "msg": "no playlist", "loop_mode": "sequential"})
 
     items = _get_playlist_items(pid, cur)
@@ -1354,7 +1943,40 @@ def play_poll(token):
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "items": items, "playlist_id": pid,
-                    "loop_mode": loop_mode, "emergency": False})
+                    "schedule_id": schedule_id,
+                    "loop_mode": loop_mode, "layout": layout_payload,
+                    "emergency": False})
+
+
+def _build_layout_payload(layout_id, cur):
+    """레이아웃 + 영역 정보를 송출용으로 직렬화"""
+    cur.execute("""SELECT id, name, template_type, resolution
+                   FROM ds_layouts WHERE id=%s""", (layout_id,))
+    r = cur.fetchone()
+    if not r:
+        return None
+    res = r[3] or '3840x2160'
+    try:
+        rw, rh = res.split('x'); rw = int(rw); rh = int(rh)
+    except Exception:
+        rw, rh = 3840, 2160
+    cur.execute("""SELECT zone_key, x, y, w, h, z_index
+                   FROM ds_layout_zones WHERE layout_id=%s
+                   ORDER BY z_index, id""", (layout_id,))
+    zones = []
+    for zr in cur.fetchall():
+        zones.append({
+            'zone_key': zr[0],
+            'x_pct': round(zr[1] * 100.0 / rw, 3) if rw else 0,
+            'y_pct': round(zr[2] * 100.0 / rh, 3) if rh else 0,
+            'w_pct': round(zr[3] * 100.0 / rw, 3) if rw else 100,
+            'h_pct': round(zr[4] * 100.0 / rh, 3) if rh else 100,
+            'z_index': zr[5]
+        })
+    return {
+        'id': r[0], 'name': r[1], 'template_type': r[2],
+        'resolution': res, 'zones': zones
+    }
 
 
 @signage_bp.route("/api/play/<token>/heartbeat", methods=["POST"])

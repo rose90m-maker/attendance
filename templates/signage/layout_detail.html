@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ layout.name }} — 레이아웃 상세</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=27" rel="stylesheet">
+    <style>
+        .canvas-wrap {
+            background:#0f172a; aspect-ratio: 16/9; position:relative;
+            border-radius:2px; overflow:hidden; max-width:900px;
+        }
+        .zone-box {
+            position:absolute; border:2px solid #93c5fd;
+            background: rgba(99,102,241,0.35);
+            color:#fff; font-size:0.95rem; font-weight:700;
+            display:flex; align-items:center; justify-content:center;
+            flex-direction:column;
+        }
+        .zone-box .zk { font-size:1.1rem; }
+        .zone-box .sz { font-size:0.75rem; opacity:0.85; margin-top:2px; }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_layouts' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">🪟 {{ layout.name }}
+            <small class="text-muted" style="font-size:0.55em;">
+                {{ layout.template_type }} · {{ layout.resolution }} · {{ zones|length }}영역
+                {% if layout.is_system %} · 시스템{% endif %}
+            </small>
+        </h4>
+        <div class="d-flex gap-2">
+            {% if not layout.is_system %}
+            <a href="/signage/layouts/{{ layout.id }}/edit" class="btn btn-sm btn-outline-primary">편집</a>
+            {% endif %}
+            <a href="/signage/layouts" class="btn btn-sm btn-outline-secondary">← 목록</a>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header py-2 fw-bold">영역 시각화 (실제 4K 비율)</div>
+                <div class="card-body">
+                    <div class="canvas-wrap">
+                        {% for z in zones %}
+                        <div class="zone-box" style="
+                            left: {{ (z.x * 100 / layout.res_w)|round(2) }}%;
+                            top: {{ (z.y * 100 / layout.res_h)|round(2) }}%;
+                            width: {{ (z.w * 100 / layout.res_w)|round(2) }}%;
+                            height: {{ (z.h * 100 / layout.res_h)|round(2) }}%;
+                            z-index: {{ z.z_index }};
+                        ">
+                            <div class="zk">{{ z.zone_key }}</div>
+                            <div class="sz">{{ z.w }}×{{ z.h }} @ ({{ z.x }},{{ z.y }})</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header py-2 fw-bold">영역 목록</div>
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr><th>영역</th><th>위치</th><th>크기</th><th class="text-end">z-idx</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for z in zones %}
+                    <tr>
+                        <td><code>{{ z.zone_key }}</code></td>
+                        <td class="small">({{ z.x }}, {{ z.y }})</td>
+                        <td class="small">{{ z.w }}×{{ z.h }}</td>
+                        <td class="text-end">{{ z.z_index }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

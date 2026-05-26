@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ '새 레이아웃' if mode=='new' else '레이아웃 편집' }} — 디지털 사이니지</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=27" rel="stylesheet">
+    <style>
+        .canvas-wrap {
+            background:#0f172a; aspect-ratio: 16/9; position:relative;
+            border-radius:2px; overflow:hidden; max-width:100%;
+        }
+        .zone-box {
+            position:absolute; border:2px solid #93c5fd;
+            background: rgba(99,102,241,0.35);
+            color:#fff; font-size:0.85rem; font-weight:700;
+            display:flex; align-items:center; justify-content:center;
+            cursor:pointer; user-select:none;
+        }
+        .zone-box.selected {
+            border-color:#facc15; background:rgba(250,204,21,0.35);
+        }
+        .form-section {
+            background:#fff; border:1px solid #e2e8f0; border-radius:2px;
+            padding:14px 16px; margin-bottom:10px;
+        }
+        .form-section-title {
+            font-weight:700; font-size:0.9rem; color:#0f172a;
+            border-bottom:1px solid #e2e8f0; padding-bottom:6px; margin-bottom:10px;
+        }
+        .zone-list-item {
+            display:flex; align-items:center; gap:6px; padding:5px;
+            border:1px solid #e2e8f0; border-radius:2px; margin-bottom:4px;
+            background:#f8fafc; font-size:0.82rem;
+        }
+        .zone-list-item.selected { background:#fef3c7; border-color:#facc15; }
+        .zone-list-item code { font-size:0.8rem; }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_layouts' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}{% endwith %}
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">🪟 {{ '새 레이아웃' if mode=='new' else '레이아웃 편집' }}
+            {% if mode=='edit' %}<small class="text-muted" style="font-size:0.55em;">#{{ layout.id }}</small>{% endif %}
+        </h4>
+        <a href="/signage/layouts" class="btn btn-sm btn-outline-secondary">← 목록</a>
+    </div>
+
+    <form method="post" id="layForm">
+        <div class="row g-3">
+            <div class="col-lg-5">
+                <div class="form-section">
+                    <div class="form-section-title">기본 정보</div>
+                    <div class="mb-3">
+                        <label class="form-label">이름 *</label>
+                        <input type="text" name="name" class="form-control" required
+                               value="{{ layout.name if layout else '' }}">
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label small">템플릿 유형</label>
+                            <select name="template_type" class="form-select form-select-sm">
+                                {% for v in ['full','split2','split3','top_bottom','overlay','slide','table','custom'] %}
+                                <option value="{{ v }}" {{ 'selected' if (layout and layout.template_type==v) or (not layout and v=='custom') }}>{{ v }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">해상도</label>
+                            <select name="resolution" class="form-select form-select-sm">
+                                {% for v in ['3840x2160','1920x1080','2560x1440','3840x1080'] %}
+                                <option value="{{ v }}" {{ 'selected' if (layout and layout.resolution==v) or (not layout and v=='3840x2160') }}>{{ v }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">영역 (Zones)</div>
+                    <div id="zoneList" class="mb-3"></div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="addZone()">➕ 영역 추가</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-1" onclick="removeSelected()">선택 영역 삭제</button>
+                </div>
+
+                <div class="form-section" id="zoneEditor" style="display:none;">
+                    <div class="form-section-title">선택 영역 편집</div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small">영역 키</label>
+                            <input type="text" id="z_key" class="form-control form-control-sm" maxlength="20">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">z-index</label>
+                            <input type="number" id="z_zi" class="form-control form-control-sm" min="0" max="100">
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label small">x</label>
+                            <input type="number" id="z_x" class="form-control form-control-sm" min="0">
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label small">y</label>
+                            <input type="number" id="z_y" class="form-control form-control-sm" min="0">
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label small">w</label>
+                            <input type="number" id="z_w" class="form-control form-control-sm" min="1">
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label small">h</label>
+                            <input type="number" id="z_h" class="form-control form-control-sm" min="1">
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-primary" onclick="applyZone()">적용</button>
+                    <small class="text-muted ms-2">픽셀 단위 (해상도 기준)</small>
+                </div>
+            </div>
+
+            <div class="col-lg-7">
+                <div class="form-section">
+                    <div class="form-section-title">미리보기 (4K 비율)</div>
+                    <div class="canvas-wrap" id="canvas"></div>
+                    <div class="form-text mt-2">⊙ 영역 클릭 → 좌측 편집기에서 위치/크기 조정</div>
+                </div>
+            </div>
+        </div>
+
+        <input type="hidden" name="zones_json" id="zonesJson" value="">
+
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <a href="/signage/layouts" class="btn btn-outline-secondary">취소</a>
+            <button type="submit" class="btn btn-primary">{{ '생성' if mode=='new' else '저장' }}</button>
+        </div>
+    </form>
+</div>
+
+<script>
+let zones = {{ zones|tojson }};
+let selectedIdx = -1;
+
+function getResolution() {
+    const res = document.querySelector('select[name=resolution]').value;
+    const [w, h] = res.split('x').map(Number);
+    return {w, h};
+}
+
+function renderCanvas() {
+    const {w: rw, h: rh} = getResolution();
+    const c = document.getElementById('canvas');
+    c.innerHTML = '';
+    zones.forEach((z, i) => {
+        const div = document.createElement('div');
+        div.className = 'zone-box' + (i === selectedIdx ? ' selected' : '');
+        div.style.left = (z.x * 100 / rw) + '%';
+        div.style.top = (z.y * 100 / rh) + '%';
+        div.style.width = (z.w * 100 / rw) + '%';
+        div.style.height = (z.h * 100 / rh) + '%';
+        div.style.zIndex = z.z_index || 0;
+        div.textContent = z.zone_key;
+        div.onclick = () => selectZone(i);
+        c.appendChild(div);
+    });
+}
+function renderList() {
+    const list = document.getElementById('zoneList');
+    list.innerHTML = '';
+    if (!zones.length) {
+        list.innerHTML = '<div class="text-muted small">영역 없음</div>';
+        return;
+    }
+    zones.forEach((z, i) => {
+        const div = document.createElement('div');
+        div.className = 'zone-list-item' + (i === selectedIdx ? ' selected' : '');
+        div.innerHTML = `<code>${z.zone_key}</code> · ${z.w}×${z.h} @ (${z.x},${z.y}) · z${z.z_index || 0}`;
+        div.onclick = () => selectZone(i);
+        list.appendChild(div);
+    });
+}
+function selectZone(i) {
+    selectedIdx = i;
+    const z = zones[i];
+    document.getElementById('zoneEditor').style.display = '';
+    document.getElementById('z_key').value = z.zone_key;
+    document.getElementById('z_x').value = z.x;
+    document.getElementById('z_y').value = z.y;
+    document.getElementById('z_w').value = z.w;
+    document.getElementById('z_h').value = z.h;
+    document.getElementById('z_zi').value = z.z_index || 0;
+    renderAll();
+}
+function applyZone() {
+    if (selectedIdx < 0) return;
+    zones[selectedIdx] = {
+        zone_key: document.getElementById('z_key').value.trim() || 'main',
+        x: parseInt(document.getElementById('z_x').value) || 0,
+        y: parseInt(document.getElementById('z_y').value) || 0,
+        w: parseInt(document.getElementById('z_w').value) || 100,
+        h: parseInt(document.getElementById('z_h').value) || 100,
+        z_index: parseInt(document.getElementById('z_zi').value) || 0,
+    };
+    renderAll();
+}
+function addZone() {
+    const {w: rw, h: rh} = getResolution();
+    zones.push({
+        zone_key: 'zone' + (zones.length + 1),
+        x: 0, y: 0, w: Math.floor(rw/2), h: Math.floor(rh/2),
+        z_index: 0
+    });
+    selectedIdx = zones.length - 1;
+    selectZone(selectedIdx);
+}
+function removeSelected() {
+    if (selectedIdx < 0) return;
+    zones.splice(selectedIdx, 1);
+    selectedIdx = -1;
+    document.getElementById('zoneEditor').style.display = 'none';
+    renderAll();
+}
+function renderAll() {
+    renderCanvas();
+    renderList();
+}
+
+document.getElementById('layForm').addEventListener('submit', () => {
+    document.getElementById('zonesJson').value = JSON.stringify(zones);
+});
+document.querySelector('select[name=resolution]').addEventListener('change', renderAll);
+
+renderAll();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
