@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>콘텐츠 글쓰기 — 디지털 사이니지</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=27" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <style>
+        body { background:#eef2f7; }
+
+        /* ─── 상단 액션바 ─── */
+        .writer-actionbar {
+            background:#fff; border-bottom:1px solid #e2e8f0;
+            padding:8px 16px; display:flex; align-items:center; gap:10px;
+            position:sticky; top:0; z-index:80;
+        }
+        .writer-actionbar .doc-title {
+            border:none; outline:none; font-size:1.1rem; font-weight:700;
+            flex:1; min-width:200px; padding:4px 8px;
+        }
+        .writer-actionbar .doc-title::placeholder { color:#94a3b8; font-weight:500; }
+        .ab-right { display:flex; gap:6px; align-items:center; }
+
+        /* ─── 툴바 (네이버 블로그 스타일) ─── */
+        .editor-toolbar {
+            background:#fff; border-bottom:1px solid #e2e8f0;
+            padding:6px 14px; position:sticky; top:50px; z-index:70;
+            display:flex; align-items:center; gap:0; flex-wrap:wrap;
+        }
+        .tb-group {
+            display:flex; align-items:center; gap:2px;
+            padding: 2px 8px; border-right:1px solid #e2e8f0;
+        }
+        .tb-group:last-child { border-right:none; }
+        .tb-btn {
+            background:transparent; border:none; padding:6px 8px;
+            cursor:pointer; border-radius:3px; font-size:0.9rem;
+            color:#334155; min-width:32px;
+            display:inline-flex; align-items:center; gap:4px;
+            line-height:1;
+        }
+        .tb-btn:hover { background:#f1f5f9; }
+        .tb-btn.active { background:#e0e7ff; color:#1e3a8a; }
+        .tb-btn .lbl { font-size:0.78rem; }
+        .tb-sep { width:1px; height:20px; background:#e2e8f0; margin: 0 6px; }
+        .tb-select {
+            font-size:0.82rem; padding:4px 6px; border:1px solid #cbd5e1;
+            border-radius:3px; outline:none;
+        }
+        .tb-color {
+            width:28px; height:28px; padding:0; border:1px solid #cbd5e1;
+            border-radius:3px; cursor:pointer;
+        }
+
+        /* ─── 메인 레이아웃 ─── */
+        .writer-wrap {
+            display:grid; grid-template-columns: 1fr 460px; gap:14px;
+            padding:14px; min-height: calc(100vh - 130px);
+        }
+        @media (max-width:1399px) { .writer-wrap { grid-template-columns: 1fr 380px; } }
+
+        /* 좌측: 글쓰기 영역 */
+        .doc-pane {
+            background:#fff; border:1px solid #e2e8f0; border-radius:4px;
+            padding: 24px 32px; min-height: 600px;
+        }
+        .doc-pane h6.section-hint {
+            font-size:0.7rem; color:#94a3b8; text-transform:uppercase;
+            letter-spacing:0.05em; margin-bottom:8px;
+        }
+
+        /* 블록 행 */
+        .block {
+            position:relative; margin: 0;
+            transition: background .12s;
+        }
+        .block.selected { background:#f8fafc; }
+        .block:hover .block-handle { opacity: 1; }
+
+        /* 좌측 핸들 (드래그/순서/삭제 메뉴 트리거) */
+        .block-handle {
+            position:absolute; left:-32px; top:50%;
+            transform: translateY(-50%);
+            display:flex; flex-direction:column; gap:2px;
+            opacity:0; transition: opacity .15s;
+        }
+        .block-handle button {
+            width:22px; height:22px; padding:0;
+            background:#fff; border:1px solid #e2e8f0;
+            color:#64748b; cursor:pointer;
+            border-radius:3px; font-size:0.7rem;
+        }
+        .block-handle button:hover { background:#1e40af; color:#fff; border-color:#1e3a8a; }
+
+        /* 블록 사이 호버 시 + 버튼 */
+        .block-separator {
+            position:relative; height: 14px;
+        }
+        .block-separator .add-here {
+            position:absolute; left:50%; top:50%;
+            transform: translate(-50%, -50%);
+            opacity:0; pointer-events:none;
+            background:#1e40af; color:#fff; border:none;
+            width:26px; height:26px; border-radius:50%;
+            font-size:1.1rem; line-height:1; cursor:pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+            transition: opacity .12s, transform .12s;
+        }
+        .block-separator:hover .add-here {
+            opacity:1; pointer-events:auto;
+            transform: translate(-50%, -50%) scale(1.1);
+        }
+
+        /* 텍스트/제목 contenteditable */
+        .block-text, .block-heading, .block-ticker {
+            outline:none; padding: 4px 2px;
+            min-height: 1.6em;
+            line-height: 1.5;
+            word-break: keep-all;
+        }
+        .block-heading {
+            font-size: 1.6rem; font-weight: 800;
+        }
+        .block-text { font-size: 1rem; }
+        .block-ticker {
+            background:#0f172a; color:#fbbf24; font-weight:700;
+            padding: 6px 12px; border-radius: 3px;
+            font-size: 0.95rem;
+        }
+        [contenteditable=true]:empty::before {
+            content: attr(data-placeholder);
+            color:#cbd5e1; pointer-events:none;
+        }
+
+        /* 미디어 블록 (이미지/영상/PDF/웹/표/배너 등) */
+        .block-media {
+            border: 1px dashed transparent;
+            padding: 8px; margin: 6px 0;
+            position:relative;
+        }
+        .block-media:hover { border-color:#94a3b8; }
+        .block.selected .block-media { border-color:#1e40af; }
+
+        .block-media .media-toolbar {
+            position:absolute; top:-12px; right:8px;
+            background:#0f172a; color:#fff; border-radius:3px;
+            padding:2px 6px; font-size:0.72rem;
+            display:none; gap:6px;
+        }
+        .block.selected .block-media .media-toolbar,
+        .block:hover .block-media .media-toolbar { display:flex; }
+        .media-toolbar button {
+            background:transparent; border:none; color:#fff; cursor:pointer;
+            font-size:0.78rem; padding: 0 2px;
+        }
+        .media-toolbar button:hover { color:#fbbf24; }
+
+        .block-media img, .block-media video {
+            max-width: 100%; max-height: 320px; display:block; margin: 0 auto;
+        }
+        .block-media .placeholder {
+            background:#f1f5f9; border:1px dashed #cbd5e1;
+            padding: 40px; text-align:center; color:#64748b;
+            font-size:0.95rem;
+        }
+        .block-media .placeholder .pl-icon { font-size:2rem; margin-bottom:6px; }
+        .block-media .url-input {
+            margin-top:8px; width:100%; padding:6px 10px;
+            border:1px solid #e2e8f0; border-radius:3px; font-size:0.85rem;
+        }
+
+        /* 표 */
+        .block-table table {
+            width:100%; border-collapse: collapse;
+            font-size: 0.92rem;
+        }
+        .block-table td {
+            border:1px solid #cbd5e1; padding: 6px 10px;
+            position:relative; min-width: 60px;
+        }
+        .block-table td:focus-within { background:#fef3c7; }
+        .block-table td input {
+            width:100%; border:none; outline:none; background:transparent;
+            font-size: inherit;
+        }
+        .table-actions {
+            display:flex; gap:4px; margin-top:6px; font-size:0.78rem;
+            flex-wrap:wrap;
+        }
+        .table-actions button {
+            font-size:0.74rem; padding:3px 8px;
+            background:#f1f5f9; border:1px solid #cbd5e1;
+            border-radius:3px; cursor:pointer;
+        }
+        .table-actions button:hover { background:#1e40af; color:#fff; }
+
+        /* 배너 */
+        .block-banner {
+            background:#dc2626; color:#fff; padding: 14px 20px;
+            border-radius: 4px; display:flex; align-items:center; gap:12px;
+            font-weight:700; font-size:1.05rem;
+        }
+        .block-banner.warn { background:#ea580c; }
+        .block-banner.info { background:#1e40af; }
+        .block-banner.success { background:#16a34a; }
+        .block-banner .be-icon { font-size:1.8rem; }
+        .block-banner [contenteditable] { flex:1; outline:none; }
+
+        /* 생산현황 카드 */
+        .block-prod {
+            display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px; padding: 4px 0;
+        }
+        .prod-card {
+            background:#1e293b; color:#fff; padding: 14px;
+            border-radius: 4px; text-align:center;
+        }
+        .prod-card .pc-label { font-size:0.75rem; opacity:0.7; margin-bottom:4px; }
+        .prod-card .pc-value { font-size:1.6rem; font-weight:800; }
+        .prod-card .pc-unit { font-size:0.75rem; opacity:0.7; }
+        .prod-card[contenteditable] { outline:none; }
+
+        /* QR */
+        .block-qr {
+            display:flex; gap:14px; align-items:center; padding:8px;
+        }
+        .block-qr canvas { background:#fff; padding:6px; border:1px solid #e2e8f0; }
+        .block-qr .qr-info { flex:1; }
+
+        /* 구분선 */
+        .block-divider {
+            border:none; border-top: 2px solid #cbd5e1;
+            margin: 10px 0;
+        }
+
+        /* ─── 우측 패널 ─── */
+        .right-pane {
+            display:flex; flex-direction:column; gap:10px;
+            position:sticky; top:104px;
+            max-height: calc(100vh - 120px); overflow-y:auto;
+        }
+        .right-card {
+            background:#fff; border:1px solid #e2e8f0; border-radius:4px;
+            padding: 12px;
+        }
+        .right-card .rc-head {
+            font-size:0.78rem; font-weight:700; color:#475569;
+            text-transform:uppercase; letter-spacing:0.05em;
+            margin-bottom:8px; padding-bottom:6px;
+            border-bottom:1px solid #e2e8f0;
+            display:flex; align-items:center;
+        }
+        .right-card .rc-head .rc-right { margin-left:auto; font-size:0.7rem; font-weight:500; color:#94a3b8; }
+
+        /* 미리보기 캔버스 */
+        .preview-canvas {
+            aspect-ratio:16/9; background:#0f172a;
+            position:relative; overflow:hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+            display:flex; flex-direction:column;
+        }
+        .preview-meta {
+            margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;
+            font-size:0.72rem; color:#64748b;
+        }
+        .preview-bg-toggle {
+            display:flex; gap:4px;
+        }
+        .preview-bg-toggle button {
+            font-size:0.7rem; padding: 3px 8px;
+            border:1px solid #cbd5e1; background:#fff;
+            cursor:pointer; border-radius:3px;
+        }
+        .preview-bg-toggle button.active { background:#0f172a; color:#fff; border-color:#0f172a; }
+
+        /* 설정 폼 */
+        .settings-grid {
+            display:grid; grid-template-columns: 1fr 1fr; gap:8px;
+        }
+        .settings-grid .full { grid-column: 1 / -1; }
+        .form-label-sm {
+            font-size:0.72rem; color:#64748b; margin-bottom:2px;
+            display:block;
+        }
+        .settings-grid input, .settings-grid select, .settings-grid textarea {
+            font-size:0.85rem; padding: 4px 8px;
+            border:1px solid #cbd5e1; border-radius:3px;
+            outline:none; width:100%;
+        }
+        .target-list {
+            max-height:120px; overflow-y:auto;
+            border:1px solid #e2e8f0; border-radius:3px;
+            padding:6px;
+        }
+        .target-list label {
+            display:block; font-size:0.82rem; padding:2px 0; cursor:pointer;
+        }
+        .check-row {
+            display:flex; align-items:center; gap:6px;
+            font-size:0.85rem; padding:4px 0;
+        }
+        .tag-chip-inline {
+            display:inline-block; background:#e0e7ff; color:#1e3a8a;
+            padding:2px 8px; border-radius:10px; font-size:0.72rem;
+            margin: 2px; cursor:pointer;
+        }
+        .tag-chip-inline:hover { background:#1e40af; color:#fff; }
+
+        /* 삽입 메뉴 (호버 + 버튼 클릭 시) */
+        .insert-menu {
+            position:fixed; background:#fff;
+            border:1px solid #cbd5e1; border-radius:4px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+            padding:6px; z-index:200;
+            display:none; grid-template-columns: repeat(4, 1fr);
+            gap:2px; width: 320px;
+        }
+        .insert-menu.show { display:grid; }
+        .insert-menu button {
+            display:flex; flex-direction:column; align-items:center; gap:2px;
+            padding:8px 4px; border:none; background:transparent;
+            cursor:pointer; border-radius:3px; font-size:0.72rem;
+        }
+        .insert-menu button:hover { background:#1e40af; color:#fff; }
+        .insert-menu button .im-ic { font-size:1.2rem; line-height:1; }
+
+        /* 전체화면 */
+        .fs-overlay {
+            position:fixed; inset:0; background:rgba(0,0,0,0.92);
+            z-index:9999; display:none; align-items:center; justify-content:center;
+            padding: 4vh 4vw;
+        }
+        .fs-overlay.show { display:flex; }
+        .fs-canvas {
+            background:#0f172a; width:100%; max-width:1920px; aspect-ratio:16/9;
+            position:relative; overflow:hidden;
+            display:flex; flex-direction:column;
+            box-shadow:0 0 50px rgba(0,0,0,0.7);
+        }
+        .fs-close {
+            position:fixed; top:14px; right:14px;
+            background:#fff; color:#0f172a; border:none;
+            padding:6px 14px; cursor:pointer; border-radius:4px;
+        }
+
+        /* 모바일 */
+        @media (max-width: 991px) {
+            .writer-wrap { grid-template-columns: 1fr; }
+            .right-pane { position:relative; top:auto; max-height:none; }
+            .editor-toolbar { overflow-x:auto; }
+        }
+
+        /* 미리보기 내부 (4K vw 단위로 렌더) */
+        .pv-block { box-sizing:border-box; display:flex; word-break:keep-all; overflow:hidden; }
+    </style>
+</head>
+<body>
+{% set active_page = 'signage_contents' %}
+{% include '_sidebar.html' %}
+
+<form method="post" id="writerForm">
+    <!-- 1) 상단 액션바 -->
+    <div class="writer-actionbar">
+        <input type="text" name="title" id="t_title" class="doc-title"
+               placeholder="제목을 입력하세요"
+               value="{{ content.title if content else '' }}">
+        <div class="ab-right">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openFullscreen()">⛶ 전체 미리보기</button>
+            <button type="button" class="btn btn-sm btn-outline-info" onclick="saveAs('draft')">📝 임시저장</button>
+            <button type="submit" class="btn btn-sm btn-primary">💾 저장</button>
+            <a href="/signage/contents" class="btn btn-sm btn-outline-secondary">취소</a>
+        </div>
+    </div>
+
+    <!-- 2) 에디터 툴바 (네이버 블로그 스타일) -->
+    <div class="editor-toolbar">
+        <!-- 글자 -->
+        <div class="tb-group">
+            <select class="tb-select" id="tb_fontsize" onchange="applyFontSize(this.value)" title="글자 크기 (vw)">
+                <option value="">크기</option>
+                <option value="2">2vw (작게)</option>
+                <option value="3">3vw (보통)</option>
+                <option value="4">4vw</option>
+                <option value="5">5vw</option>
+                <option value="6">6vw (큼)</option>
+                <option value="8">8vw (제목)</option>
+                <option value="10">10vw (매우큼)</option>
+            </select>
+        </div>
+        <div class="tb-group">
+            <button type="button" class="tb-btn" onclick="exec('bold')" title="굵게 (Ctrl+B)"><b>B</b></button>
+            <button type="button" class="tb-btn" onclick="exec('italic')" title="기울임 (Ctrl+I)"><i>I</i></button>
+            <button type="button" class="tb-btn" onclick="exec('underline')" title="밑줄 (Ctrl+U)"><u>U</u></button>
+            <button type="button" class="tb-btn" onclick="exec('strikeThrough')" title="취소선"><s>S</s></button>
+        </div>
+        <div class="tb-group">
+            <input type="color" class="tb-color" id="tb_color" onchange="exec('foreColor', this.value)" title="글자색" value="#0f172a">
+            <input type="color" class="tb-color" id="tb_bg" onchange="exec('hiliteColor', this.value)" title="배경색" value="#fbbf24">
+        </div>
+        <div class="tb-group">
+            <button type="button" class="tb-btn" onclick="setAlign('left')" title="왼쪽 정렬">⇤</button>
+            <button type="button" class="tb-btn" onclick="setAlign('center')" title="가운데 정렬">↔</button>
+            <button type="button" class="tb-btn" onclick="setAlign('right')" title="오른쪽 정렬">⇥</button>
+        </div>
+        <div class="tb-group">
+            <select class="tb-select" id="tb_lineheight" onchange="setLineHeight(this.value)" title="줄간격">
+                <option value="">줄간격</option>
+                <option value="1">1.0</option>
+                <option value="1.3">1.3</option>
+                <option value="1.5" selected>1.5</option>
+                <option value="1.8">1.8</option>
+                <option value="2.2">2.2</option>
+            </select>
+        </div>
+
+        <div class="tb-group">
+            <button type="button" class="tb-btn" onclick="addBlock('image')" title="이미지"><span class="im-ic">🖼</span><span class="lbl">이미지</span></button>
+            <button type="button" class="tb-btn" onclick="addBlock('video')" title="동영상"><span class="im-ic">🎬</span><span class="lbl">동영상</span></button>
+            <button type="button" class="tb-btn" onclick="addBlock('pdf')" title="PDF"><span class="im-ic">📄</span><span class="lbl">PDF</span></button>
+            <button type="button" class="tb-btn" onclick="addBlock('web')" title="웹"><span class="im-ic">🌐</span><span class="lbl">웹</span></button>
+            <button type="button" class="tb-btn" onclick="addBlock('table')" title="표"><span class="im-ic">📊</span><span class="lbl">표</span></button>
+            <button type="button" class="tb-btn" onclick="addBlock('divider')" title="구분선"><span class="im-ic">➖</span><span class="lbl">선</span></button>
+        </div>
+        <div class="tb-group">
+            <button type="button" class="tb-btn" onclick="addBlock('ticker')" title="자막"><span class="im-ic">📢</span><span class="lbl">자막</span></button>
+            <button type="button" class="tb-btn" onclick="addBlock('banner')" title="안전배너"><span class="im-ic">🦺</span><span class="lbl">배너</span></button>
+            <button type="button" class="tb-btn" onclick="addBlock('production')" title="생산현황"><span class="im-ic">🏭</span><span class="lbl">생산</span></button>
+            <button type="button" class="tb-btn" onclick="addBlock('qr')" title="QR코드"><span class="im-ic">⚡</span><span class="lbl">QR</span></button>
+            <button type="button" class="tb-btn" onclick="insertEmoji()" title="아이콘"><span class="im-ic">😀</span><span class="lbl">아이콘</span></button>
+        </div>
+    </div>
+
+    <!-- 3) 메인 -->
+    <div class="writer-wrap">
+        <!-- 좌측: 글쓰기 영역 -->
+        <div class="doc-pane">
+            <h6 class="section-hint">본문 (작성 즉시 오른쪽 미리보기에 반영됩니다)</h6>
+            <div id="doc"></div>
+        </div>
+
+        <!-- 우측: 미리보기 + 설정 -->
+        <div class="right-pane">
+            <!-- 미리보기 -->
+            <div class="right-card">
+                <div class="rc-head">
+                    🖥 실시간 미리보기
+                    <div class="rc-right preview-bg-toggle">
+                        <button type="button" id="pvBgDark" class="active" onclick="setPreviewBg('dark')">🌙</button>
+                        <button type="button" id="pvBgLight" onclick="setPreviewBg('light')">☀️</button>
+                        <button type="button" onclick="openFullscreen()">⛶</button>
+                    </div>
+                </div>
+                <div class="preview-canvas" id="previewCanvas"></div>
+                <div class="preview-meta">
+                    <span>📐 16:9</span>
+                    <span>🖥 4K (3840×2160)</span>
+                    <span id="pvBlockCount">0개 블록</span>
+                </div>
+            </div>
+
+            <!-- 사이니지 설정 -->
+            <div class="right-card">
+                <div class="rc-head">⚙️ 사이니지 설정</div>
+                <div class="settings-grid">
+                    <div>
+                        <label class="form-label-sm">재생 시간(초)</label>
+                        <input type="number" name="duration_sec" min="3" max="600"
+                               value="{{ content.duration_sec if content else 15 }}">
+                    </div>
+                    <div>
+                        <label class="form-label-sm">우선순위</label>
+                        <input type="number" name="priority" min="-100" max="100"
+                               value="{{ content.priority if content else 0 }}">
+                    </div>
+                    <div>
+                        <label class="form-label-sm">상태</label>
+                        <select name="status">
+                            <option value="active" {{ 'selected' if not content or content.status=='active' }}>사용</option>
+                            <option value="draft" {{ 'selected' if content and content.status=='draft' }}>임시저장</option>
+                            <option value="paused" {{ 'selected' if content and content.status=='paused' }}>중지</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label-sm">배경색</label>
+                        <input type="color" name="bg_color" id="t_bg" style="height:30px;"
+                               value="{{ content.bg_color if content else '#0f172a' }}"
+                               oninput="renderPreview()">
+                    </div>
+                    <div class="full">
+                        <label class="form-label-sm">시작일시</label>
+                        <input type="datetime-local" name="start_at"
+                               value="{{ content.start_at.strftime('%Y-%m-%dT%H:%M') if content and content.start_at else '' }}">
+                    </div>
+                    <div class="full">
+                        <label class="form-label-sm">종료일시</label>
+                        <input type="datetime-local" name="end_at"
+                               value="{{ content.end_at.strftime('%Y-%m-%dT%H:%M') if content and content.end_at else '' }}">
+                    </div>
+                </div>
+
+                <div class="check-row">
+                    <input type="checkbox" id="cb_default" name="add_to_default">
+                    <label for="cb_default">기본 플레이리스트에 자동 추가</label>
+                </div>
+            </div>
+
+            <!-- 대상 디스플레이 -->
+            <div class="right-card">
+                <div class="rc-head">📺 대상 디스플레이 (참고용)</div>
+                <div class="target-list">
+                    {% for d in displays %}
+                    <label>
+                        <input type="checkbox" name="target_displays" value="{{ d.id }}"
+                            {% if content and d.id in content.target_displays %}checked{% endif %}>
+                        {{ d.name }}{% if d.location %} <span class="text-muted small">({{ d.location }})</span>{% endif %}
+                    </label>
+                    {% else %}
+                    <div class="text-muted small">등록된 디스플레이 없음</div>
+                    {% endfor %}
+                </div>
+                <div class="text-muted small mt-1">⚠️ 실제 송출은 플레이리스트/편성표가 결정합니다. 여기서는 의도된 대상만 기록합니다.</div>
+            </div>
+
+            <!-- 태그 -->
+            <div class="right-card">
+                <div class="rc-head">🏷 태그</div>
+                <input type="text" name="tags" id="t_tags" class="form-control form-control-sm"
+                       placeholder="쉼표(,) 또는 줄바꿈으로 구분"
+                       value="{{ content.tags|join(', ') if content and content.tags else '' }}">
+                {% if all_tags %}
+                <div class="mt-2">
+                    {% for t in all_tags[:20] %}
+                    <span class="tag-chip-inline" onclick="addTag('{{ t|e }}')">{{ t }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <input type="hidden" name="blocks_json" id="blocksJson">
+</form>
+
+<!-- 삽입 메뉴 (+ 버튼 클릭 시) -->
+<div class="insert-menu" id="insertMenu">
+    <button type="button" onclick="insertAt('heading')"><span class="im-ic">🔠</span>큰 제목</button>
+    <button type="button" onclick="insertAt('text')"><span class="im-ic">📝</span>텍스트</button>
+    <button type="button" onclick="insertAt('image')"><span class="im-ic">🖼</span>이미지</button>
+    <button type="button" onclick="insertAt('video')"><span class="im-ic">🎬</span>동영상</button>
+    <button type="button" onclick="insertAt('pdf')"><span class="im-ic">📄</span>PDF</button>
+    <button type="button" onclick="insertAt('web')"><span class="im-ic">🌐</span>웹</button>
+    <button type="button" onclick="insertAt('table')"><span class="im-ic">📊</span>표</button>
+    <button type="button" onclick="insertAt('divider')"><span class="im-ic">➖</span>구분선</button>
+    <button type="button" onclick="insertAt('ticker')"><span class="im-ic">📢</span>자막</button>
+    <button type="button" onclick="insertAt('banner')"><span class="im-ic">🦺</span>배너</button>
+    <button type="button" onclick="insertAt('production')"><span class="im-ic">🏭</span>생산</button>
+    <button type="button" onclick="insertAt('qr')"><span class="im-ic">⚡</span>QR</button>
+</div>
+
+<!-- 전체화면 -->
+<div class="fs-overlay" id="fsOverlay">
+    <button class="fs-close" onclick="closeFullscreen()">✕ 닫기 (ESC)</button>
+    <div class="fs-canvas" id="fsCanvas"></div>
+</div>
+
+<input type="file" id="hiddenFile" style="display:none;">
+
+<script>
+// ════════════════════════════════════════════════════════
+//  데이터 모델
+// ════════════════════════════════════════════════════════
+let blocks = {{ content.blocks|tojson if content else '[]' }};
+let selectedIdx = -1;
+let insertAtIdx = -1;
+let activeUploadIdx = null;
+let dragSrcIdx = null;
+
+function uid() { return 'b' + Date.now().toString(36) + Math.floor(Math.random()*1000); }
+function escapeHtml(s) {
+    return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+const DEFAULTS = {
+    heading: () => ({ id: uid(), type:'heading', content:'큰 제목', style:{ font_size:7, bold:true, align:'center', color:'#ffffff' } }),
+    text:    () => ({ id: uid(), type:'text', content:'', style:{ font_size:3, align:'left', color:'#ffffff', line_height:1.5 } }),
+    image:   () => ({ id: uid(), type:'image', url:'', fit:'contain' }),
+    video:   () => ({ id: uid(), type:'video', url:'', fit:'contain', autoplay:true, loop:true, muted:true }),
+    pdf:     () => ({ id: uid(), type:'pdf', url:'' }),
+    web:     () => ({ id: uid(), type:'web', url:'', mode:'iframe' }),
+    table:   () => ({ id: uid(), type:'table',
+        cells: [
+            [{text:'항목',bold:true,align:'center'},{text:'값',bold:true,align:'center'}],
+            [{text:''},{text:''}], [{text:''},{text:''}]
+        ], style:{ color:'#ffffff', align:'center' } }),
+    divider: () => ({ id: uid(), type:'divider' }),
+    ticker:  () => ({ id: uid(), type:'ticker', content:'자막 또는 하단 안내문', position:'bottom', speed:25, style:{font_size:2,color:'#fbbf24',bg:'#000000'} }),
+    banner:  () => ({ id: uid(), type:'banner', content:'안전제일! 작업 전 보호구 착용 확인', variant:'danger', icon:'⚠️' }),
+    production: () => ({ id: uid(), type:'production',
+        cards: [
+            {label:'Line A 생산량', value:'0', unit:'EA'},
+            {label:'Line B 생산량', value:'0', unit:'EA'},
+            {label:'일일 누적', value:'0', unit:'EA'},
+        ]}),
+    qr:      () => ({ id: uid(), type:'qr', url:'https://taein.biz', caption:'홈페이지', size:160 }),
+};
+
+// ════════════════════════════════════════════════════════
+//  블록 조작
+// ════════════════════════════════════════════════════════
+function addBlock(type) {
+    blocks.push(DEFAULTS[type]());
+    selectedIdx = blocks.length - 1;
+    renderAll();
+    setTimeout(() => {
+        const el = document.querySelector(`[data-idx="${selectedIdx}"]`);
+        if (el) {
+            el.scrollIntoView({behavior:'smooth', block:'center'});
+            const ce = el.querySelector('[contenteditable=true]');
+            if (ce) ce.focus();
+        }
+    }, 50);
+}
+function insertAt(type) {
+    closeInsertMenu();
+    const i = insertAtIdx;
+    if (i < 0) { addBlock(type); return; }
+    blocks.splice(i, 0, DEFAULTS[type]());
+    selectedIdx = i;
+    renderAll();
+}
+function deleteBlock(idx) {
+    blocks.splice(idx, 1);
+    if (selectedIdx === idx) selectedIdx = -1;
+    else if (selectedIdx > idx) selectedIdx--;
+    renderAll();
+}
+function moveBlock(idx, dir) {
+    const ni = idx + dir;
+    if (ni < 0 || ni >= blocks.length) return;
+    [blocks[idx], blocks[ni]] = [blocks[ni], blocks[idx]];
+    selectedIdx = ni;
+    renderAll();
+}
+function duplicateBlock(idx) {
+    const b = JSON.parse(JSON.stringify(blocks[idx]));
+    b.id = uid();
+    blocks.splice(idx+1, 0, b);
+    selectedIdx = idx+1;
+    renderAll();
+}
+
+// ════════════════════════════════════════════════════════
+//  렌더링 — 문서 영역
+// ════════════════════════════════════════════════════════
+function renderAll() {
+    renderDoc();
+    renderPreview();
+}
+
+function renderDoc() {
+    const doc = document.getElementById('doc');
+    doc.innerHTML = '';
+    if (!blocks.length) {
+        const sep = makeSeparator(0);
+        doc.appendChild(sep);
+        const emp = document.createElement('div');
+        emp.className = 'text-muted text-center p-4';
+        emp.innerHTML = '상단 툴바에서 블록을 추가하거나 위의 <strong>+</strong> 버튼을 눌러 시작하세요.';
+        doc.appendChild(emp);
+        return;
+    }
+    doc.appendChild(makeSeparator(0));
+    blocks.forEach((b, i) => {
+        doc.appendChild(makeBlockElement(b, i));
+        doc.appendChild(makeSeparator(i+1));
+    });
+}
+
+function makeSeparator(idx) {
+    const sep = document.createElement('div');
+    sep.className = 'block-separator';
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'add-here'; btn.textContent = '+';
+    btn.onclick = (e) => {
+        e.stopPropagation();
+        insertAtIdx = idx;
+        const rect = btn.getBoundingClientRect();
+        const menu = document.getElementById('insertMenu');
+        menu.style.left = Math.min(rect.left, window.innerWidth - 340) + 'px';
+        menu.style.top = (rect.bottom + 6) + 'px';
+        menu.classList.add('show');
+    };
+    sep.appendChild(btn);
+    return sep;
+}
+
+function makeBlockElement(b, idx) {
+    const wrap = document.createElement('div');
+    wrap.className = 'block' + (selectedIdx === idx ? ' selected' : '');
+    wrap.dataset.idx = idx;
+    wrap.onclick = (e) => {
+        if (e.target.closest('.block-handle')) return;
+        selectedIdx = idx;
+        document.querySelectorAll('.block.selected').forEach(el => el.classList.remove('selected'));
+        wrap.classList.add('selected');
+    };
+
+    // 좌측 핸들
+    const handle = document.createElement('div');
+    handle.className = 'block-handle';
+    handle.innerHTML = `
+        <button type="button" title="위로" onclick="moveBlock(${idx},-1); event.stopPropagation();">▲</button>
+        <button type="button" title="아래로" onclick="moveBlock(${idx},+1); event.stopPropagation();">▼</button>
+        <button type="button" title="복제" onclick="duplicateBlock(${idx}); event.stopPropagation();">⎘</button>
+        <button type="button" title="삭제" onclick="deleteBlock(${idx}); event.stopPropagation();">✕</button>
+    `;
+    wrap.appendChild(handle);
+
+    // 본문
+    if (b.type === 'heading' || b.type === 'text' || b.type === 'ticker') {
+        const cls = b.type === 'heading' ? 'block-heading'
+                  : b.type === 'ticker' ? 'block-ticker'
+                  : 'block-text';
+        const placeholder = b.type === 'heading' ? '큰 제목을 입력하세요'
+                          : b.type === 'ticker' ? '자막을 입력하세요'
+                          : '내용을 입력하세요. 글자를 선택하고 위 툴바로 서식 적용';
+        const ed = document.createElement('div');
+        ed.className = cls;
+        ed.contentEditable = 'true';
+        ed.dataset.placeholder = placeholder;
+        ed.innerHTML = b.content || '';
+        // 입력 → 모델 동기화
+        ed.oninput = () => {
+            b.content = ed.innerHTML;
+            renderPreview();  // 좌측은 재구성하지 않음 (포커스 유지)
+        };
+        ed.onblur = () => { b.content = ed.innerHTML; };
+        ed.onfocus = () => { selectedIdx = idx; };
+        // 스타일 적용
+        const s = b.style || {};
+        if (s.font_size) ed.style.fontSize = s.font_size + 'vw';
+        if (s.bold) ed.style.fontWeight = '800';
+        if (s.align) ed.style.textAlign = s.align;
+        if (s.color) ed.style.color = b.type === 'ticker' ? (s.color || '#fbbf24') : s.color;
+        if (s.bg && s.bg !== 'transparent') ed.style.background = s.bg;
+        if (s.line_height) ed.style.lineHeight = s.line_height;
+        // 좌측 영역은 보기 좋게 적당히 (4K vw → 줄이기)
+        if (s.font_size) ed.style.fontSize = Math.min(s.font_size * 4, 36) + 'px';
+        wrap.appendChild(ed);
+    } else {
+        // 미디어/표/배너/생산/QR/구분선
+        wrap.appendChild(makeMediaElement(b, idx));
+    }
+    return wrap;
+}
+
+function makeMediaElement(b, idx) {
+    const m = document.createElement('div');
+    m.className = 'block-media';
+    // 상단 미니 툴바
+    const tb = document.createElement('div');
+    tb.className = 'media-toolbar';
+    tb.innerHTML = `<button type="button" onclick="deleteBlock(${idx})">삭제</button>`;
+    m.appendChild(tb);
+
+    if (b.type === 'image') {
+        if (b.url) {
+            m.innerHTML += `<img src="${escapeHtml(b.url)}" alt="">`;
+        } else {
+            m.innerHTML += `<div class="placeholder"><div class="pl-icon">🖼</div>이미지를 추가하세요</div>`;
+        }
+        m.innerHTML += `
+            <div class="d-flex gap-2 mt-2">
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="openUpload(${idx}, 'image', 'image/*')">📁 파일 선택</button>
+                <input type="text" class="url-input" placeholder="또는 URL 직접 입력" value="${escapeHtml(b.url||'')}"
+                       oninput="blocks[${idx}].url=this.value; renderPreview();">
+                <select onchange="blocks[${idx}].fit=this.value; renderPreview();" style="font-size:0.82rem;">
+                    <option value="contain" ${b.fit!=='cover'?'selected':''}>비율유지</option>
+                    <option value="cover" ${b.fit==='cover'?'selected':''}>채움</option>
+                </select>
+            </div>
+        `;
+    } else if (b.type === 'video') {
+        if (b.url) {
+            m.innerHTML += `<video src="${escapeHtml(b.url)}" controls muted></video>`;
+        } else {
+            m.innerHTML += `<div class="placeholder"><div class="pl-icon">🎬</div>동영상을 추가하세요</div>`;
+        }
+        m.innerHTML += `
+            <div class="d-flex gap-2 mt-2 align-items-center small">
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="openUpload(${idx}, 'video', 'video/*')">📁 파일 선택</button>
+                <input type="text" class="url-input" placeholder="또는 URL 입력" value="${escapeHtml(b.url||'')}"
+                       oninput="blocks[${idx}].url=this.value; renderPreview();">
+                <label><input type="checkbox" ${b.autoplay!==false?'checked':''} onchange="blocks[${idx}].autoplay=this.checked; renderPreview();"> 자동</label>
+                <label><input type="checkbox" ${b.loop!==false?'checked':''} onchange="blocks[${idx}].loop=this.checked; renderPreview();"> 반복</label>
+                <label><input type="checkbox" ${b.muted!==false?'checked':''} onchange="blocks[${idx}].muted=this.checked; renderPreview();"> 음소거</label>
+            </div>
+        `;
+    } else if (b.type === 'pdf') {
+        if (b.url) {
+            m.innerHTML += `<embed src="${escapeHtml(b.url)}" type="application/pdf" style="width:100%;height:240px;">`;
+        } else {
+            m.innerHTML += `<div class="placeholder"><div class="pl-icon">📄</div>PDF 파일을 추가하세요</div>`;
+        }
+        m.innerHTML += `
+            <div class="d-flex gap-2 mt-2">
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="openUpload(${idx}, 'pdf', 'application/pdf,.pdf')">📁 파일 선택</button>
+                <input type="text" class="url-input" placeholder="또는 URL 입력" value="${escapeHtml(b.url||'')}"
+                       oninput="blocks[${idx}].url=this.value; renderPreview();">
+            </div>
+        `;
+    } else if (b.type === 'web') {
+        m.innerHTML += `
+            <div class="placeholder">
+                <div class="pl-icon">🌐</div>
+                <input type="url" class="url-input" placeholder="https://example.com" value="${escapeHtml(b.url||'')}"
+                       oninput="blocks[${idx}].url=this.value; renderPreview();" style="max-width:400px; margin-top:8px;">
+                <div class="mt-2 d-flex gap-2 justify-content-center small">
+                    <label><input type="radio" name="webM${idx}" ${b.mode!=='card'?'checked':''}
+                           onchange="blocks[${idx}].mode='iframe'; renderPreview();"> iframe 임베드</label>
+                    <label><input type="radio" name="webM${idx}" ${b.mode==='card'?'checked':''}
+                           onchange="blocks[${idx}].mode='card'; renderPreview();"> 미리보기 카드</label>
+                </div>
+            </div>
+        `;
+    } else if (b.type === 'table') {
+        m.classList.add('block-table');
+        m.appendChild(buildTableEditor(b, idx));
+    } else if (b.type === 'divider') {
+        m.innerHTML += '<hr class="block-divider">';
+        m.innerHTML += '<div class="text-muted small">화면 가로 구분선</div>';
+    } else if (b.type === 'ticker') {
+        // 미디어가 아니라 본문에 가깝지만 일관성 위해 여기 처리 가능 — 대신 위에서 처리함
+    } else if (b.type === 'banner') {
+        const variants = {danger:'안전 경고', warn:'주의', info:'안내', success:'정상/완료'};
+        const banner = document.createElement('div');
+        banner.className = 'block-banner ' + (b.variant || 'danger');
+        banner.innerHTML = `
+            <span class="be-icon">${escapeHtml(b.icon||'⚠️')}</span>
+            <div contenteditable="true" data-placeholder="안전 문구를 입력하세요"
+                 oninput="blocks[${idx}].content=this.innerHTML; renderPreview();"
+                 onblur="blocks[${idx}].content=this.innerHTML;">${b.content||''}</div>
+        `;
+        m.appendChild(banner);
+        const ctrl = document.createElement('div');
+        ctrl.className = 'table-actions';
+        ctrl.innerHTML = `
+            <span class="text-muted small">유형:</span>
+            ${Object.entries(variants).map(([k,v]) =>
+                `<button type="button" onclick="blocks[${idx}].variant='${k}'; renderAll();">${v}</button>`).join('')}
+            <span class="text-muted small">아이콘:</span>
+            ${['⚠️','🚨','✅','ℹ️','🦺','🧯','🔥','⚡'].map(i =>
+                `<button type="button" onclick="blocks[${idx}].icon='${i}'; renderAll();">${i}</button>`).join('')}
+        `;
+        m.appendChild(ctrl);
+    } else if (b.type === 'production') {
+        const grid = document.createElement('div');
+        grid.className = 'block-prod';
+        (b.cards || []).forEach((c, ci) => {
+            const card = document.createElement('div');
+            card.className = 'prod-card';
+            card.innerHTML = `
+                <div class="pc-label" contenteditable="true"
+                     oninput="blocks[${idx}].cards[${ci}].label=this.innerText; renderPreview();">${escapeHtml(c.label||'')}</div>
+                <div class="pc-value" contenteditable="true"
+                     oninput="blocks[${idx}].cards[${ci}].value=this.innerText; renderPreview();">${escapeHtml(c.value||'0')}</div>
+                <div class="pc-unit" contenteditable="true"
+                     oninput="blocks[${idx}].cards[${ci}].unit=this.innerText; renderPreview();">${escapeHtml(c.unit||'')}</div>
+            `;
+            grid.appendChild(card);
+        });
+        m.appendChild(grid);
+        const ctrl = document.createElement('div');
+        ctrl.className = 'table-actions';
+        ctrl.innerHTML = `
+            <button type="button" onclick="blocks[${idx}].cards.push({label:'새 항목',value:'0',unit:''}); renderAll();">＋ 카드</button>
+            <button type="button" onclick="if(blocks[${idx}].cards.length>1){blocks[${idx}].cards.pop(); renderAll();}">－ 카드</button>
+            <span class="text-muted small">각 카드 클릭해 직접 입력. MES 자동 연동은 추후 작업 예정.</span>
+        `;
+        m.appendChild(ctrl);
+    } else if (b.type === 'qr') {
+        const qrWrap = document.createElement('div');
+        qrWrap.className = 'block-qr';
+        const canvasEl = document.createElement('canvas');
+        canvasEl.id = 'qr_' + b.id;
+        qrWrap.appendChild(canvasEl);
+        const info = document.createElement('div');
+        info.className = 'qr-info';
+        info.innerHTML = `
+            <input type="url" class="url-input" placeholder="https://..." value="${escapeHtml(b.url||'')}"
+                   oninput="blocks[${idx}].url=this.value; refreshQR('${b.id}'); renderPreview();">
+            <input type="text" class="url-input mt-2" placeholder="QR 옆 안내문" value="${escapeHtml(b.caption||'')}"
+                   oninput="blocks[${idx}].caption=this.value; renderPreview();">
+            <div class="mt-1 small text-muted">크기:
+                <input type="number" min="80" max="400" value="${b.size||160}" style="width:70px;"
+                       oninput="blocks[${idx}].size=parseInt(this.value)||160; refreshQR('${b.id}'); renderPreview();">px
+            </div>
+        `;
+        qrWrap.appendChild(info);
+        m.appendChild(qrWrap);
+        // QR 그리기 (다음 틱)
+        setTimeout(() => refreshQR(b.id), 0);
+    }
+
+    return m;
+}
+
+function refreshQR(blockId) {
+    const b = blocks.find(x => x.id === blockId);
+    if (!b) return;
+    const c = document.getElementById('qr_' + blockId);
+    if (!c) return;
+    try {
+        QRCode.toCanvas(c, b.url || ' ', {width: b.size || 160, margin: 1}, () => {});
+    } catch(e) {}
+}
+
+// ════════════════════════════════════════════════════════
+//  표 에디터
+// ════════════════════════════════════════════════════════
+function buildTableEditor(b, idx) {
+    const wrap = document.createElement('div');
+    const tbl = document.createElement('table');
+    const cells = b.cells || [[{text:''}]];
+    cells.forEach((row, r) => {
+        const tr = document.createElement('tr');
+        row.forEach((cell, c) => {
+            if (cell._covered) return;
+            const td = document.createElement('td');
+            if (cell.colspan) td.colSpan = cell.colspan;
+            if (cell.rowspan) td.rowSpan = cell.rowspan;
+            if (cell.bold) td.style.fontWeight = '700';
+            if (cell.align) td.style.textAlign = cell.align;
+            const inp = document.createElement('input');
+            inp.type = 'text';
+            inp.value = cell.text || '';
+            inp.oninput = () => { cell.text = inp.value; renderPreview(); };
+            inp.onfocus = () => { selectedCell = {idx, r, c}; };
+            td.appendChild(inp);
+            tr.appendChild(td);
+        });
+        tbl.appendChild(tr);
+    });
+    wrap.appendChild(tbl);
+
+    const ctl = document.createElement('div');
+    ctl.className = 'table-actions';
+    ctl.innerHTML = `
+        <button type="button" onclick="tblOp(${idx},'+row')">＋ 행</button>
+        <button type="button" onclick="tblOp(${idx},'+col')">＋ 열</button>
+        <button type="button" onclick="tblOp(${idx},'-row')">－ 행</button>
+        <button type="button" onclick="tblOp(${idx},'-col')">－ 열</button>
+        <button type="button" onclick="tblOp(${idx},'mr')">→ 병합</button>
+        <button type="button" onclick="tblOp(${idx},'md')">↓ 병합</button>
+        <button type="button" onclick="tblOp(${idx},'um')">해제</button>
+        <button type="button" onclick="tblOp(${idx},'b')"><b>B</b></button>
+        <button type="button" onclick="tblOp(${idx},'al','left')">⇤</button>
+        <button type="button" onclick="tblOp(${idx},'al','center')">↔</button>
+        <button type="button" onclick="tblOp(${idx},'al','right')">⇥</button>
+    `;
+    wrap.appendChild(ctl);
+    return wrap;
+}
+
+let selectedCell = null;
+function tblOp(idx, op, arg) {
+    const b = blocks[idx];
+    const cells = b.cells;
+    const cols = Math.max(...cells.map(r => r.length));
+    if (op === '+row') cells.push(Array(cols).fill(null).map(()=>({text:''})));
+    else if (op === '+col') cells.forEach(r => r.push({text:''}));
+    else if (op === '-row' && cells.length > 1) cells.pop();
+    else if (op === '-col') cells.forEach(r => { if (r.length>1) r.pop(); });
+    else if (selectedCell && selectedCell.idx === idx) {
+        const {r, c} = selectedCell;
+        const cell = cells[r][c];
+        if (!cell) return;
+        if (op === 'mr') {
+            const nc = c + (cell.colspan||1);
+            if (nc < cells[r].length) {
+                cell.colspan = (cell.colspan||1) + 1;
+                if (cells[r][nc]) cells[r][nc]._covered = true;
+            }
+        } else if (op === 'md') {
+            const nr = r + (cell.rowspan||1);
+            if (nr < cells.length) {
+                cell.rowspan = (cell.rowspan||1) + 1;
+                if (cells[nr][c]) cells[nr][c]._covered = true;
+            }
+        } else if (op === 'um') {
+            cell.colspan = 1; cell.rowspan = 1;
+            cells.forEach(row => row.forEach(c2 => { delete c2._covered; }));
+        } else if (op === 'b') cell.bold = !cell.bold;
+        else if (op === 'al') cell.align = arg;
+    }
+    renderAll();
+}
+
+// ════════════════════════════════════════════════════════
+//  서식 적용 (execCommand)
+// ════════════════════════════════════════════════════════
+function exec(cmd, val) {
+    document.execCommand(cmd, false, val);
+    // 활성 블록 모델 동기화
+    const ed = document.activeElement;
+    if (ed && ed.isContentEditable) {
+        const idx = parseInt(ed.closest('[data-idx]').dataset.idx);
+        if (!isNaN(idx)) {
+            blocks[idx].content = ed.innerHTML;
+            renderPreview();
+        }
+    }
+}
+function applyFontSize(vw) {
+    if (!vw) return;
+    const ed = document.activeElement;
+    if (ed && ed.isContentEditable) {
+        const idx = parseInt(ed.closest('[data-idx]').dataset.idx);
+        if (!isNaN(idx)) {
+            blocks[idx].style = blocks[idx].style || {};
+            blocks[idx].style.font_size = parseFloat(vw);
+            renderAll();
+        }
+    }
+}
+function setAlign(a) {
+    const ed = document.activeElement;
+    if (ed && ed.isContentEditable) {
+        const idx = parseInt(ed.closest('[data-idx]').dataset.idx);
+        if (!isNaN(idx)) {
+            blocks[idx].style = blocks[idx].style || {};
+            blocks[idx].style.align = a;
+            renderAll();
+        }
+    }
+}
+function setLineHeight(lh) {
+    if (!lh) return;
+    const ed = document.activeElement;
+    if (ed && ed.isContentEditable) {
+        const idx = parseInt(ed.closest('[data-idx]').dataset.idx);
+        if (!isNaN(idx)) {
+            blocks[idx].style = blocks[idx].style || {};
+            blocks[idx].style.line_height = parseFloat(lh);
+            renderAll();
+        }
+    }
+}
+function insertEmoji() {
+    const list = ['🎂','🎉','🎊','🎈','✨','🌟','🏆','⚡','🚨','🦺','🧯','🔥','🌧','☀️','❄️','🛡','✅','❌','⚠️','📢','📣','📌','🔔','🎯','💡','🚀','🏭','🏢','📊','📈','📉','💼','👷','🛠','⚙️','📅','🕐','🍰','🎁'];
+    const e = prompt('아이콘 입력 또는 선택:\n' + list.join(' '), '🎉');
+    if (!e) return;
+    document.execCommand('insertText', false, e);
+}
+
+// ════════════════════════════════════════════════════════
+//  업로드
+// ════════════════════════════════════════════════════════
+function openUpload(idx, kind, accept) {
+    activeUploadIdx = idx;
+    const f = document.getElementById('hiddenFile');
+    f.accept = accept; f.onchange = uploadFile;
+    f.click();
+}
+async function uploadFile(ev) {
+    const file = ev.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const res = await fetch('/signage/api/slide/upload', {method:'POST', body: fd});
+        const j = await res.json();
+        if (!j.ok) { alert('업로드 실패: '+j.msg); return; }
+        blocks[activeUploadIdx].url = j.url;
+        renderAll();
+    } catch(e) { alert('네트워크 오류: '+e.message); }
+    finally { ev.target.value = ''; }
+}
+
+// ════════════════════════════════════════════════════════
+//  미리보기 (실제 송출과 동일한 CSS)
+// ════════════════════════════════════════════════════════
+function renderPreview() {
+    const canvas = document.getElementById('previewCanvas');
+    const bg = document.getElementById('t_bg').value;
+    canvas.style.background = bg;
+    canvas.innerHTML = '';
+    document.getElementById('pvBlockCount').textContent = `${blocks.length}개 블록`;
+
+    const main = document.createElement('div');
+    main.style.cssText = 'flex:1;display:flex;flex-direction:column;padding:1vw 2vw;gap:0.5vw;overflow:hidden;';
+    canvas.appendChild(main);
+
+    blocks.filter(b => b.type !== 'ticker').forEach(b => {
+        const el = renderPreviewBlock(b);
+        if (el) main.appendChild(el);
+    });
+    blocks.filter(b => b.type === 'ticker').forEach(b => {
+        const el = renderPreviewBlock(b);
+        if (el) canvas.appendChild(el);
+    });
+
+    if (document.getElementById('fsOverlay').classList.contains('show')) fillFs();
+}
+
+function renderPreviewBlock(b) {
+    const s = b.style || {};
+    const div = document.createElement('div');
+    div.className = 'pv-block';
+    const css = [];
+    if (s.font_size) css.push(`font-size:${s.font_size}vw`);
+    if (s.bold) css.push('font-weight:800');
+    if (s.italic) css.push('font-style:italic');
+    if (s.line_height) css.push(`line-height:${s.line_height}`);
+    if (s.color) css.push(`color:${s.color}`);
+    if (s.bg && s.bg !== 'transparent') css.push(`background:${s.bg}`);
+    if (s.align) css.push(`text-align:${s.align}`);
+    const just = s.align === 'left' ? 'flex-start' : s.align === 'right' ? 'flex-end' : 'center';
+    css.push(`display:flex;justify-content:${just};align-items:center;padding:0.4vw`);
+
+    if (b.type === 'heading' || b.type === 'text') {
+        div.style.cssText = css.join(';');
+        div.innerHTML = b.content || '';
+    } else if (b.type === 'image') {
+        div.style.cssText = 'flex:1;min-height:8vw;display:flex;justify-content:center;align-items:center;padding:0.4vw;';
+        if (b.url) {
+            const fit = b.fit || 'contain';
+            div.innerHTML = `<img src="${escapeHtml(b.url)}" style="max-width:100%;max-height:100%;object-fit:${fit};">`;
+        } else { div.innerHTML = '<div style="opacity:0.4;font-size:1.5vw;">🖼 이미지 없음</div>'; }
+    } else if (b.type === 'video') {
+        div.style.cssText = 'flex:1;min-height:8vw;display:flex;justify-content:center;align-items:center;padding:0.4vw;';
+        if (b.url) {
+            const fit = b.fit || 'contain';
+            const ap = b.autoplay !== false ? 'autoplay' : '';
+            const lp = b.loop !== false ? 'loop' : '';
+            const mu = b.muted !== false ? 'muted' : '';
+            div.innerHTML = `<video src="${escapeHtml(b.url)}" ${ap} ${lp} ${mu} playsinline style="max-width:100%;max-height:100%;object-fit:${fit};"></video>`;
+        } else { div.innerHTML = '<div style="opacity:0.4;font-size:1.5vw;">🎬 영상 없음</div>'; }
+    } else if (b.type === 'pdf') {
+        div.style.cssText = 'flex:1;min-height:10vw;padding:0.4vw;';
+        if (b.url) div.innerHTML = `<embed src="${escapeHtml(b.url)}#toolbar=0&navpanes=0" type="application/pdf" style="width:100%;height:100%;">`;
+        else div.innerHTML = '<div style="opacity:0.4;font-size:1.5vw;text-align:center;">📄 PDF 없음</div>';
+    } else if (b.type === 'web') {
+        if (!b.url) {
+            div.style.cssText = 'padding:1vw;'; div.innerHTML = '<div style="opacity:0.4;font-size:1.5vw;">🌐 URL 없음</div>';
+        } else if (b.mode === 'card') {
+            const hostMatch = b.url.match(/^https?:\/\/([^/]+)/);
+            const host = hostMatch ? hostMatch[1] : b.url;
+            div.style.cssText = 'padding:1vw;display:flex;justify-content:center;';
+            div.innerHTML = `<div style="background:rgba(255,255,255,0.95);color:#0f172a;border-radius:0.6vw;padding:1.5vw;max-width:80%;">
+                <div style="font-weight:800;font-size:2vw;">${escapeHtml(b.card_title || host)}</div>
+                ${b.card_desc ? `<div style="font-size:1.2vw;opacity:0.7;">${escapeHtml(b.card_desc)}</div>` : ''}
+                <div style="font-size:0.9vw;color:#1e40af;margin-top:0.5vw;">🔗 ${escapeHtml(b.url)}</div>
+            </div>`;
+        } else {
+            div.style.cssText = 'flex:1;min-height:10vw;padding:0.4vw;';
+            div.innerHTML = `<iframe src="${escapeHtml(b.url)}" sandbox="allow-scripts allow-same-origin allow-forms" style="width:100%;height:100%;border:0;"></iframe>`;
+        }
+    } else if (b.type === 'divider') {
+        div.style.cssText = 'border-bottom:0.25vw solid #94a3b8;opacity:0.5;margin:0.5vw 2vw;';
+    } else if (b.type === 'table') {
+        let h = '<table style="border-collapse:collapse;width:100%;height:100%;">';
+        for (const row of (b.cells || [])) {
+            h += '<tr>';
+            for (const cell of row) {
+                if (cell._covered) continue;
+                const cs = cell.colspan ? ` colspan="${cell.colspan}"` : '';
+                const rs = cell.rowspan ? ` rowspan="${cell.rowspan}"` : '';
+                const st = [
+                    'border:1px solid rgba(255,255,255,0.3)',
+                    'padding:0.4vw 0.8vw',
+                    `text-align:${cell.align||s.align||'center'}`,
+                    `color:${cell.color||s.color||'#fff'}`,
+                    cell.bold ? 'font-weight:800' : '',
+                    cell.bg ? `background:${cell.bg}` : '',
+                ].filter(Boolean).join(';');
+                h += `<td${cs}${rs} style="${st};">${escapeHtml(cell.text||'')}</td>`;
+            }
+            h += '</tr>';
+        }
+        h += '</table>';
+        div.style.cssText = `flex:1;padding:0.4vw;font-size:${s.font_size||2}vw;color:${s.color||'#fff'};`;
+        div.innerHTML = h;
+    } else if (b.type === 'banner') {
+        const bgMap = {danger:'#dc2626', warn:'#ea580c', info:'#1e40af', success:'#16a34a'};
+        div.style.cssText = `background:${bgMap[b.variant]||'#dc2626'};color:#fff;padding:1.5vw 2vw;border-radius:0.4vw;display:flex;align-items:center;gap:1vw;font-weight:800;font-size:2.5vw;`;
+        div.innerHTML = `<span style="font-size:3vw;">${escapeHtml(b.icon||'⚠️')}</span><div style="flex:1;">${b.content||''}</div>`;
+    } else if (b.type === 'production') {
+        let h = `<div style="display:grid;grid-template-columns:repeat(${Math.min((b.cards||[]).length,4)},1fr);gap:1vw;width:100%;">`;
+        for (const c of (b.cards||[])) {
+            h += `<div style="background:#1e293b;color:#fff;padding:1vw;border-radius:0.4vw;text-align:center;">
+                <div style="font-size:1vw;opacity:0.7;">${escapeHtml(c.label||'')}</div>
+                <div style="font-size:3.5vw;font-weight:900;color:#fbbf24;">${escapeHtml(c.value||'0')}</div>
+                <div style="font-size:0.9vw;opacity:0.7;">${escapeHtml(c.unit||'')}</div>
+            </div>`;
+        }
+        h += '</div>';
+        div.style.cssText = 'padding:0.5vw 1vw;';
+        div.innerHTML = h;
+    } else if (b.type === 'qr') {
+        // 미리보기에서는 작은 QR을 다시 그림
+        const id = 'pv_qr_' + b.id;
+        div.style.cssText = 'display:flex;gap:1vw;align-items:center;justify-content:center;padding:1vw;';
+        div.innerHTML = `<canvas id="${id}" style="background:#fff;padding:0.4vw;width:${(b.size||160)/9}vw;height:${(b.size||160)/9}vw;"></canvas>
+            <div style="color:#fff;font-size:1.5vw;font-weight:700;">${escapeHtml(b.caption||'')}</div>`;
+        setTimeout(() => {
+            const el = document.getElementById(id);
+            if (el) {
+                try { QRCode.toCanvas(el, b.url || ' ', {width: 200, margin: 1}, ()=>{}); } catch(e){}
+            }
+        }, 0);
+    } else if (b.type === 'ticker') {
+        const tickDiv = document.createElement('div');
+        const pos = b.position === 'top' ? 'top:0' : 'bottom:0';
+        tickDiv.style.cssText = `position:absolute;left:0;right:0;${pos};overflow:hidden;white-space:nowrap;
+            background:${(s.bg)||'#000000'};color:${s.color||'#fbbf24'};
+            padding:0.5vw 1vw;font-weight:800;font-size:${s.font_size||2}vw;`;
+        tickDiv.innerHTML = `<span style="display:inline-block;animation:pvTicker ${b.speed||25}s linear infinite;">${b.content||''}</span>`;
+        return tickDiv;
+    }
+    return div;
+}
+
+// ════════════════════════════════════════════════════════
+//  미리보기 전체화면
+// ════════════════════════════════════════════════════════
+function openFullscreen() {
+    document.getElementById('fsOverlay').classList.add('show');
+    fillFs();
+}
+function fillFs() {
+    const fs = document.getElementById('fsCanvas');
+    const src = document.getElementById('previewCanvas');
+    fs.style.background = src.style.background;
+    fs.innerHTML = src.innerHTML;
+    // QR 재렌더
+    blocks.filter(b => b.type === 'qr').forEach(b => {
+        const id = 'pv_qr_' + b.id;
+        const el = fs.querySelector('canvas#' + id);
+        if (el) try { QRCode.toCanvas(el, b.url || ' ', {width: 300, margin: 1}, ()=>{}); } catch(e){}
+    });
+}
+function closeFullscreen() {
+    document.getElementById('fsOverlay').classList.remove('show');
+}
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeFullscreen();
+    if (e.key === 'Escape') closeInsertMenu();
+});
+
+// 미리보기 배경 토글 (어두움/밝음)
+function setPreviewBg(mode) {
+    const c = document.getElementById('previewCanvas');
+    const bg = document.getElementById('t_bg');
+    if (mode === 'dark') { bg.value = '#0f172a'; }
+    else { bg.value = '#ffffff'; }
+    document.getElementById('pvBgDark').classList.toggle('active', mode==='dark');
+    document.getElementById('pvBgLight').classList.toggle('active', mode==='light');
+    renderPreview();
+}
+
+// 삽입 메뉴
+function closeInsertMenu() {
+    document.getElementById('insertMenu').classList.remove('show');
+}
+document.addEventListener('click', e => {
+    if (!e.target.closest('.insert-menu') && !e.target.closest('.add-here')) {
+        closeInsertMenu();
+    }
+});
+
+// 태그 칩 추가
+function addTag(name) {
+    const inp = document.getElementById('t_tags');
+    const tags = (inp.value || '').split(',').map(t => t.trim()).filter(Boolean);
+    if (!tags.includes(name)) tags.push(name);
+    inp.value = tags.join(', ');
+}
+
+// 저장
+function saveAs(status) {
+    document.querySelector('select[name=status]').value = status;
+    document.getElementById('writerForm').submit();
+}
+document.getElementById('writerForm').addEventListener('submit', () => {
+    // contenteditable 최신 동기화
+    document.querySelectorAll('[data-idx]').forEach(el => {
+        const idx = parseInt(el.dataset.idx);
+        const ed = el.querySelector('[contenteditable=true]');
+        if (ed && !isNaN(idx) && blocks[idx] && (blocks[idx].type === 'heading' || blocks[idx].type === 'text' || blocks[idx].type === 'ticker')) {
+            blocks[idx].content = ed.innerHTML;
+        }
+    });
+    document.getElementById('blocksJson').value = JSON.stringify(blocks);
+});
+
+// 미리보기 ticker 애니메이션
+const styleTag = document.createElement('style');
+styleTag.textContent = '@keyframes pvTicker {0%{transform:translateX(100%);}100%{transform:translateX(-100%);}}';
+document.head.appendChild(styleTag);
+
+// 초기 빈 상태면 텍스트 블록 1개 자동 추가
+if (!blocks.length) blocks.push(DEFAULTS.text());
+renderAll();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

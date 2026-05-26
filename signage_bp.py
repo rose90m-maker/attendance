@@ -2704,7 +2704,12 @@ def _editor_save_or_form(cid):
             priority = int(request.form.get('priority', 0) or 0)
             status = request.form.get('status', 'active')
             bg_color = request.form.get('bg_color', '#0f172a').strip()
+            start_at = request.form.get('start_at') or None
+            end_at = request.form.get('end_at') or None
             blocks_json = request.form.get('blocks_json', '[]')
+            tags_raw = request.form.get('tags', '').strip()
+            target_displays = request.form.getlist('target_displays')
+            add_to_default = request.form.get('add_to_default') == 'on'
             try:
                 blocks = json.loads(blocks_json)
             except Exception:
@@ -2714,8 +2719,8 @@ def _editor_save_or_form(cid):
                 'subtype': 'blocks',
                 'bg_color': bg_color,
                 'blocks': blocks,
+                'target_displays': [int(x) for x in target_displays if x.isdigit()],
             }
-            # fallback body_text (구버전/검색용)
             text_parts = []
             for b in blocks:
                 if b.get('type') in ('text', 'heading', 'ticker') and b.get('content'):
@@ -2724,18 +2729,47 @@ def _editor_save_or_form(cid):
 
             if cid is None:
                 cur.execute("""INSERT INTO ds_contents
-                    (title, type, body_text, duration_sec, priority, status, meta, created_by)
-                    VALUES (%s, 'text', %s, %s, %s, %s, %s, %s)""",
+                    (title, type, body_text, duration_sec, priority, status,
+                     start_at, end_at, meta, created_by)
+                    VALUES (%s, 'text', %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (title, fallback, duration, priority, status,
+                     start_at, end_at,
                      json.dumps(meta, ensure_ascii=False),
                      session.get('user_id')))
                 cid = cur.lastrowid
             else:
                 cur.execute("""UPDATE ds_contents SET
-                    title=%s, body_text=%s, duration_sec=%s, priority=%s, status=%s, meta=%s
+                    title=%s, body_text=%s, duration_sec=%s, priority=%s, status=%s,
+                    start_at=%s, end_at=%s, meta=%s
                     WHERE id=%s""",
                     (title, fallback, duration, priority, status,
+                     start_at, end_at,
                      json.dumps(meta, ensure_ascii=False), cid))
+
+            # 태그 처리
+            cur.execute("DELETE FROM ds_content_tags WHERE content_id=%s", (cid,))
+            for tname in [t.strip() for t in tags_raw.replace(',', '\n').split('\n') if t.strip()]:
+                cur.execute("INSERT IGNORE INTO ds_tags (name) VALUES (%s)", (tname,))
+                cur.execute("SELECT id FROM ds_tags WHERE name=%s", (tname,))
+                tid_row = cur.fetchone()
+                if tid_row:
+                    cur.execute("INSERT IGNORE INTO ds_content_tags (content_id, tag_id) VALUES (%s, %s)",
+                                (cid, tid_row[0]))
+
+            # 기본 플레이리스트 추가
+            if add_to_default:
+                cur.execute("SELECT id FROM ds_playlists WHERE is_default=1 LIMIT 1")
+                dp = cur.fetchone()
+                if dp:
+                    cur.execute("SELECT COUNT(*) FROM ds_playlist_items WHERE playlist_id=%s AND content_id=%s",
+                                (dp[0], cid))
+                    if cur.fetchone()[0] == 0:
+                        cur.execute("SELECT IFNULL(MAX(seq),0)+1 FROM ds_playlist_items WHERE playlist_id=%s", (dp[0],))
+                        next_seq = cur.fetchone()[0]
+                        cur.execute("""INSERT INTO ds_playlist_items
+                            (playlist_id, content_id, seq) VALUES (%s, %s, %s)""",
+                            (dp[0], cid, next_seq))
+
             conn.commit()
             flash(f"콘텐츠 '{title}' 저장 완료 ({len(blocks)}개 블록).", "success")
             conn.close()
@@ -2747,7 +2781,8 @@ def _editor_save_or_form(cid):
     # GET
     content = None
     if cid:
-        cur.execute("""SELECT id, title, duration_sec, priority, status, meta, body_text
+        cur.execute("""SELECT id, title, duration_sec, priority, status, meta, body_text,
+                              start_at, end_at
                        FROM ds_contents WHERE id=%s""", (cid,))
         r = cur.fetchone()
         if not r:
@@ -2761,22 +2796,39 @@ def _editor_save_or_form(cid):
             except Exception:
                 meta = {}
         blocks = meta.get('blocks', [])
-        # 구버전(blocks subtype 아님) → 본문을 단일 텍스트 블록으로 마이그레이션
         if not blocks and r[6]:
             blocks = [{
                 'id': 'mig1', 'type': 'text', 'content': r[6],
                 'style': {'font_size': 4, 'align': 'center', 'color': '#ffffff'},
             }]
+        # 기존 태그
+        cur.execute("""SELECT t.name FROM ds_tags t
+                       JOIN ds_content_tags ct ON ct.tag_id=t.id
+                       WHERE ct.content_id=%s ORDER BY t.name""", (cid,))
+        tags = [r2[0] for r2 in cur.fetchall()]
         content = {
             'id': r[0], 'title': r[1], 'duration_sec': r[2],
             'priority': r[3], 'status': r[4],
             'bg_color': meta.get('bg_color', '#0f172a'),
             'blocks': blocks,
+            'start_at': r[7], 'end_at': r[8],
+            'target_displays': meta.get('target_displays', []),
+            'tags': tags,
         }
+
+    # 디스플레이 목록 (대상 선택용)
+    cur.execute("""SELECT id, name, location FROM ds_displays
+                   WHERE paired=1 ORDER BY name""")
+    displays = [{'id': r[0], 'name': r[1], 'location': r[2]} for r in cur.fetchall()]
+    # 태그 자동완성
+    cur.execute("SELECT name FROM ds_tags ORDER BY name")
+    all_tags = [r[0] for r in cur.fetchall()]
+
     conn.close()
-    return render_template("signage/block_editor.html",
+    return render_template("signage/content_writer.html",
                            mode='edit' if cid else 'new',
                            cid=cid, content=content,
+                           displays=displays, all_tags=all_tags,
                            is_admin=session.get('role') == 'admin')
 
 
