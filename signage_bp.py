@@ -2618,7 +2618,7 @@ def _enrich_template(t):
     return t
 
 
-@signage_bp.route("/templates")
+@signage_bp.route("/gallery")
 @_login_required
 def templates_gallery():
     """콘텐츠 템플릿 갤러리"""
@@ -2639,7 +2639,7 @@ def templates_gallery():
                            is_admin=session.get('role') == 'admin')
 
 
-@signage_bp.route("/templates/<tkey>/use")
+@signage_bp.route("/gallery/<tkey>/use")
 @_login_required
 def template_use(tkey):
     """템플릿 → 콘텐츠 신규 폼으로 (쿼리스트링 prefill)"""
