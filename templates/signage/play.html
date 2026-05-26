@@ -398,6 +398,51 @@ function renderBlocks(item) {
             }
             tableHtml += '</table>';
             body += `<div style="${styleStr};flex:1;">${tableHtml}</div>`;
+        } else if (b.type === 'quote') {
+            body += `<div style="border-left:0.4vw solid #fbbf24;background:rgba(255,255,255,0.08);
+                padding:1vw 2vw;margin:0.5vw 0;color:#fff;font-style:italic;font-size:${(s.font_size||3)}vw;">
+                <div>"${escapeHtml(b.content||'').replace(/<[^>]+>/g,'')}"</div>
+                ${b.author ? `<div style="font-style:normal;font-size:1vw;opacity:0.7;margin-top:0.5vw;text-align:right;">— ${escapeHtml(b.author)}</div>` : ''}
+            </div>`;
+        } else if (b.type === 'sticker') {
+            body += `<div style="text-align:center;padding:1vw;font-size:12vw;line-height:1;">${escapeHtml(b.content||'🎉')}</div>`;
+        } else if (b.type === 'codeblock') {
+            body += `<div style="background:#0f172a;color:#e2e8f0;font-family:'D2Coding','Consolas',monospace;
+                padding:1vw 1.5vw;margin:0.5vw 0;border-radius:0.4vw;font-size:1.2vw;
+                white-space:pre-wrap;text-align:left;">
+                <div style="font-size:0.7vw;color:#64748b;text-transform:uppercase;margin-bottom:0.4vw;">${escapeHtml(b.lang||'plain')}</div>${escapeHtml(b.content||'')}
+            </div>`;
+        } else if (b.type === 'location') {
+            body += `<div style="background:rgba(255,255,255,0.95);color:#0f172a;border-radius:0.6vw;
+                padding:1.5vw 2vw;margin:0.5vw;display:flex;gap:1.5vw;align-items:center;">
+                <div style="font-size:4vw;color:#dc2626;">📍</div>
+                <div style="flex:1;text-align:left;">
+                    <div style="font-size:2vw;font-weight:800;">${escapeHtml(b.name||'장소')}</div>
+                    <div style="font-size:1.2vw;color:#6b7280;margin-top:0.3vw;">${escapeHtml(b.address||'')}</div>
+                </div>
+            </div>`;
+        } else if (b.type === 'schedule') {
+            const d = b.date ? new Date(b.date) : new Date();
+            const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+            const weeks = ['일','월','화','수','목','금','토'];
+            body += `<div style="background:linear-gradient(135deg,#1e3a8a 0%,#7c3aed 100%);color:#fff;
+                border-radius:0.6vw;padding:1.5vw 2vw;margin:0.5vw;display:flex;gap:1.5vw;align-items:center;">
+                <div style="background:#fff;color:#1e3a8a;min-width:7vw;padding:1vw;border-radius:0.5vw;text-align:center;">
+                    <div style="font-size:0.9vw;font-weight:700;color:#dc2626;">${months[d.getMonth()]}</div>
+                    <div style="font-size:3.5vw;font-weight:900;line-height:1;">${d.getDate()}</div>
+                    <div style="font-size:0.8vw;color:#6b7280;">${weeks[d.getDay()]}요일</div>
+                </div>
+                <div style="flex:1;text-align:left;">
+                    <div style="font-size:2vw;font-weight:800;">${escapeHtml(b.title||'')}</div>
+                    <div style="font-size:1.1vw;opacity:0.9;margin-top:0.4vw;">
+                        ${b.time ? `🕐 ${escapeHtml(b.time)}` : ''}
+                        ${b.place ? `&nbsp;&nbsp;📍 ${escapeHtml(b.place)}` : ''}
+                    </div>
+                </div>
+            </div>`;
+        } else if (b.type === 'formula') {
+            // KaTeX 미사용 시 단순 텍스트 표시 (TV는 KaTeX 미로딩일 수 있음)
+            body += `<div style="background:rgba(255,255,255,0.1);padding:1.5vw;margin:0.5vw;border-radius:0.4vw;color:#fff;font-size:2.5vw;text-align:center;font-family:monospace;">${escapeHtml(b.latex||'')}</div>`;
         }
     }
 
