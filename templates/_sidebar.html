@@ -251,6 +251,10 @@
         <a href="/signage/displays"  class="side-link{% if active_page == 'signage_displays' %} active{% endif %}"><span class="sl-icon">🖥️</span>디스플레이</a>
         <a href="/signage/emergency" class="side-link{% if active_page == 'signage_emergency' %} active{% endif %}"><span class="sl-icon">🚨</span>긴급공지</a>
         <a href="/signage/logs"      class="side-link{% if active_page == 'signage_logs' %} active{% endif %}"><span class="sl-icon">📋</span>재생로그</a>
+        <a href="http://192.168.100.5:8081/" target="_blank" rel="noopener" class="side-link"
+           title="Xibo CMS — 새 탭 (LAN 전용)" style="color:#9ca3af;">
+            <span class="sl-icon">🔗</span>Xibo CMS <span style="font-size:0.65rem;opacity:0.6;">⧉</span>
+        </a>
         {% if is_admin %}
         <a href="/signage/settings"  class="side-link{% if active_page == 'signage_settings' %} active{% endif %}"><span class="sl-icon">⚙️</span>설정</a>
         {% endif %}
