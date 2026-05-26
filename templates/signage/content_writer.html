@@ -62,14 +62,45 @@
         }
         @media (max-width:1399px) { .writer-wrap { grid-template-columns: 1fr 380px; } }
 
-        /* 좌측: 글쓰기 영역 */
+        /* 좌측: 글쓰기 영역 — 실제 4K 송출 배경과 동기화 (WYSIWYG) */
         .doc-pane {
-            background:#fff; border:1px solid #e2e8f0; border-radius:4px;
+            background:#0f172a; border:1px solid #e2e8f0; border-radius:4px;
             padding: 24px 32px; min-height: 600px;
+            color:#ffffff;
+            transition: background .15s, color .15s;
         }
+        .doc-pane.light-bg { color:#0f172a; }
         .doc-pane h6.section-hint {
-            font-size:0.7rem; color:#94a3b8; text-transform:uppercase;
+            font-size:0.7rem; color:rgba(255,255,255,0.5); text-transform:uppercase;
             letter-spacing:0.05em; margin-bottom:8px;
+        }
+        .doc-pane.light-bg h6.section-hint { color:#94a3b8; }
+        /* contenteditable empty placeholder도 배경 따라 */
+        .doc-pane [contenteditable=true]:empty::before {
+            content: attr(data-placeholder);
+            color: rgba(255,255,255,0.35); pointer-events:none;
+        }
+        .doc-pane.light-bg [contenteditable=true]:empty::before {
+            color:#cbd5e1;
+        }
+        /* 블록 hover/선택 시 옅은 강조 (배경 대비) */
+        .doc-pane .block.selected { background:rgba(255,255,255,0.06); }
+        .doc-pane.light-bg .block.selected { background:rgba(15,23,42,0.05); }
+        .doc-pane .block-handle button {
+            background:rgba(255,255,255,0.9);
+        }
+        .doc-pane.light-bg .block-handle button {
+            background:#fff;
+        }
+        /* 표 셀 텍스트도 가독성 위해 inverse */
+        .doc-pane .block-table td input {
+            color: inherit;
+        }
+        .doc-pane .block-table td {
+            border-color: rgba(255,255,255,0.3);
+        }
+        .doc-pane.light-bg .block-table td {
+            border-color: #cbd5e1;
         }
 
         /* 블록 행 */
@@ -657,6 +688,7 @@ function duplicateBlock(idx) {
 // ════════════════════════════════════════════════════════
 function renderAll() {
     renderDoc();
+    syncDocBackground();
     renderPreview();
 }
 
@@ -1083,10 +1115,27 @@ async function uploadFile(ev) {
 // ════════════════════════════════════════════════════════
 //  미리보기 (실제 송출과 동일한 CSS)
 // ════════════════════════════════════════════════════════
+function isLightColor(hex) {
+    if (!hex || hex[0] !== '#') return false;
+    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    // 상대 휘도 (간단)
+    return (0.299*r + 0.587*g + 0.114*b) > 160;
+}
+function syncDocBackground() {
+    const bg = document.getElementById('t_bg').value;
+    const doc = document.getElementById('doc');
+    if (!doc) return;
+    const pane = doc.parentElement;  // .doc-pane
+    pane.style.background = bg;
+    if (isLightColor(bg)) pane.classList.add('light-bg');
+    else pane.classList.remove('light-bg');
+}
+
 function renderPreview() {
     const canvas = document.getElementById('previewCanvas');
     const bg = document.getElementById('t_bg').value;
     canvas.style.background = bg;
+    syncDocBackground();   // ← 추가
     canvas.innerHTML = '';
     document.getElementById('pvBlockCount').textContent = `${blocks.length}개 블록`;
 
@@ -1251,15 +1300,15 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeInsertMenu();
 });
 
-// 미리보기 배경 토글 (어두움/밝음)
+// 미리보기 배경 토글 (어두움/밝음) — doc-pane도 함께 변경
 function setPreviewBg(mode) {
-    const c = document.getElementById('previewCanvas');
     const bg = document.getElementById('t_bg');
     if (mode === 'dark') { bg.value = '#0f172a'; }
     else { bg.value = '#ffffff'; }
     document.getElementById('pvBgDark').classList.toggle('active', mode==='dark');
     document.getElementById('pvBgLight').classList.toggle('active', mode==='light');
     renderPreview();
+    // 좌측 글쓰기 영역 배경도 동기화 (이미 renderPreview에서 sync 호출)
 }
 
 // 삽입 메뉴
