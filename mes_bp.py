@@ -15,6 +15,7 @@ app_maria.py에서:
 """
 import os
 import json
+import fcntl
 import threading
 from datetime import datetime, timedelta, date
 from functools import wraps
@@ -28,6 +29,7 @@ from flask import (
 
 mes_bp = Blueprint("mes", __name__, url_prefix="/mes")
 _mqtt_app = None  # init_mes_db()에서 주입
+_mqtt_lock_fd = None  # 구독자 단일화용 파일 락 (열린 상태 유지=락 보유)
 
 
 # ── DB 헬퍼 ──────────────────────────────────────────────
@@ -100,6 +102,30 @@ def init_mes_db(app):
             conn.close()
         except Exception as e:
             print(f"[MES] DB 초기화 오류: {e}")
+    _start_subscriber_if_leader()
+
+
+def _start_subscriber_if_leader():
+    """gunicorn 멀티워커(4개) 환경에서 MQTT 구독자가 '정확히 1개'만 뜨도록
+    파일 락으로 리더를 선출한다.
+
+    [배경] 워커마다 init_mes_db()가 실행되어 구독자 스레드가 4개 떴고,
+    모두 같은 client ID("mes_subscriber")로 브로커에 붙어 서로를 끊어내며
+    재접속을 반복 → QoS 0 메시지 대량 유실(실측 10건 중 2건만 저장).
+    [해결] 락을 잡은 워커 1개만 구독, 나머지는 스킵 → 단일 소비자 보장.
+    """
+    global _mqtt_lock_fd
+    try:
+        _mqtt_lock_fd = open("/tmp/mes_mqtt_subscriber.lock", "w")
+        fcntl.flock(_mqtt_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, BlockingIOError):
+        # 다른 워커가 이미 구독 리더 → 이 워커는 구독하지 않음
+        if _mqtt_lock_fd:
+            _mqtt_lock_fd.close()
+            _mqtt_lock_fd = None
+        print(f"[MQTT] 구독자 미기동 (PID {os.getpid()}) — 다른 워커가 리더")
+        return
+    print(f"[MQTT] 구독자 리더 선출 (PID {os.getpid()})")
     threading.Thread(target=_start_mqtt_subscriber, daemon=True).start()
 
 
@@ -183,7 +209,7 @@ def _mqtt_save_env(device_id, temperature, humidity):
 
 def _mqtt_on_connect(client, userdata, flags, rc):
     if rc == 0:
-        client.subscribe([("mes/count", 0), ("mes/env", 0)])
+        client.subscribe([("mes/count", 1), ("mes/env", 1)])
         print("[MQTT] 구독 시작: mes/count, mes/env")
     else:
         print(f"[MQTT] 브로커 연결 거부 rc={rc}")
@@ -212,7 +238,7 @@ def _start_mqtt_subscriber():
     delay = 5
     while True:
         try:
-            client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "mes_subscriber")
+            client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, f"mes_subscriber_{os.getpid()}")
             client.on_connect = _mqtt_on_connect
             client.on_message = _mqtt_on_message
             client.connect("192.168.100.11", 1883, 60)
