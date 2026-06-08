@@ -2,9 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 시스템 패키지 (필요시 mysqlclient 빌드용)
+# 시스템 패키지 (mysqlclient 빌드용 gcc + KST 타임존용 tzdata)
+# tzdata 없으면 TZ=Asia/Seoul 환경변수가 무시되고 Python이 UTC로 폴백됨
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

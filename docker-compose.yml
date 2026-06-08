@@ -28,6 +28,7 @@ services:
       DB_USER: root
       DB_PASSWORD: "${DB_PASSWORD}"
       DB_NAME: attendance
+      TZ: Asia/Seoul   # 컨테이너 UTC → KST. Python date.today()/now()가 DB(KST)와 일치 (오전 카운트 집계 버그 수정)
     env_file:
       - .env
     depends_on:
@@ -52,6 +53,7 @@ services:
       DB_USER: root
       DB_PASSWORD: "${DB_PASSWORD}"
       DB_NAME: attendance
+      TZ: Asia/Seoul   # 컨테이너 UTC → KST 통일
     env_file:
       - .env
     depends_on:
