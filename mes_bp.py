@@ -127,18 +127,20 @@ def _start_subscriber_if_leader():
         return
     print(f"[MQTT] 구독자 리더 선출 (PID {os.getpid()})")
     threading.Thread(target=_start_mqtt_subscriber, daemon=True).start()
+    threading.Thread(target=_summary_refresher, daemon=True).start()  # 일별 요약 주기 재계산
 
 
 # ── MQTT 구독 ─────────────────────────────────────────────
 def _mqtt_save_count(device_id, count):
-    """receive_count()의 DB 저장 로직 재사용"""
+    """카운트 1건 저장 — 고부하 유실 방지를 위해 '가벼운 INSERT만' 수행.
+    (일별 요약 집계는 _summary_refresher 스레드가 주기적으로 정확히 재계산)"""
     if not device_id:
         return
     try:
         with _mqtt_app.app_context():
             conn = _conn()
             try:
-                cur  = conn.cursor()
+                cur = conn.cursor()
                 cur.execute("""
                     INSERT IGNORE INTO mes_devices (device_id, name)
                     VALUES (%s, %s)
@@ -147,34 +149,73 @@ def _mqtt_save_count(device_id, count):
                     INSERT INTO mes_label_count (device_id, count)
                     VALUES (%s, %s)
                 """, (device_id, count))
-                # NOTE: Python date.today()는 컨테이너 타임존(UTC) 의존 → DB의 CURDATE()(KST) 사용
+                conn.commit()
+            finally:
+                conn.close()
+    except Exception as e:
+        print(f"[MQTT] count 저장 오류: {e}")
+
+
+def _refresh_daily_summary(device_id):
+    """mes_daily_summary 를 '정확히' 재계산 (버그4 수정).
+    - total_count = 하루 전체 SUM(count)   (기존: 최번 시간대 합계만 → 오류)
+    - peak_count  = 가장 바쁜 시간대의 합계 (기존: MAX(count)=항상 1 → 오류)
+    - peak_hour   = 그 시간대
+    카운트 저장 경로(핫패스)에서 분리하여 주기적으로만 실행 → 처리량 보호."""
+    if not device_id:
+        return
+    try:
+        with _mqtt_app.app_context():
+            conn = _conn()
+            try:
+                cur = conn.cursor()
+                cur.execute("""SELECT COALESCE(SUM(count),0) FROM mes_label_count
+                               WHERE device_id=%s AND DATE(recorded_at)=CURDATE()""", (device_id,))
+                total = int(cur.fetchone()[0])
+                cur.execute("""SELECT HOUR(recorded_at), SUM(count) FROM mes_label_count
+                               WHERE device_id=%s AND DATE(recorded_at)=CURDATE()
+                               GROUP BY HOUR(recorded_at) ORDER BY SUM(count) DESC LIMIT 1""", (device_id,))
+                row = cur.fetchone()
+                peak_hour, peak_count = (int(row[0]), int(row[1])) if row else (-1, 0)
                 cur.execute("SELECT target_day FROM mes_devices WHERE device_id=%s LIMIT 1", (device_id,))
-                _trow = cur.fetchone()
-                _dev_target = (_trow[0] if _trow else 0) or 0
+                trow = cur.fetchone()
+                target = (trow[0] if trow else 0) or 0
                 cur.execute("""
                     INSERT INTO mes_daily_summary (device_id, work_date, total_count, peak_count, peak_hour, target)
-                    SELECT %s, CURDATE(),
-                           COALESCE(SUM(count), 0),
-                           COALESCE(MAX(count), 0),
-                           HOUR(recorded_at),
-                           %s
-                    FROM mes_label_count
-                    WHERE device_id=%s AND DATE(recorded_at)=CURDATE()
-                    GROUP BY device_id, DATE(recorded_at), HOUR(recorded_at)
-                    ORDER BY SUM(count) DESC LIMIT 1
+                    VALUES (%s, CURDATE(), %s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE
                         total_count = VALUES(total_count),
                         peak_count  = VALUES(peak_count),
                         peak_hour   = VALUES(peak_hour),
                         target      = COALESCE(target, VALUES(target)),
                         updated_at  = NOW()
-                """, (device_id, _dev_target, device_id))
+                """, (device_id, total, peak_count, peak_hour, target))
                 conn.commit()
-                print(f"[MQTT] count 저장: {device_id} = {count}")
             finally:
                 conn.close()
     except Exception as e:
-        print(f"[MQTT] count 저장 오류: {e}")
+        print(f"[MQTT] 요약 재계산 오류({device_id}): {e}")
+
+
+def _summary_refresher():
+    """오늘 카운트가 있는 모든 장치의 일별 요약을 30초마다 재계산."""
+    import time as _t
+    while True:
+        _t.sleep(30)
+        try:
+            with _mqtt_app.app_context():
+                conn = _conn()
+                try:
+                    cur = conn.cursor()
+                    cur.execute("""SELECT DISTINCT device_id FROM mes_label_count
+                                   WHERE DATE(recorded_at)=CURDATE()""")
+                    devs = [r[0] for r in cur.fetchall()]
+                finally:
+                    conn.close()
+            for d in devs:
+                _refresh_daily_summary(d)
+        except Exception as e:
+            print(f"[MQTT] 요약 리프레셔 오류: {e}")
 
 
 def _mqtt_save_env(device_id, temperature, humidity):
@@ -319,28 +360,28 @@ def receive_count():
             VALUES (%s, %s)
         """, (device_id, count))
 
-        # 일별 집계 UPSERT — CURDATE()로 DB 타임존 기준 (KST) 사용
+        # 일별 집계 UPSERT (버그4 정정: total=하루합계, peak=최번시간대 합계)
         cur.execute("SELECT target_day FROM mes_devices WHERE device_id=%s LIMIT 1", (device_id,))
         _trow = cur.fetchone()
         _dev_target = (_trow[0] if _trow else 0) or 0
+        cur.execute("""SELECT COALESCE(SUM(count),0) FROM mes_label_count
+                       WHERE device_id=%s AND DATE(recorded_at)=CURDATE()""", (device_id,))
+        _total = int(cur.fetchone()[0])
+        cur.execute("""SELECT HOUR(recorded_at), SUM(count) FROM mes_label_count
+                       WHERE device_id=%s AND DATE(recorded_at)=CURDATE()
+                       GROUP BY HOUR(recorded_at) ORDER BY SUM(count) DESC LIMIT 1""", (device_id,))
+        _r = cur.fetchone()
+        _peak_hour, _peak_count = (int(_r[0]), int(_r[1])) if _r else (-1, 0)
         cur.execute("""
             INSERT INTO mes_daily_summary (device_id, work_date, total_count, peak_count, peak_hour, target)
-            SELECT %s, CURDATE(),
-                   COALESCE(SUM(count), 0),
-                   COALESCE(MAX(count), 0),
-                   HOUR(recorded_at),
-                   %s
-            FROM mes_label_count
-            WHERE device_id=%s AND DATE(recorded_at)=CURDATE()
-            GROUP BY device_id, DATE(recorded_at), HOUR(recorded_at)
-            ORDER BY SUM(count) DESC LIMIT 1
+            VALUES (%s, CURDATE(), %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
                 total_count = VALUES(total_count),
                 peak_count  = VALUES(peak_count),
                 peak_hour   = VALUES(peak_hour),
                 target      = COALESCE(target, VALUES(target)),
                 updated_at  = NOW()
-        """, (device_id, _dev_target, device_id))
+        """, (device_id, _total, _peak_count, _peak_hour, _dev_target))
 
         conn.commit()
         conn.close()
