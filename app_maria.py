@@ -3156,7 +3156,6 @@ def dashboard():
             WHERE er.birth_date IS NOT NULL AND er.birth_date <> ''
               AND er.name IS NOT NULL AND er.name <> ''
         """)
-        bday_pos_show = ('기사','주임','대리','과장','차장','부장','이사','임원','대표이사')
         for r in cur.fetchall():
             bday = str(r[2]).replace('-', '')
             if len(bday) >= 4:
@@ -3164,7 +3163,7 @@ def dashboard():
                     mm = int(bday[4:6]); dd = int(bday[6:8])
                     if mm == today_month:
                         pos = (r[3] or '').strip()
-                        display_name = f"{r[0]} {pos}" if pos in bday_pos_show else f"{r[0]} 사원"
+                        display_name = f"{r[0]} {pos}" if pos and pos != '사원' else f"{r[0]} 사원"
                         birthdays.append({"name": display_name, "dept": r[1] or '', "day": dd, "is_today": dd == today_day})
                 except (ValueError, IndexError):
                     pass
