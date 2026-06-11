@@ -6860,6 +6860,23 @@ def upload_roster():
     # tuser.id는 AUTO_INCREMENT가 아니라 수동 할당이며, 출입통제 장비(CAPS)가 쓰는
     # 순차 id(현재 ~332)와 충돌 방지를 위해 앱이 만드는 행은 90000+ 대역을 사용한다.
     # idno=emp_no(사번)로 넣어 기존 매핑 규칙과 일치시킨다.
+    # 부서(roster.dept) → tuser.company 코드 매핑: 기존 직원(id<90000)의 부서별 최빈 company.
+    # 근무보고서 후보 화면의 "부서" 필터(DEPT_MAP 기반)가 신규 인원에도 동작하도록 company를 채운다.
+    cur.execute("""SELECT er.dept, t.company, COUNT(*) c
+                   FROM employee_roster er JOIN tuser t ON t.name = er.name
+                   WHERE IFNULL(t.company,'') <> '' AND t.id < 90000
+                   GROUP BY er.dept, t.company""")
+    _best = {}
+    for d, comp, c in cur.fetchall():
+        if d not in _best or c > _best[d][1]:
+            _best[d] = (comp, c)
+    dept_company = {d: v[0] for d, v in _best.items()}
+
+    # 명부에 있으나 tuser에 없는 사람 → tuser 자동 생성
+    # (근무보고서 대상인원 등은 employee_roster ∩ tuser 로 후보를 만들기 때문)
+    # tuser.id는 AUTO_INCREMENT가 아니라 수동 할당이며, 출입통제 장비(CAPS)가 쓰는
+    # 순차 id(현재 ~332)와 충돌 방지를 위해 앱이 만드는 행은 90000+ 대역을 사용한다.
+    # idno=emp_no(사번), company=부서매핑 으로 넣어 기존 규칙/필터와 일치시킨다.
     tuser_added = 0
     cur.execute("""SELECT DISTINCT er.name, er.emp_no, er.dept
                    FROM employee_roster er
@@ -6871,13 +6888,25 @@ def upload_roster():
         next_id = max(cur.fetchone()[0], 89999) + 1
         today_ymd = datetime.now().strftime("%Y%m%d")
         for mname, memp, mdept in missing:
-            cur.execute("""INSERT INTO tuser (id, name, idno, dept, reg_date)
-                           VALUES (%s, %s, %s, %s, %s)""",
-                        (next_id, mname, (memp or None), (mdept or None), today_ymd))
+            cur.execute("""INSERT INTO tuser (id, name, idno, dept, company, reg_date)
+                           VALUES (%s, %s, %s, %s, %s, %s)""",
+                        (next_id, mname, (memp or None), (mdept or None),
+                         dept_company.get(mdept), today_ymd))
             next_id += 1
             tuser_added += 1
+
+    # 과거에 company 없이 만들어진 앱 생성분(id>=90000) 백필
+    tuser_fixed = 0
+    cur.execute("""SELECT t.id, er.dept FROM tuser t JOIN employee_roster er ON er.name = t.name
+                   WHERE t.id >= 90000 AND IFNULL(t.company,'') = ''""")
+    for tid, dept in cur.fetchall():
+        comp = dept_company.get(dept)
+        if comp:
+            cur.execute("UPDATE tuser SET company=%s WHERE id=%s", (comp, tid))
+            tuser_fixed += 1
+
     conn.commit(); conn.close()
-    return jsonify(ok=True, added=added, updated=0, tuser_added=tuser_added)
+    return jsonify(ok=True, added=added, updated=0, tuser_added=tuser_added, tuser_fixed=tuser_fixed)
 
 
 @app.route("/api/roster_detail/<emp_no>")
