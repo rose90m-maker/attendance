@@ -14,6 +14,8 @@
     <style>
         .wr-table { font-size: 0.82rem; border-collapse: collapse; }
         .wr-table th { background: #1e293b; color: #fff; font-weight: 600; font-size: 0.78rem; text-align: center; padding: 6px 8px; white-space: nowrap; }
+        /* Bootstrap .table 가 --bs-table-bg(흰색)로 헤더 배경을 덮어써서 제목이 안 보이는 문제 방지 (ID 우선순위로 고정) */
+        #wrTable thead th { --bs-table-bg: #1e293b; background-color: #1e293b; color: #fff; }
         .wr-table td { vertical-align: top; padding: 4px 6px; border: 1px solid #cbd5e1; min-width: 80px; }
         .name-tag { display: inline-block; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 1px 6px; margin: 1px; font-size: 0.78rem; cursor: default; }
         .name-tag .remove-btn { cursor: pointer; color: #ef4444; margin-left: 3px; font-weight: 700; }
