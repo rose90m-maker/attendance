@@ -6855,8 +6855,29 @@ def upload_roster():
                      _date(r, "appoint_date"), _str(r, "position"), _str(r, "phone"),
                      _str(r, "email"), _str(r, "address"), _date(r, "hire_date")))
         added += 1
+    # 명부에 있으나 tuser(직원 마스터)에 없는 사람 → tuser 자동 생성
+    # (근무보고서 대상인원 등은 employee_roster ∩ tuser 로 후보를 만들기 때문)
+    # tuser.id는 AUTO_INCREMENT가 아니라 수동 할당이며, 출입통제 장비(CAPS)가 쓰는
+    # 순차 id(현재 ~332)와 충돌 방지를 위해 앱이 만드는 행은 90000+ 대역을 사용한다.
+    # idno=emp_no(사번)로 넣어 기존 매핑 규칙과 일치시킨다.
+    tuser_added = 0
+    cur.execute("""SELECT DISTINCT er.name, er.emp_no, er.dept
+                   FROM employee_roster er
+                   WHERE er.name IS NOT NULL AND er.name <> ''
+                     AND NOT EXISTS (SELECT 1 FROM tuser t WHERE t.name = er.name)""")
+    missing = cur.fetchall()
+    if missing:
+        cur.execute("SELECT IFNULL(MAX(id), 0) FROM tuser WHERE id >= 90000")
+        next_id = max(cur.fetchone()[0], 89999) + 1
+        today_ymd = datetime.now().strftime("%Y%m%d")
+        for mname, memp, mdept in missing:
+            cur.execute("""INSERT INTO tuser (id, name, idno, dept, reg_date)
+                           VALUES (%s, %s, %s, %s, %s)""",
+                        (next_id, mname, (memp or None), (mdept or None), today_ymd))
+            next_id += 1
+            tuser_added += 1
     conn.commit(); conn.close()
-    return jsonify(ok=True, added=added, updated=0)
+    return jsonify(ok=True, added=added, updated=0, tuser_added=tuser_added)
 
 
 @app.route("/api/roster_detail/<emp_no>")
