@@ -4131,6 +4131,12 @@ def attendance():
                     }
             emp_secs = defaultdict(list)
             for (e_date, eid), in_time in day_emp_in.items():
+                # 주말(토·일) 출근기록은 평균 출근시간 산정에서 제외
+                try:
+                    if datetime.strptime(e_date, "%Y%m%d").weekday() >= 5:
+                        continue
+                except ValueError:
+                    pass
                 in_s = _time_to_sec(in_time)
                 if in_s is not None:
                     emp_secs[eid].append(in_s)
