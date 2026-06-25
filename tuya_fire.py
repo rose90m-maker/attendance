@@ -17,7 +17,14 @@ logger = logging.getLogger(__name__)
 TUYA_ACCESS_ID     = os.environ.get("TUYA_ACCESS_ID", "")
 TUYA_ACCESS_SECRET = os.environ.get("TUYA_ACCESS_SECRET", "")
 TUYA_REGION        = os.environ.get("TUYA_REGION", "cn")  # cn / eu / us / in
-TUYA_POLL_INTERVAL = int(os.environ.get("TUYA_POLL_INTERVAL", "30"))  # 초
+# 컨테이너 생성 시 --env-file로 박힌 옛 값이 os.environ에 남아 load_dotenv가 못 덮으므로,
+# .env 파일을 직접 읽어 최신 값을 우선 적용 (docker cp + restart 만으로 반영되게)
+try:
+    from dotenv import dotenv_values as _dotenv_values
+    _ENVFILE = _dotenv_values(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+except Exception:
+    _ENVFILE = {}
+TUYA_POLL_INTERVAL = int((_ENVFILE.get("TUYA_POLL_INTERVAL") or os.environ.get("TUYA_POLL_INTERVAL", "300")))  # 초
 # 형식: "key:이름:위치:deviceid,key2:이름2:위치2:deviceid2"
 TUYA_DEVICES_ENV   = os.environ.get("TUYA_DEVICES", "")
 
