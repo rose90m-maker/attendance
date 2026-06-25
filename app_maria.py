@@ -830,13 +830,14 @@ def _init_db():
                 UNIQUE KEY `uq_sr` (`emp_name`, `work_date`, `source_type`, `sheet_name`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
-        # basic_h 소수 허용 (휴일 조퇴/외출 시 8-N=6.5 등). 이미 decimal이면 건너뜀(테이블 재생성 방지)
+        # basic_h 소수 허용 (휴일 조퇴/외출 시 8-N=6.5 등).
+        # DOUBLE 사용 → pymysql이 python float 반환 → 기존 float/int 연산과 호환 (Decimal+float 에러 방지)
         try:
             cur.execute("""SELECT DATA_TYPE FROM information_schema.COLUMNS
                            WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='schedule_record' AND COLUMN_NAME='basic_h'""")
             _sr_bt = cur.fetchone()
-            if _sr_bt and str(_sr_bt[0]).lower() not in ('decimal', 'float', 'double'):
-                cur.execute("ALTER TABLE schedule_record MODIFY COLUMN `basic_h` DECIMAL(4,1) NOT NULL DEFAULT 0")
+            if _sr_bt and str(_sr_bt[0]).lower() not in ('double', 'float'):
+                cur.execute("ALTER TABLE schedule_record MODIFY COLUMN `basic_h` DOUBLE NOT NULL DEFAULT 0")
         except Exception:
             pass
         # 공문서(문서요청) 테이블
