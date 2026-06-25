@@ -866,11 +866,6 @@ function openAssignPopup(cat, thEl) {
     // 이미 이 카테고리에 배정된 user_id
     var assignedIds = new Set();
     (assignments[cat]||[]).forEach(function(a){ assignedIds.add(a.user_id); });
-    // 다른 카테고리에 배정된 user_id (비활성 표시용)
-    var otherAssigned = new Set();
-    categories.forEach(function(c) {
-        if (c !== cat) (assignments[c]||[]).forEach(function(a){ otherAssigned.add(a.user_id); });
-    });
     var html = '<div class="popup-title">👥 ' + cat + ' 인원 선택</div>';
     html += '<div class="popup-select-all"><label><input type="checkbox" id="popupSelectAll" onchange="toggleSelectAll(this)"> <strong>전체선택</strong></label></div>';
     html += '<div class="popup-paste-area">';
@@ -880,21 +875,17 @@ function openAssignPopup(cat, thEl) {
     html += '<div class="popup-list">';
     groupMembers.forEach(function(m) {
         var checked = assignedIds.has(m.user_id) ? ' checked' : '';
-        var inOther = otherAssigned.has(m.user_id);
-        var disabled = inOther ? ' disabled' : '';
-        var dimStyle = inOther ? ' style="opacity:0.4;"' : '';
-        var otherCat = '';
-        if (inOther) {
-            categories.forEach(function(c) {
-                if (c !== cat) (assignments[c]||[]).forEach(function(a) {
-                    if (a.user_id === m.user_id) otherCat = c;
-                });
+        // 다른 카테고리에 이미 배정돼 있어도 선택 가능 (중복 배정 허용) — 어느 카테고리에 있는지만 안내
+        var otherCats = [];
+        categories.forEach(function(c) {
+            if (c !== cat) (assignments[c]||[]).forEach(function(a) {
+                if (a.user_id === m.user_id) otherCats.push(c);
             });
-        }
-        html += '<label' + dimStyle + '>';
-        html += '<input type="checkbox" value="' + m.user_id + '" data-uname="' + esc(m.user_name) + '"' + checked + disabled + '> ';
+        });
+        html += '<label>';
+        html += '<input type="checkbox" value="' + m.user_id + '" data-uname="' + esc(m.user_name) + '"' + checked + '> ';
         html += esc(m.user_name);
-        if (inOther) html += ' <span style="font-size:0.68rem;color:#94a3b8;">(' + otherCat + ')</span>';
+        if (otherCats.length) html += ' <span style="font-size:0.68rem;color:#94a3b8;">(' + otherCats.join(',') + ')</span>';
         html += '</label>';
     });
     html += '</div>';
@@ -1094,18 +1085,43 @@ function renderTable() {
     if (etcZone) {
         etcZone.innerHTML = '';
         (assignments['기타']||[]).forEach(function(a, i) {
-            etcZone.innerHTML += '<div style="display:flex;align-items:center;gap:2px;margin:1px 0;' + (a.skipped ? 'opacity:0.4;' : '') + '">' +
+            var ev = a.etc_value || '';
+            var isJotoe = ev.indexOf('조퇴') === 0;          // "조퇴" 또는 "조퇴 16:00"
+            var isOuting = ev.indexOf('외출') === 0;          // "외출" 또는 "외출 10:00~12:00"
+            var jTime = isJotoe ? ev.replace('조퇴', '').trim() : '';
+            var oParts = isOuting ? ev.replace('외출', '').trim().split('~') : [];
+            var oOut = oParts[0] || '', oBack = oParts[1] || '';
+            var selType = isJotoe ? '조퇴' : (isOuting ? '외출' : ev);
+            var sel = function(v){ return selType === v ? ' selected' : ''; };
+            var row = '<div style="display:flex;align-items:center;gap:2px;margin:1px 0;flex-wrap:wrap;' + (a.skipped ? 'opacity:0.4;' : '') + '">' +
                 '<span style="font-size:0.72rem;">' + esc(a.user_name) + '</span>' +
                 '<select style="font-size:0.72rem;padding:0 2px;" onchange="setEtc(' + i + ',this.value)"' + (a.skipped ? ' disabled' : '') + '>' +
                 '<option value="">-</option>' +
-                '<option value="연차"' + (a.etc_value=="연차"?" selected":"") + '>연차</option>' +
-                '<option value="무급"' + (a.etc_value=="무급"?" selected":"") + '>무급</option>' +
-                '<option value="휴무"' + (a.etc_value=="휴무"?" selected":"") + '>휴무</option>' +
-                '<option value="조퇴"' + (a.etc_value=="조퇴"?" selected":"") + '>조퇴</option>' +
-                '<option value="훈련"' + (a.etc_value=="훈련"?" selected":"") + '>훈련</option>' +
-                '<option value="경조"' + (a.etc_value=="경조"?" selected":"") + '>경조</option>' +
-                '<option value="교육"' + (a.etc_value=="교육"?" selected":"") + '>교육</option>' +
-            '</select></div>';
+                '<option value="연차"' + sel('연차') + '>연차</option>' +
+                '<option value="무급"' + sel('무급') + '>무급</option>' +
+                '<option value="휴무"' + sel('휴무') + '>휴무</option>' +
+                '<option value="조퇴"' + sel('조퇴') + '>조퇴</option>' +
+                '<option value="외출"' + sel('외출') + '>외출</option>' +
+                '<option value="훈련"' + sel('훈련') + '>훈련</option>' +
+                '<option value="경조"' + sel('경조') + '>경조</option>' +
+                '<option value="교육"' + sel('교육') + '>교육</option>' +
+            '</select>';
+            // 조퇴: 30분 단위 시각 입력 + 기타값(N=17:30-조퇴시각, 점심 제외) 미리보기
+            if (isJotoe) {
+                row += '<select style="font-size:0.72rem;padding:0 2px;" onchange="setJotoeTime(' + i + ',this.value)"' + (a.skipped ? ' disabled' : '') + '>' + timeOptionsHtml(jTime) + '</select>' +
+                       '<span style="font-size:0.7rem;color:#dc2626;font-weight:700;">' + (jTime ? '→ ' + fmtHours(jotoeHours(jTime)) : '시각입력') + '</span>';
+            }
+            // 외출: 외출시각 ~ 복귀시각 (30분 단위) + N(복귀-외출, 점심 제외) 미리보기
+            else if (isOuting) {
+                var on = outingHours(oOut, oBack);
+                var tSel = function(v, which){
+                    return '<select style="font-size:0.72rem;padding:0 2px;" onchange="setOutingTime(' + i + ',\'' + which + '\',this.value)"' + (a.skipped ? ' disabled' : '') + '>' + timeOptionsHtml(v) + '</select>';
+                };
+                row += tSel(oOut, 'out') + '<span style="font-size:0.72rem;">~</span>' + tSel(oBack, 'back') +
+                       '<span style="font-size:0.7rem;color:#dc2626;font-weight:700;">' + (on !== null ? '→ ' + fmtHours(on) : '시각입력') + '</span>';
+            }
+            row += '</div>';
+            etcZone.innerHTML += row;
         });
     }
 }
@@ -1132,7 +1148,90 @@ function setDeduction(idx, val) {
     if (assignments['주간기본'][idx]) assignments['주간기본'][idx].deduction = parseInt(val)||0;
 }
 function setEtc(idx, val) {
-    if (assignments['기타'][idx]) assignments['기타'][idx].etc_value = val;
+    if (!assignments['기타'][idx]) return;
+    if (val === '조퇴') {
+        // 기존 조퇴 시각이 있으면 유지, 없으면 기본 17:00
+        var cur = assignments['기타'][idx].etc_value || '';
+        var t = (cur.indexOf('조퇴') === 0) ? cur.replace('조퇴', '').trim() : '';
+        if (!t) t = '17:00';
+        assignments['기타'][idx].etc_value = '조퇴 ' + t;
+    } else if (val === '외출') {
+        // 외출시각~복귀시각 (비워두고 입력 받음)
+        var cur2 = assignments['기타'][idx].etc_value || '';
+        var body = (cur2.indexOf('외출') === 0) ? cur2.replace('외출', '').trim() : '';
+        assignments['기타'][idx].etc_value = '외출 ' + (body || '~');
+    } else {
+        assignments['기타'][idx].etc_value = val;
+    }
+    renderTable();
+}
+// 외출 시각 변경 (which: 'out'=외출, 'back'=복귀) → "외출 HH:MM~HH:MM" 저장
+function setOutingTime(idx, which, time) {
+    var a = assignments['기타'][idx];
+    if (!a) return;
+    var body = ((a.etc_value || '').indexOf('외출') === 0) ? a.etc_value.replace('외출', '').trim() : '';
+    var parts = body.split('~');
+    var out = parts[0] || '', back = parts[1] || '';
+    if (which === 'out') out = time; else back = time;
+    a.etc_value = '외출 ' + out + '~' + back;
+    renderTable();
+}
+// 외출 시간(N) 계산: 복귀 - 외출 (점심 12:30~13:30 겹치면 제외). 둘 다 입력돼야 계산.
+function outingHours(out, back) {
+    if (!out || !back) return null;
+    var p1 = out.split(':'), p2 = back.split(':');
+    var t1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
+    var t2 = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
+    if (isNaN(t1) || isNaN(t2) || t2 <= t1) return 0;
+    var diff = t2 - t1;
+    var ls = 12 * 60 + 30, le = 13 * 60 + 30;
+    var os = Math.max(t1, ls), oe = Math.min(t2, le);
+    if (oe > os) diff -= (oe - os);
+    return diff / 60;
+}
+// 조퇴 시각 변경 → "조퇴 HH:MM" 저장
+function setJotoeTime(idx, time) {
+    if (!assignments['기타'][idx]) return;
+    assignments['기타'][idx].etc_value = time ? ('조퇴 ' + time) : '조퇴';
+    renderTable();
+}
+// 조퇴 시간(N) 계산: 17:30 - 조퇴시각 (점심 12:30~13:30 겹치면 제외), 시간 단위
+function jotoeHours(time) {
+    if (!time) return 0;
+    var p = time.split(':');
+    var leave = parseInt(p[0], 10) * 60 + parseInt(p[1], 10);
+    var end = 17 * 60 + 30;            // 17:30
+    if (isNaN(leave) || leave >= end) return 0;
+    var diff = end - leave;
+    var ls = 12 * 60 + 30, le = 13 * 60 + 30;   // 점심 12:30~13:30
+    var os = Math.max(leave, ls), oe = Math.min(end, le);
+    if (oe > os) diff -= (oe - os);
+    return diff / 60;
+}
+function fmtHours(n) { return String(n); }
+// 30분 단위 시각 옵션 (08:30 ~ 17:30) — 브라우저 기본 time 피커가 30분 강제를 못해서 select로 대체
+function timeOptionsHtml(selected) {
+    var html = '<option value="">--:--</option>';
+    for (var m = 8 * 60 + 30; m <= 17 * 60 + 30; m += 30) {
+        var hh = ('0' + Math.floor(m / 60)).slice(-2);
+        var mm = ('0' + (m % 60)).slice(-2);
+        var v = hh + ':' + mm;
+        html += '<option value="' + v + '"' + (v === selected ? ' selected' : '') + '>' + v + '</option>';
+    }
+    return html;
+}
+// 보고서 표시용: "조퇴 11:00" → "조퇴(11:00)"
+function fmtEtcDisplay(v) {
+    if (!v) return v;
+    if (v.indexOf('조퇴') === 0) {
+        var t = v.replace('조퇴', '').trim();
+        return t ? ('조퇴(' + t + ')') : '조퇴';
+    }
+    if (v.indexOf('외출') === 0) {
+        var body = v.replace('외출', '').trim();
+        return (body && body !== '~') ? ('외출(' + body + ')') : '외출';
+    }
+    return v;
 }
 
 function submitReport(skipLeaveCheck) {
@@ -1289,7 +1388,7 @@ function _buildReportTable(rep, entries, approval_log, opts) {
         html += '<td style="text-align:center;padding:' + tdPad + ';">' + (yy ? (yy.skipped ? '<span style="text-decoration:line-through;color:#dc2626;" title="스킵(근무취소)">'+esc(yy.user_name)+'</span>' : esc(yy.user_name)) : '&nbsp;') + '</td>';
         var hm = cats['기타'][i];
         html += '<td style="text-align:center;padding:' + tdPad + ';">' + (hm ? (hm.skipped ? '<span style="text-decoration:line-through;color:#dc2626;" title="스킵(근무취소)">'+esc(hm.user_name)+'</span>' : esc(hm.user_name)) : '&nbsp;') + '</td>';
-        html += '<td style="text-align:center;padding:' + tdPad + ';background:#fff8e1;width:' + (isMobile ? '40px' : '60px') + ';">' + (hm && hm.etc_value && !hm.skipped ? esc(hm.etc_value) : '&nbsp;') + '</td>';
+        html += '<td style="text-align:center;padding:' + tdPad + ';background:#fff8e1;width:' + (isMobile ? '40px' : '60px') + ';">' + (hm && hm.etc_value && !hm.skipped ? esc(fmtEtcDisplay(hm.etc_value)) : '&nbsp;') + '</td>';
         html += '</tr>';
     }
 

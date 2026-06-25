@@ -5056,6 +5056,7 @@ def schedule_record():
             s_ot = s_ni = wd_ot = nw = hw = ho = 0
             unpaid = 0
             hol_basic = hol_ot_h = hol_night = hol_time = 0
+            etc_sum = 0.0   # 기타 행 숫자(조퇴/외출/공제) 합계 → "조퇴외출" 칸
             for d in range(1, dim + 1):
                 rec = dd.get(d)
                 is_hol = day_info[d-1]["is_sat"] or day_info[d-1]["is_sun"] or day_info[d-1]["is_holiday"]
@@ -5079,9 +5080,10 @@ def schedule_record():
                     pass
                 elif ev is not None:
                     try:
-                        nv_etc = int(float(str(ev)))
-                        if nv_etc > 0:
-                            hol_time += nv_etc
+                        fv = float(str(ev))
+                        if fv > 0:
+                            hol_time += int(fv)
+                            etc_sum += fv      # 소수점 유지 합산 (조퇴/외출/공제)
                     except (ValueError, TypeError):
                         pass
             employees.append({
@@ -5090,6 +5092,7 @@ def schedule_record():
                 "wd_ot": int(wd_ot), "night_work": int(nw),
                 "calc_hw": int(hw), "calc_ho": int(ho),
                 "unpaid": unpaid, "hol_time": int(hol_time),
+                "etc_sum": ("%g" % etc_sum) if etc_sum else 0,
                 "hol_basic": int(hol_basic), "hol_ot_h": int(hol_ot_h),
                 "hol_night": int(hol_night), "hol_total": int(hol_basic + hol_ot_h + hol_night),
             })
@@ -7692,6 +7695,47 @@ def save_wr_group_writer():
     return jsonify(ok=True)
 
 
+def _jotoe_hours(etc_val):
+    """'조퇴 16:00' → 조퇴시간 N (17:30 - 조퇴시각, 점심 12:30~13:30 겹치면 제외). 시각 없으면 None."""
+    m = re.search(r'(\d{1,2}):(\d{2})', etc_val or "")
+    if not m:
+        return None
+    leave = int(m.group(1)) * 60 + int(m.group(2))
+    end = 17 * 60 + 30          # 17:30
+    if leave >= end:
+        return 0
+    diff = end - leave
+    ls, le = 12 * 60 + 30, 13 * 60 + 30   # 점심 12:30~13:30
+    os_, oe = max(leave, ls), min(end, le)
+    if oe > os_:
+        diff -= (oe - os_)
+    return diff / 60.0
+
+
+def _outing_hours(etc_val):
+    """'외출 10:00~12:00' → 외출시간 N (복귀-외출, 점심 12:30~13:30 겹치면 제외). 시각 2개 없으면 None."""
+    times = re.findall(r'(\d{1,2}):(\d{2})', etc_val or "")
+    if len(times) < 2:
+        return None
+    t1 = int(times[0][0]) * 60 + int(times[0][1])   # 외출
+    t2 = int(times[1][0]) * 60 + int(times[1][1])   # 복귀
+    if t2 <= t1:
+        return 0
+    diff = t2 - t1
+    ls, le = 12 * 60 + 30, 13 * 60 + 30
+    os_, oe = max(t1, ls), min(t2, le)
+    if oe > os_:
+        diff -= (oe - os_)
+    return diff / 60.0
+
+
+def _fmt_hours(n):
+    """4.0 → '4', 1.5 → '1.5'"""
+    if n is None:
+        return ""
+    return str(int(n)) if float(n) == int(n) else str(n)
+
+
 @app.route("/api/wr_report", methods=["POST"])
 @_login_required
 def save_wr_report():
@@ -7935,12 +7979,43 @@ def process_wr_request():
                     (group_id, report_date, report_id))
         is_revision = cur.fetchone()[0] > 0
         src_type = '수정근무보고서' if is_revision else '보고서'
+        # 그룹명으로 sheet_name 결정
+        cur.execute("SELECT group_name FROM wr_groups WHERE id=%s", (group_id,))
+        gn = cur.fetchone()
+        sheet_name = gn[0] if gn else "기타"
         cur.execute("SELECT user_id, user_name, category, deduction, etc_value, IFNULL(skipped,0) FROM wr_entries WHERE report_id=%s", (report_id,))
+        # 사람별 병합: 한 사람이 여러 카테고리(예: 주간기본 + 기타 조퇴)에 있어도 근무표 한 칸에 합산
+        agg = OrderedDict()
         for uid, uname, cat, ded, etc_val, skipped in cur.fetchall():
-            # 그룹명으로 sheet_name 결정
-            cur.execute("SELECT group_name FROM wr_groups WHERE id=%s", (group_id,))
-            gn = cur.fetchone()
-            sheet_name = gn[0] if gn else "기타"
+            a = agg.setdefault(uname, {"uid": uid, "basic": 0, "ot": 0, "night": 0,
+                                       "etc": None, "skipped": 0, "leave": None})
+            if skipped:
+                a["skipped"] = 1
+                continue
+            if cat == "주간기본":
+                a["basic"] = max(a["basic"], 8)
+                if ded and ded > 0:
+                    a["etc"] = str(ded)
+            elif cat == "주간연장":
+                a["basic"] = max(a["basic"], 8); a["ot"] = max(a["ot"], 2)
+            elif cat == "야간기본":
+                a["basic"] = max(a["basic"], 8); a["night"] = max(a["night"], 6)
+            elif cat == "야간연장":
+                a["basic"] = max(a["basic"], 8); a["ot"] = max(a["ot"], 2); a["night"] = max(a["night"], 7)
+            elif cat == "기타" and etc_val:
+                if etc_val in ("연차", "무급"):
+                    a["leave"] = etc_val
+                elif etc_val.startswith("조퇴"):
+                    # 조퇴: 근무표 기타에 N(숫자)만 기록 (예: '조퇴 16:00' → '1.5')
+                    _n = _jotoe_hours(etc_val)
+                    a["etc"] = _fmt_hours(_n) if _n is not None else etc_val
+                elif etc_val.startswith("외출"):
+                    # 외출: 근무표 기타에 N(숫자)만 기록 (예: '외출 10:00~12:00' → '2')
+                    _n = _outing_hours(etc_val)
+                    a["etc"] = _fmt_hours(_n) if _n is not None else etc_val
+                else:
+                    a["etc"] = etc_val
+        for uname, a in agg.items():
             # 기존 레코드 삭제: 수정근무보고서면 수정근무보고서만, 원본이면 둘 다 삭제
             if is_revision:
                 cur.execute("DELETE FROM schedule_record WHERE emp_name=%s AND work_date=%s AND sheet_name=%s AND source_type='수정근무보고서'",
@@ -7948,31 +8023,17 @@ def process_wr_request():
             else:
                 cur.execute("DELETE FROM schedule_record WHERE emp_name=%s AND work_date=%s AND sheet_name=%s AND source_type IN ('보고서','수정근무보고서')",
                             (uname, report_date, sheet_name))
-            if skipped:
+            if a["skipped"]:
                 cur.execute("""
                     INSERT INTO schedule_record (emp_name, work_date, basic_h, ot_h, night_h, etc,
                                                  source_type, sheet_name, uploaded_by)
                     VALUES (%s,%s,0,0,0,'스킵',%s,%s,%s)
                 """, (uname, report_date, src_type, sheet_name, session.get("user_name", "")))
                 continue
-            basic, ot, night, etc = 0, 0, 0, None
-            if cat == "주간기본":
-                basic = 8
-                if ded > 0:
-                    etc = str(ded)
-            elif cat == "주간연장":
-                basic, ot = 8, 2
-            elif cat == "야간기본":
-                basic, night = 8, 6
-            elif cat == "야간연장":
-                basic, ot, night = 8, 2, 7
-            elif cat == "기타":
-                if etc_val:
-                    etc = etc_val
-            # etc_value가 연차/무급이면 다른 값 0 처리
-            if etc_val in ("연차", "무급"):
-                basic, ot, night = 0, 0, 0
-                etc = etc_val
+            basic, ot, night, etc = a["basic"], a["ot"], a["night"], a["etc"]
+            # 연차/무급이면 다른 값 0 처리 (카테고리 처리 순서와 무관하게 최종 보정)
+            if a["leave"]:
+                basic, ot, night, etc = 0, 0, 0, a["leave"]
             cur.execute("""
                 INSERT INTO schedule_record (emp_name, work_date, basic_h, ot_h, night_h, etc,
                                              source_type, sheet_name, uploaded_by)
@@ -7980,8 +8041,8 @@ def process_wr_request():
             """, (uname, report_date, basic, ot, night, etc, src_type, sheet_name,
                   session.get("user_name", "")))
             # 연차/무급이면 leave_records + annual_leave 동기화
-            if etc_val in ("연차", "무급"):
-                _sync_leave_from_other(cur, uid, report_date, etc_val)
+            if a["leave"]:
+                _sync_leave_from_other(cur, a["uid"], report_date, a["leave"])
     # 알림 (작성자에게)
     rd = report_date
     disp_date = f"{rd[:4]}-{rd[4:6]}-{rd[6:8]}" if len(rd) == 8 else rd
