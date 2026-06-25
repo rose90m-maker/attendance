@@ -5082,7 +5082,7 @@ def schedule_record():
                     try:
                         fv = float(str(ev))
                         if fv > 0:
-                            hol_time += int(fv)
+                            hol_time += fv     # 소수점 유지 (3.5 등)
                             etc_sum += fv      # 소수점 유지 합산 (조퇴/외출/공제)
                     except (ValueError, TypeError):
                         pass
@@ -5091,7 +5091,7 @@ def schedule_record():
                 "basic": b_r, "overtime": o_r, "night": n_r, "other": e_r,
                 "wd_ot": int(wd_ot), "night_work": int(nw),
                 "calc_hw": int(hw), "calc_ho": int(ho),
-                "unpaid": unpaid, "hol_time": int(hol_time),
+                "unpaid": unpaid, "hol_time": ("%g" % hol_time) if hol_time else 0,
                 "etc_sum": ("%g" % etc_sum) if etc_sum else 0,
                 "hol_basic": int(hol_basic), "hol_ot_h": int(hol_ot_h),
                 "hol_night": int(hol_night), "hol_total": int(hol_basic + hol_ot_h + hol_night),
