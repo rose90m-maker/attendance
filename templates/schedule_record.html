@@ -221,7 +221,7 @@
                         <td class="meta fw-bold">기본</td>
                         {% for i in range(days_in_month) %}
                         <td class="day-cell {% if day_info[i].is_sun or day_info[i].is_holiday %}bg-sun{% elif day_info[i].is_sat %}bg-sat{% endif %}">
-                            {% if emp.basic[i] and emp.basic[i] > 0 %}{{ emp.basic[i] }}{% else %}-{% endif %}
+                            {% if emp.basic[i] and emp.basic[i] > 0 %}{{ "%g"|format(emp.basic[i]) }}{% else %}-{% endif %}
                         </td>
                         {% endfor %}
                         <td class="sum-col">{{ emp.wd_ot }}</td>

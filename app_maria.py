@@ -830,6 +830,15 @@ def _init_db():
                 UNIQUE KEY `uq_sr` (`emp_name`, `work_date`, `source_type`, `sheet_name`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+        # basic_h 소수 허용 (휴일 조퇴/외출 시 8-N=6.5 등). 이미 decimal이면 건너뜀(테이블 재생성 방지)
+        try:
+            cur.execute("""SELECT DATA_TYPE FROM information_schema.COLUMNS
+                           WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='schedule_record' AND COLUMN_NAME='basic_h'""")
+            _sr_bt = cur.fetchone()
+            if _sr_bt and str(_sr_bt[0]).lower() not in ('decimal', 'float', 'double'):
+                cur.execute("ALTER TABLE schedule_record MODIFY COLUMN `basic_h` DECIMAL(4,1) NOT NULL DEFAULT 0")
+        except Exception:
+            pass
         # 공문서(문서요청) 테이블
         cur.execute("""
             CREATE TABLE IF NOT EXISTS `doc_requests` (
@@ -7979,6 +7988,12 @@ def process_wr_request():
                     (group_id, report_date, report_id))
         is_revision = cur.fetchone()[0] > 0
         src_type = '수정근무보고서' if is_revision else '보고서'
+        # 휴일(토/일/공휴일) 여부 — 휴일이면 조퇴/외출 N을 기본근무에서 차감(8-N)
+        try:
+            _rd = datetime(int(report_date[:4]), int(report_date[4:6]), int(report_date[6:8]))
+            is_hol_date = _rd.weekday() >= 5 or bool(KR_HOLIDAYS.get(_rd.date()))
+        except Exception:
+            is_hol_date = False
         # 그룹명으로 sheet_name 결정
         cur.execute("SELECT group_name FROM wr_groups WHERE id=%s", (group_id,))
         gn = cur.fetchone()
@@ -7988,7 +8003,7 @@ def process_wr_request():
         agg = OrderedDict()
         for uid, uname, cat, ded, etc_val, skipped in cur.fetchall():
             a = agg.setdefault(uname, {"uid": uid, "basic": 0, "ot": 0, "night": 0,
-                                       "etc": None, "skipped": 0, "leave": None})
+                                       "etc": None, "skipped": 0, "leave": None, "deduct": 0.0})
             if skipped:
                 a["skipped"] = 1
                 continue
@@ -8006,13 +8021,19 @@ def process_wr_request():
                 if etc_val in ("연차", "무급"):
                     a["leave"] = etc_val
                 elif etc_val.startswith("조퇴"):
-                    # 조퇴: 근무표 기타에 N(숫자)만 기록 (예: '조퇴 16:00' → '1.5')
+                    # 조퇴: N(=17:30-조퇴시각) 누적 → 평일은 기타칸, 휴일은 기본근무 차감
                     _n = _jotoe_hours(etc_val)
-                    a["etc"] = _fmt_hours(_n) if _n is not None else etc_val
+                    if _n is not None:
+                        a["deduct"] += _n
+                    else:
+                        a["etc"] = etc_val
                 elif etc_val.startswith("외출"):
-                    # 외출: 근무표 기타에 N(숫자)만 기록 (예: '외출 10:00~12:00' → '2')
+                    # 외출: N(=복귀-외출) 누적 → 평일은 기타칸, 휴일은 기본근무 차감
                     _n = _outing_hours(etc_val)
-                    a["etc"] = _fmt_hours(_n) if _n is not None else etc_val
+                    if _n is not None:
+                        a["deduct"] += _n
+                    else:
+                        a["etc"] = etc_val
                 else:
                     a["etc"] = etc_val
         for uname, a in agg.items():
@@ -8031,7 +8052,13 @@ def process_wr_request():
                 """, (uname, report_date, src_type, sheet_name, session.get("user_name", "")))
                 continue
             basic, ot, night, etc = a["basic"], a["ot"], a["night"], a["etc"]
-            # 연차/무급이면 다른 값 0 처리 (카테고리 처리 순서와 무관하게 최종 보정)
+            # 조퇴/외출 차감: 휴일이면 기본근무에서 빼고(8-N, 소수 가능), 평일이면 기타칸에 N 기록
+            if a["deduct"] > 0:
+                if is_hol_date:
+                    basic = max(0, basic - a["deduct"])
+                else:
+                    etc = _fmt_hours(a["deduct"])
+            # 연차/무급이면 다른 값 0 처리 (최종 보정, 차감보다 우선)
             if a["leave"]:
                 basic, ot, night, etc = 0, 0, 0, a["leave"]
             cur.execute("""

@@ -857,10 +857,6 @@ function renderPool() {
 
 function openAssignPopup(cat, thEl) {
     if (!groupMembers.length) { alert('먼저 그룹을 선택하세요.'); return; }
-    if (cat === '기타' && isHoliday) {
-        alert('토/일/공휴일에는 기타를 배정할 수 없습니다.');
-        return;
-    }
     currentPopupCat = cat;
     var popup = document.getElementById('assignPopup');
     // 이미 이 카테고리에 배정된 user_id
@@ -993,33 +989,21 @@ function renderTable() {
         if (badge) badge.textContent = (assignments[c]||[]).length;
     });
     
-    // 공휴일일 때 시간 컬럼 표시
+    // 시간 컬럼: 휴일도 평일과 동일 포맷 → 항상 숨김
     var thTime = document.getElementById('th-시간');
     var tdTime = document.getElementById('zone-시간');
     if (thTime && tdTime) {
-        if (isHoliday) {
-            thTime.style.display = '';
-            tdTime.style.display = '';
-        } else {
-            thTime.style.display = 'none';
-            tdTime.style.display = 'none';
-        }
+        thTime.style.display = 'none';
+        tdTime.style.display = 'none';
     }
 
-    // 토/일/공휴일일 때 휴무 컬럼 비활성화
+    // 기타 컬럼: 휴일도 평일과 동일하게 항상 활성
     var thHyumu = document.getElementById('th-기타');
     if (thHyumu) {
-        if (isHoliday) {
-            thHyumu.classList.remove('clickable');
-            thHyumu.style.opacity = '0.4';
-            thHyumu.style.cursor = 'not-allowed';
-            thHyumu.onclick = null;
-        } else {
-            thHyumu.classList.add('clickable');
-            thHyumu.style.opacity = '';
-            thHyumu.style.cursor = '';
-            thHyumu.onclick = function() { openAssignPopup('기타', thHyumu); };
-        }
+        thHyumu.classList.add('clickable');
+        thHyumu.style.opacity = '';
+        thHyumu.style.cursor = '';
+        thHyumu.onclick = function() { openAssignPopup('기타', thHyumu); };
     }
     
     // 주간기본
@@ -1045,18 +1029,7 @@ function renderTable() {
                 '</div>';
         });
     }
-    // 공휴일 시간 입력 (etc_value에 저장)
-    if (isHoliday && tdTime) {
-        tdTime.innerHTML = '';
-        (assignments['주간기본']||[]).forEach(function(a, i) {
-            var hours = parseFloat(a.etc_value) || 8;  // 기본값 8시간
-            tdTime.innerHTML += '<div style="display:flex;align-items:center;justify-content:center;gap:2px;margin:1px 0;' + (a.skipped ? 'opacity:0.4;' : '') + '">' +
-                '<span style="font-size:0.72rem;">' + esc(a.user_name) + '</span>' +
-                '<input type="number" min="0" max="12" step="0.5" value="' + hours + '" style="width:45px;font-size:0.72rem;padding:0 2px;text-align:center;" ' +
-                'onchange="setBasicHours(' + i + ',this.value)"' + (a.skipped ? ' disabled' : '') + '>h' +
-                '</div>';
-        });
-    }
+    // (휴일 시간 입력 컬럼 제거 — 평일과 동일 포맷)
     // 주간연장, 야간기본, 야간연장
     ['주간연장','야간기본','야간연장'].forEach(function(cat) {
         var z = document.querySelector('#zone-' + cat + ' .name-cell');
