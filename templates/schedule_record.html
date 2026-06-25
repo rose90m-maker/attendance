@@ -13,6 +13,7 @@
         .ws-table thead tr:first-child th { top: 0; }
         .ws-table thead tr:nth-child(2) th { top: 26px; }
         .meta { position: sticky; left: 0; z-index: 1; background: #fff; min-width: 40px; }
+        .meta a:hover { text-decoration: underline !important; }
         thead .meta { z-index: 3; background: #f1f5f9; }
         .day-cell { min-width: 24px; }
         .sum-col { min-width: 50px; background: #f8fafc; font-weight: 600; }
@@ -217,7 +218,7 @@
                         <td rowspan="4" class="meta text-center">{{ loop.index }}</td>
                         <td rowspan="4" class="meta fw-bold">{{ emp.emp_no }}</td>
                         <td rowspan="4" class="meta">{{ emp.dept }}</td>
-                        <td rowspan="4" class="meta fw-bold text-primary">{{ emp.name }}</td>
+                        <td rowspan="4" class="meta fw-bold"><a href="/attendance?search={{ emp.name }}" class="text-decoration-none text-primary">{{ emp.name }}</a></td>
                         <td class="meta fw-bold">기본</td>
                         {% for i in range(days_in_month) %}
                         <td class="day-cell {% if day_info[i].is_sun or day_info[i].is_holiday %}bg-sun{% elif day_info[i].is_sat %}bg-sat{% endif %}">
