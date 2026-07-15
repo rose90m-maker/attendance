@@ -102,26 +102,9 @@ def run():
     for no in erp_nos - att_nos:
         d = erp_data[no]
         cur2.execute("""
-            INSERT INTO employee_roster
-                (emp_no, name, dept, hire_date, work_status, gender, birth_date,
-                 calendar_type, age, position, phone, email, address, name_en,
-                 emp_type, is_probation, org_name, job_title, job_role, pay_grade,
-                 job_duty, job_category, work_state, pay_type, group_join_date,
-                 retire_date, probation_end_date, nationality_type, nationality,
-                 hire_type, weight, height, is_married, wedding_date, office_phone,
-                 internal_phone, is_disabled, is_veteran, religion, household_type,
-                 hobby, specialty, desired_job, military_type, military_branch,
-                 remarks, education, school, major, degree, work_days, pension_type,
-                 retire_reason, severance_base_date, interim_settle_date,
-                 annual_base_date, monthly_base_date, tenure_base_date,
-                 curr_dept_date, curr_dept_pos_date, curr_title_date, curr_role_date,
-                 curr_position_date, curr_paygrade_date, curr_duty_date,
-                 curr_category_date, car_number, appoint_date)
-            VALUES (%s,%s,%s,%s,'재직','','','',0,'','','','','','','','','','','',
-                    '','','','','','','','','','','','','','','','','','','','',
-                    '','','','','','','','','','','','','','','','','','','','',
-                    '','','','','')
-        """, (no, d['name'], d['dept'], d['hire_date'] or ''))
+            INSERT INTO employee_roster (emp_no, name, dept, hire_date, work_status)
+            VALUES (%s, %s, %s, %s, '재직')
+        """, (no, d['name'], d['dept'], d['hire_date'] or None))
         inserted.append(f"{no} {d['name']} ({d['dept']})")
 
     # 정보 갱신 (이름 또는 부서 변경)
