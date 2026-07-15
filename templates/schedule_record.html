@@ -435,7 +435,8 @@ function copyErp(mode) {
         }
         lines.push(vals.join('\t'));
     });
-    var text = lines.join('\n');
+    // 영림원(Windows) 그리드는 행 구분을 CRLF로 인식 → 아래로 채워짐
+    var text = lines.join('\r\n');
     var msg = document.getElementById('erpCopyMsg');
     var label = (mode === 'num') ? '근무일수 칸' : (mode === 'emp' ? '사원 칸' : '근무일 칸');
     // textarea + execCommand: 창 전환/포커스 무관하게 항상 동작
