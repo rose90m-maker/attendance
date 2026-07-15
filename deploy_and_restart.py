@@ -92,6 +92,7 @@ files = [
     ("templates/education_detail.html", "templates/education_detail.html"),
     ("tuya_fire.py", "tuya_fire.py"),
     ("erp_sync.py", "erp_sync.py"),
+    ("erp_inspect.py", "erp_inspect.py"),
     # 위험물·안전관리
     ("hazmat_bp.py", "hazmat_bp.py"),
     ("templates/hazmat.html", "templates/hazmat.html"),
@@ -286,6 +287,7 @@ docker_files_main = [
     (f"{STAGE_DIR}/kepco_collector.py", f"{DOCKER_APP_DIR}/kepco_collector.py"),
     (f"{STAGE_DIR}/kepco_analyzer.py",  f"{DOCKER_APP_DIR}/kepco_analyzer.py"),
     (f"{STAGE_DIR}/erp_sync.py",        f"{DOCKER_APP_DIR}/erp_sync.py"),
+    (f"{STAGE_DIR}/erp_inspect.py",     f"{DOCKER_APP_DIR}/erp_inspect.py"),
     (f"{STAGE_DIR}/.env",               f"{DOCKER_APP_DIR}/.env"),
 ]
 # templates 개별 파일 (TBM 통합 이후 templates/tbm도 메인 컨테이너에 포함)

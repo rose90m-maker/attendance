@@ -63,7 +63,8 @@ def run():
     # RetireDate >= '99991231' = 퇴사 미정 (진짜 재직자)
     # IsInner='1'만으로는 과거 퇴직자가 포함되므로 RetireDate로 2차 필터
     cur.execute("""
-        SELECT e.Empid, e.EmpName, d.DeptName, e.EntDate, e.RetireDate
+        SELECT e.Empid, e.EmpName, d.DeptName, e.EntDate, e.RetireDate,
+               e.EmpEngFirstName, e.EmpEngLastName
         FROM _TDAEmp e
         LEFT JOIN _TDADept d ON e.DeptSeq = d.DeptSeq
         WHERE e.IsInner = '1' AND e.RetireDate >= '99991231'
@@ -75,10 +76,14 @@ def run():
             hire = str(r[3] or '')
             if len(hire) == 8:
                 hire = f'{hire[:4]}-{hire[4:6]}-{hire[6:]}'
+            first = (r[5] or '').strip()
+            last  = (r[6] or '').strip()
+            name_en = f'{last} {first}'.strip() if (first or last) else ''
             erp_data[no] = {
                 'name': r[1] or '',
                 'dept': r[2] or '',
                 'hire_date': hire,
+                'name_en': name_en,
             }
     ec.close()
     log.info('ERP 재직자: %d명', len(erp_data))
@@ -86,11 +91,11 @@ def run():
     # attendance 명부 조회
     ac = att_conn()
     cur2 = ac.cursor()
-    cur2.execute("SELECT emp_no, name, dept, hire_date FROM employee_roster")
+    cur2.execute("SELECT emp_no, name, dept, hire_date, name_en FROM employee_roster")
     att_data = {}
     for r in cur2.fetchall():
         no = (r[0] or '').strip()
-        att_data[no] = {'name': r[1] or '', 'dept': r[2] or '', 'hire_date': str(r[3] or '')}
+        att_data[no] = {'name': r[1] or '', 'dept': r[2] or '', 'hire_date': str(r[3] or ''), 'name_en': r[4] or ''}
     log.info('attendance 명부: %d명', len(att_data))
 
     erp_nos = set(erp_data)
@@ -102,9 +107,9 @@ def run():
     for no in erp_nos - att_nos:
         d = erp_data[no]
         cur2.execute("""
-            INSERT INTO employee_roster (emp_no, name, dept, hire_date, work_status)
-            VALUES (%s, %s, %s, %s, '재직')
-        """, (no, d['name'], d['dept'], d['hire_date'] or None))
+            INSERT INTO employee_roster (emp_no, name, dept, hire_date, work_status, name_en)
+            VALUES (%s, %s, %s, %s, '재직', %s)
+        """, (no, d['name'], d['dept'], d['hire_date'] or None, d['name_en'] or ''))
         inserted.append(f"{no} {d['name']} ({d['dept']})")
 
     # 정보 갱신 (이름 또는 부서 변경)
@@ -115,6 +120,8 @@ def run():
             changes['name'] = e['name']
         if e['dept'] and a['dept'] and e['dept'] != a['dept']:
             changes['dept'] = e['dept']
+        if e['name_en'] and e['name_en'] != a.get('name_en', ''):
+            changes['name_en'] = e['name_en']
         if changes:
             sets = ', '.join(f"{k}=%s" for k in changes)
             cur2.execute(
