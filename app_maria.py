@@ -5161,6 +5161,41 @@ def schedule_record():
         conn2.close()
     except Exception:
         dept_list = sorted(set(DEPT_MAP.values()))
+
+    # ERP 근무내역등록 붙여넣기용 엑셀 내보내기
+    if request.args.get("export") == "erp_xlsx" and employees:
+        import io
+        from openpyxl import Workbook
+        wbx = Workbook()
+        wsx = wbx.active
+        wsx.title = "ERP근무내역"
+        headers = ["근무일", "요일", "사원", "영문명", "사번", "사원구분", "부서",
+                   "급여형태", "근무유형", "일구분", "입사일", "퇴직일", "재직/퇴직",
+                   "파견기관", "시작익일", "시작시간", "종료시간",
+                   "근무일수", "기본근무시간", "연차지급일수", "연장근로시간",
+                   "야간근로시간", "휴일근로시간", "휴일연장근로시간", "외출조퇴시간", "시간외수당"]
+        for ci, h in enumerate(headers, 1):
+            wsx.cell(1, ci, h)
+        def _num(v):
+            try:
+                return float(str(v))
+            except (ValueError, TypeError):
+                return 0
+        for ri, emp in enumerate(employees, 2):
+            row = [emp["wk_date"], emp.get("wk_dayname", ""), emp["name"], "", emp["emp_no"],
+                   "", emp["dept"], "", "", "", "", "", "", "", "", "", "",
+                   dim, 209, 0,
+                   _num(emp["wd_ot"]), _num(emp["night_work"]), _num(emp["calc_hw"]),
+                   _num(emp["calc_ho"]), _num(emp["hol_time"]), ""]
+            for ci, v in enumerate(row, 1):
+                wsx.cell(ri, ci, v)
+        buf = io.BytesIO()
+        wbx.save(buf)
+        buf.seek(0)
+        return send_file(buf, as_attachment=True,
+                         download_name=f"ERP근무내역_{year}{mon:02d}.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
     return render_template("schedule_record.html",
                            search=search, dept_search=dept_search,
                            dept_list=dept_list, sel_month=sel_month,

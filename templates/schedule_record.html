@@ -196,8 +196,10 @@
                 <button type="button" class="btn btn-success btn-sm" onclick="copyErp('wkday')">① 📋 근무일 복사</button>
                 <button type="button" class="btn btn-success btn-sm" onclick="copyErp('emp')">② 📋 사원 복사</button>
                 <button type="button" class="btn btn-success btn-sm" onclick="copyErp('num')">③ 📋 근무일수~시간외수당 복사</button>
+                <a href="/schedule_record?month={{ sel_month }}{% if search %}&search={{ search }}{% endif %}{% if dept_search %}&dept={{ dept_search }}{% endif %}&export=erp_xlsx" class="btn btn-primary btn-sm">⬇️ 엑셀 다운로드</a>
                 <span id="erpCopyMsg" class="small text-success fw-bold"></span>
             </div>
+            <div class="small text-primary mb-1">💡 <b>엑셀 다운로드</b> → 엑셀에서 열어 필요한 열 복사 → ERP에 붙여넣기 (가장 확실)</div>
             <textarea id="erpClip" readonly style="width:100%; height:70px; font-size:11px; font-family:monospace; margin-bottom:8px; white-space:pre;" placeholder="복사 버튼을 누르면 여기에 복사 내용이 표시됩니다. (버튼이 안 되면 이 칸을 클릭 → Ctrl+A → Ctrl+C)"></textarea>
             <div class="small text-muted mb-2">
                 <b>순서대로 3번 붙여넣기</b> (근무일·사원 필수 입력 / 사원 입력하면 사번·부서 등 자동채움):<br>
@@ -416,7 +418,7 @@ function copyErp(mode) {
     //             10입사일 11퇴직일 12재직퇴직 13파견기관 14시작익일 15시작 16종료
     //             17근무일수 18기본 19연차 20연장 21야간 22휴일 23휴일연장 24외출조퇴 25시간외수당
     var rows = tbl.querySelectorAll('tbody tr');
-    var lines = [];
+    var matrix = [];  // 행 × 셀 2차원 배열
     rows.forEach(function(tr) {
         var c = tr.querySelectorAll('td');
         var vals;
@@ -425,34 +427,52 @@ function copyErp(mode) {
             vals = [];
             for (var i = 17; i <= 25; i++) vals.push((c[i].textContent || '').trim());
         } else if (mode === 'emp') {
-            // 사원(2)만
-            vals = [(c[2].textContent || '').trim()];
+            vals = [(c[2].textContent || '').trim()];        // 사원
         } else if (mode === 'wkday') {
-            // 근무일(0)만 (요일은 ERP 자동)
-            vals = [(c[0].textContent || '').trim()];
+            vals = [(c[0].textContent || '').trim()];        // 근무일
         } else {
             vals = [];
             for (var j = 0; j <= 25; j++) vals.push((c[j].textContent || '').trim());
         }
-        lines.push(vals.join('\t'));
+        matrix.push(vals);
     });
-    // 영림원(Windows) 그리드는 행 구분을 CRLF로 인식 → 아래로 채워짐
-    var text = lines.join('\r\n');
+    var text = matrix.map(function(r){ return r.join('\t'); }).join('\r\n');
     var msg = document.getElementById('erpCopyMsg');
     var label = (mode === 'num') ? '근무일수 칸' : (mode === 'emp' ? '사원 칸' : '근무일 칸');
-    // 보이는 textarea에 내용 표시 + 선택 + 복사 (몇 행인지 눈으로 확인 가능)
-    var ta = document.getElementById('erpClip');
-    ta.value = text;
-    ta.focus();
-    ta.select();
-    ta.setSelectionRange(0, text.length);
+    document.getElementById('erpClip').value = text;
+
+    // 핵심: 진짜 <table>을 만들어 복사 → 클립보드에 text/html 표 형식이 들어감
+    // → 엑셀·영림원 그리드가 여러 행으로 인식해 아래로 채워짐 (텍스트만으론 1칸)
+    var tmp = document.createElement('table');
+    var tb = document.createElement('tbody');
+    matrix.forEach(function(r) {
+        var tr = document.createElement('tr');
+        r.forEach(function(v) {
+            var td = document.createElement('td');
+            td.textContent = v;
+            tr.appendChild(td);
+        });
+        tb.appendChild(tr);
+    });
+    tmp.appendChild(tb);
+    tmp.style.position = 'fixed';
+    tmp.style.left = '-99999px';
+    tmp.style.top = '0';
+    document.body.appendChild(tmp);
     var ok = false;
-    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
-    if (!ok && navigator.clipboard) {
-        try { navigator.clipboard.writeText(text); ok = true; } catch (e2) {}
-    }
+    try {
+        var range = document.createRange();
+        range.selectNode(tmp);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        ok = document.execCommand('copy');
+        sel.removeAllRanges();
+    } catch (e) { ok = false; }
+    document.body.removeChild(tmp);
+
     msg.textContent = (ok ? '✅ ' : '⚠️ 아래 칸 Ctrl+A→Ctrl+C · ')
-        + rows.length + '행 (' + label + ')';
+        + matrix.length + '행 (' + label + ')';
 }
 
 function loadBulkEmps() {
