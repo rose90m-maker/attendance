@@ -91,6 +91,7 @@ files = [
     ("templates/education_sessions.html", "templates/education_sessions.html"),
     ("templates/education_detail.html", "templates/education_detail.html"),
     ("tuya_fire.py", "tuya_fire.py"),
+    ("erp_sync.py", "erp_sync.py"),
     # 위험물·안전관리
     ("hazmat_bp.py", "hazmat_bp.py"),
     ("templates/hazmat.html", "templates/hazmat.html"),
