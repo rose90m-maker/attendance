@@ -5191,10 +5191,11 @@ def schedule_record():
                 wsx.cell(ri, ci, v)
         buf = io.BytesIO()
         wbx.save(buf)
-        buf.seek(0)
-        return send_file(buf, as_attachment=True,
-                         download_name=f"ERP_worktime_{year}{mon:02d}.xlsx",
-                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        # Content-Disposition 없이 xlsx 바이트만 반환 → <a download> 속성이 파일명 결정
+        # (프록시가 Content-Disposition을 제거해 UUID로 저장되는 문제 회피)
+        from flask import Response
+        return Response(buf.getvalue(),
+                        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     return render_template("schedule_record.html",
                            search=search, dept_search=dept_search,
