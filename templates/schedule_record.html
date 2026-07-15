@@ -193,40 +193,43 @@
         </div>
         <div class="card-body" id="erpPanel" style="display:none;">
             <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('wkdate')">① 📋 근무일만 복사</button>
-                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('empno')">② 📋 사번만 복사</button>
-                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('num')">③ 📋 근무일수~외출조퇴 복사</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('wkday')">① 📋 근무일+요일 복사</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('emp')">② 📋 사원만 복사</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('num')">③ 📋 근무일수~시간외수당 복사</button>
                 <span id="erpCopyMsg" class="small text-success fw-bold"></span>
             </div>
             <div class="small text-muted mb-2">
-                <b>순서대로 3번 붙여넣기</b> (사번 입력하면 ERP가 그레이존 자동 채움):<br>
-                • <b>①</b> 근무일 → ERP <b>근무일</b> 칸 (월 마지막날, 중도퇴사자는 퇴사일)<br>
-                • <b>②</b> 사번 → ERP <b>사번</b> 칸 → 사원·부서 등 자동 채워짐<br>
-                • <b>③</b> 숫자 → ERP <b>근무일수</b> 칸
+                <b>순서대로 3번 붙여넣기</b> (근무일·사원 필수 입력 / 사원 입력하면 사번·부서 등 자동채움):<br>
+                • <b>①</b> 근무일+요일 → ERP <b>근무일</b> 칸 (월 마지막날, 중도퇴사자는 퇴사일)<br>
+                • <b>②</b> 사원 → ERP <b>사원</b> 칸 → 영문명·사번·부서 등 자동 채워짐<br>
+                • <b>③</b> 숫자 → ERP <b>근무일수</b> 칸 (시간외수당까지)
             </div>
             <div style="overflow-x:auto;">
             <table class="table table-sm table-bordered mb-0" id="erp-table" style="font-size:0.75rem;white-space:nowrap;">
                 <thead class="table-light">
                     <tr>
-                        <th class="table-secondary">사원<br><small>(확인용)</small></th>
-                        <th class="table-warning">근무일</th>
-                        <th>사번</th><th>사원구분</th><th>부서</th><th>급여형태</th><th>근무유형</th>
-                        <th>일구분</th><th>입사일</th><th>퇴직일</th><th>재직/퇴직</th><th>파견기관</th>
+                        <th class="table-warning">근무일</th><th class="table-warning">요일</th>
+                        <th class="table-info">사원</th><th>영문명</th><th>사번</th>
+                        <th>사원구분</th><th>부서</th><th>급여형태</th><th>근무유형</th><th>일구분</th>
+                        <th>입사일</th><th>퇴직일</th><th>재직/퇴직</th><th>파견기관</th>
                         <th>시작익일</th><th>시작시간</th><th>종료시간</th>
                         <th class="table-success">근무일수</th><th class="table-success">기본근무시간</th>
                         <th class="table-success">연차지급일수</th><th class="table-success">연장근로시간</th>
                         <th class="table-success">야간근로시간</th><th class="table-success">휴일근로시간</th>
                         <th class="table-success">휴일연장근로시간</th><th class="table-success">외출조퇴시간</th>
+                        <th class="table-success">시간외수당</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for emp in employees %}
                     <tr>
-                        <td class="table-secondary fw-bold">{{ emp.name }}</td>
                         <td class="fw-bold">{{ emp.wk_date }}</td>
+                        <td>{{ emp.wk_dayname }}</td>
+                        <td class="fw-bold">{{ emp.name }}</td>
+                        <td></td>
                         <td class="fw-bold">{{ emp.emp_no }}</td>
-                        <td></td><td>{{ emp.dept }}</td><td></td><td></td>
-                        <td></td><td></td><td></td><td></td><td></td>
+                        <td></td><td>{{ emp.dept }}</td><td></td><td></td><td></td>
+                        <td></td><td></td><td></td><td></td>
                         <td></td><td></td><td></td>
                         <td>{{ days_in_month }}</td>
                         <td>209</td>
@@ -236,6 +239,7 @@
                         <td>{{ emp.calc_hw }}</td>
                         <td>{{ emp.calc_ho }}</td>
                         <td>{{ emp.etc_sum if emp.etc_sum else 0 }}</td>
+                        <td></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -407,33 +411,33 @@ function toggleErpPanel() {
 function copyErp(mode) {
     var tbl = document.getElementById('erp-table');
     if (!tbl) return;
-    // 컬럼 인덱스: 0이름(확인용) 1근무일 2사번 3사원구분 4부서 5급여형태 6근무유형 7일구분
-    //             8입사일 9퇴직일 10재직퇴직 11파견기관 12시작익일 13시작 14종료
-    //             15근무일수 16기본 17연차 18연장 19야간 20휴일 21휴일연장 22외출조퇴
+    // 컬럼 인덱스: 0근무일 1요일 2사원 3영문명 4사번 5사원구분 6부서 7급여형태 8근무유형 9일구분
+    //             10입사일 11퇴직일 12재직퇴직 13파견기관 14시작익일 15시작 16종료
+    //             17근무일수 18기본 19연차 20연장 21야간 22휴일 23휴일연장 24외출조퇴 25시간외수당
     var rows = tbl.querySelectorAll('tbody tr');
     var lines = [];
     rows.forEach(function(tr) {
         var c = tr.querySelectorAll('td');
         var vals;
         if (mode === 'num') {
-            // 근무일수(15)부터 끝까지
+            // 근무일수(17)부터 시간외수당(25)까지
             vals = [];
-            for (var i = 15; i <= 22; i++) vals.push((c[i].textContent || '').trim());
-        } else if (mode === 'empno') {
-            // 사번(2)만
+            for (var i = 17; i <= 25; i++) vals.push((c[i].textContent || '').trim());
+        } else if (mode === 'emp') {
+            // 사원(2)만
             vals = [(c[2].textContent || '').trim()];
-        } else if (mode === 'wkdate') {
-            // 근무일(1)만
-            vals = [(c[1].textContent || '').trim()];
+        } else if (mode === 'wkday') {
+            // 근무일(0)+요일(1)
+            vals = [(c[0].textContent || '').trim(), (c[1].textContent || '').trim()];
         } else {
             vals = [];
-            for (var j = 1; j <= 22; j++) vals.push((c[j].textContent || '').trim());
+            for (var j = 0; j <= 25; j++) vals.push((c[j].textContent || '').trim());
         }
         lines.push(vals.join('\t'));
     });
     var text = lines.join('\n');
     var msg = document.getElementById('erpCopyMsg');
-    var label = (mode === 'num') ? '근무일수 칸' : (mode === 'empno' ? '사번 칸' : (mode === 'wkdate' ? '근무일 칸' : '사번 칸'));
+    var label = (mode === 'num') ? '근무일수 칸' : (mode === 'emp' ? '사원 칸' : (mode === 'wkday' ? '근무일 칸' : '근무일 칸'));
     navigator.clipboard.writeText(text).then(function() {
         msg.textContent = '✅ ' + rows.length + '행 복사됨 — ERP ' + label + '에 붙여넣기';
         setTimeout(function(){ msg.textContent = ''; }, 6000);

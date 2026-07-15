@@ -5062,6 +5062,7 @@ def schedule_record():
         conn.close()
         # ERP 근무일: 해당월 마지막날 (다음달 입력 기준). 중도 퇴사자는 퇴사일.
         month_end = f"{year}-{mon:02d}-{dim:02d}"
+        _dow_kr = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
         def _erp_wk_date(emp_name):
             ret = roster_retire.get(emp_name, "")
             if ret:
@@ -5069,6 +5070,12 @@ def schedule_record():
                 if len(digits) == 8 and digits[:4] == str(year) and digits[4:6] == f"{mon:02d}":
                     return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
             return month_end
+        def _erp_wk_dayname(date_str):
+            try:
+                dt = datetime.strptime(date_str, "%Y-%m-%d")
+                return _dow_kr[dt.weekday()]
+            except Exception:
+                return ""
         # 수정 우선 병합
         merged = {}
         for name, wdate, bh, oh, nh, etc, src in raw:
@@ -5139,6 +5146,7 @@ def schedule_record():
                 "hol_night": int(hol_night), "hol_total": int(hol_basic + hol_ot_h + hol_night),
                 # ERP 근무내역등록 매핑용
                 "wk_date": _erp_wk_date(name),
+                "wk_dayname": _erp_wk_dayname(_erp_wk_date(name)),
                 "work_days": work_days,
                 "basic_total": int(basic_total),
                 "annual_days": ("%g" % annual_days) if annual_days else 0,
