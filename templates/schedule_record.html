@@ -193,16 +193,16 @@
         </div>
         <div class="card-body" id="erpPanel" style="display:none;">
             <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('wkday')">① 📋 근무일+요일 복사</button>
-                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('emp')">② 📋 사원만 복사</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('wkday')">① 📋 근무일 복사</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('emp')">② 📋 사원 복사</button>
                 <button type="button" class="btn btn-success btn-sm" onclick="copyErp('num')">③ 📋 근무일수~시간외수당 복사</button>
                 <span id="erpCopyMsg" class="small text-success fw-bold"></span>
             </div>
             <div class="small text-muted mb-2">
                 <b>순서대로 3번 붙여넣기</b> (근무일·사원 필수 입력 / 사원 입력하면 사번·부서 등 자동채움):<br>
-                • <b>①</b> 근무일+요일 → ERP <b>근무일</b> 칸 (월 마지막날, 중도퇴사자는 퇴사일)<br>
+                • <b>①</b> 근무일 → ERP <b>근무일</b> 칸 (월 마지막날·중도퇴사자는 퇴사일 / 요일 자동)<br>
                 • <b>②</b> 사원 → ERP <b>사원</b> 칸 → 영문명·사번·부서 등 자동 채워짐<br>
-                • <b>③</b> 숫자 → ERP <b>근무일수</b> 칸 (시간외수당까지)
+                • <b>③</b> 근무일수~시간외수당(흰색) → ERP <b>근무일수</b> 칸
             </div>
             <div style="overflow-x:auto;">
             <table class="table table-sm table-bordered mb-0" id="erp-table" style="font-size:0.75rem;white-space:nowrap;">
@@ -427,8 +427,8 @@ function copyErp(mode) {
             // 사원(2)만
             vals = [(c[2].textContent || '').trim()];
         } else if (mode === 'wkday') {
-            // 근무일(0)+요일(1)
-            vals = [(c[0].textContent || '').trim(), (c[1].textContent || '').trim()];
+            // 근무일(0)만 (요일은 ERP 자동)
+            vals = [(c[0].textContent || '').trim()];
         } else {
             vals = [];
             for (var j = 0; j <= 25; j++) vals.push((c[j].textContent || '').trim());
