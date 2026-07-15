@@ -208,6 +208,7 @@
             <table class="table table-sm table-bordered mb-0" id="erp-table" style="font-size:0.75rem;white-space:nowrap;">
                 <thead class="table-light">
                     <tr>
+                        <th class="table-secondary">사원<br><small>(확인용)</small></th>
                         <th class="table-warning">근무일</th>
                         <th>사번</th><th>사원구분</th><th>부서</th><th>급여형태</th><th>근무유형</th>
                         <th>일구분</th><th>입사일</th><th>퇴직일</th><th>재직/퇴직</th><th>파견기관</th>
@@ -221,6 +222,7 @@
                 <tbody>
                     {% for emp in employees %}
                     <tr>
+                        <td class="table-secondary fw-bold">{{ emp.name }}</td>
                         <td class="fw-bold">{{ emp.wk_date }}</td>
                         <td class="fw-bold">{{ emp.emp_no }}</td>
                         <td></td><td>{{ emp.dept }}</td><td></td><td></td>
@@ -405,27 +407,27 @@ function toggleErpPanel() {
 function copyErp(mode) {
     var tbl = document.getElementById('erp-table');
     if (!tbl) return;
-    // 컬럼 인덱스: 0근무일 1사번 2사원구분 3부서 4급여형태 5근무유형 6일구분 7입사일 8퇴직일
-    //             9재직퇴직 10파견기관 11시작익일 12시작 13종료
-    //             14근무일수 15기본 16연차 17연장 18야간 19휴일 20휴일연장 21외출조퇴
+    // 컬럼 인덱스: 0이름(확인용) 1근무일 2사번 3사원구분 4부서 5급여형태 6근무유형 7일구분
+    //             8입사일 9퇴직일 10재직퇴직 11파견기관 12시작익일 13시작 14종료
+    //             15근무일수 16기본 17연차 18연장 19야간 20휴일 21휴일연장 22외출조퇴
     var rows = tbl.querySelectorAll('tbody tr');
     var lines = [];
     rows.forEach(function(tr) {
         var c = tr.querySelectorAll('td');
         var vals;
         if (mode === 'num') {
-            // 근무일수(14)부터 끝까지
+            // 근무일수(15)부터 끝까지
             vals = [];
-            for (var i = 14; i <= 21; i++) vals.push((c[i].textContent || '').trim());
+            for (var i = 15; i <= 22; i++) vals.push((c[i].textContent || '').trim());
         } else if (mode === 'empno') {
-            // 사번(1)만
-            vals = [(c[1].textContent || '').trim()];
+            // 사번(2)만
+            vals = [(c[2].textContent || '').trim()];
         } else if (mode === 'wkdate') {
-            // 근무일(0)만
-            vals = [(c[0].textContent || '').trim()];
+            // 근무일(1)만
+            vals = [(c[1].textContent || '').trim()];
         } else {
             vals = [];
-            for (var j = 0; j <= 21; j++) vals.push((c[j].textContent || '').trim());
+            for (var j = 1; j <= 22; j++) vals.push((c[j].textContent || '').trim());
         }
         lines.push(vals.join('\t'));
     });
