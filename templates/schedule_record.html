@@ -185,6 +185,50 @@
         <div id="pageButtons"></div>
     </div>
 
+    <!-- ERP 붙여넣기용 (영림원 근무내역등록) -->
+    <div class="card mb-4">
+        <div class="card-header bg-success bg-opacity-10 d-flex justify-content-between align-items-center" style="cursor:pointer;border-radius:10px 10px 0 0;" onclick="toggleErpPanel()">
+            <span class="fw-bold text-success-emphasis">🔗 ERP 붙여넣기용 ({{ month_label }} · 사원당 1행)</span>
+            <span id="erpArrow" class="text-success">▼</span>
+        </div>
+        <div class="card-body" id="erpPanel" style="display:none;">
+            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                <button type="button" class="btn btn-success btn-sm" onclick="copyErpTable()">📋 전체 복사 (TSV)</button>
+                <span class="small text-muted">복사 후 영림원 근무내역등록 그리드의 <b>사번</b> 칸에 붙여넣기 (Ctrl+V). ERP가 사번으로 매칭합니다.</span>
+                <span id="erpCopyMsg" class="small text-success fw-bold"></span>
+            </div>
+            <div style="overflow-x:auto;">
+            <table class="table table-sm table-bordered mb-0" id="erp-table" style="font-size:0.8rem;white-space:nowrap;">
+                <thead class="table-light">
+                    <tr>
+                        <th>사번</th><th>이름</th><th>부서</th>
+                        <th>근무일수</th><th>기본근무시간</th><th>연차지급일수</th>
+                        <th>연장근로시간</th><th>야간근로시간</th><th>휴일근로시간</th>
+                        <th>휴일연장근로시간</th><th>외출조퇴시간</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in employees %}
+                    <tr>
+                        <td class="erp-empno">{{ emp.emp_no }}</td>
+                        <td>{{ emp.name }}</td>
+                        <td>{{ emp.dept }}</td>
+                        <td>{{ emp.work_days }}</td>
+                        <td>{{ emp.basic_total }}</td>
+                        <td>{{ emp.annual_days }}</td>
+                        <td>{{ emp.wd_ot }}</td>
+                        <td>{{ emp.night_work }}</td>
+                        <td>{{ emp.calc_hw }}</td>
+                        <td>{{ emp.calc_ho }}</td>
+                        <td>{{ emp.etc_sum if emp.etc_sum else 0 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+
     <div class="card mb-4">
         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="border-radius: 10px 10px 0 0;">
             <span class="fw-bold">📑 {{ month_label }} 근무표기록</span>
@@ -334,6 +378,45 @@ function toggleBulkPanel() {
     if (!body) return;
     if (body.style.display === 'none') { body.style.display = ''; icon.textContent = '▲'; }
     else { body.style.display = 'none'; icon.textContent = '▼'; }
+}
+
+// ── ERP 붙여넣기용 ──
+function toggleErpPanel() {
+    var body = document.getElementById('erpPanel');
+    var arrow = document.getElementById('erpArrow');
+    if (!body) return;
+    if (body.style.display === 'none') { body.style.display = ''; arrow.textContent = '▲'; }
+    else { body.style.display = 'none'; arrow.textContent = '▼'; }
+}
+
+function copyErpTable() {
+    var tbl = document.getElementById('erp-table');
+    if (!tbl) return;
+    // 사번(4열째 인덱스0)부터 시작: 사번 + 숫자 컬럼만, 이름/부서는 제외
+    // 열 순서: 사번, 근무일수, 기본근무시간, 연차지급일수, 연장, 야간, 휴일, 휴일연장, 외출조퇴
+    var rows = tbl.querySelectorAll('tbody tr');
+    var lines = [];
+    rows.forEach(function(tr) {
+        var c = tr.querySelectorAll('td');
+        // 인덱스: 0사번 1이름 2부서 3근무일수 4기본 5연차 6연장 7야간 8휴일 9휴일연장 10외출조퇴
+        var cells = [c[0], c[3], c[4], c[5], c[6], c[7], c[8], c[9], c[10]]
+            .map(function(td){ return (td.textContent || '').trim(); });
+        lines.push(cells.join('\t'));
+    });
+    var text = lines.join('\n');
+    navigator.clipboard.writeText(text).then(function() {
+        var msg = document.getElementById('erpCopyMsg');
+        msg.textContent = '✅ ' + rows.length + '행 복사됨 — ERP 사번 칸에 붙여넣기';
+        setTimeout(function(){ msg.textContent = ''; }, 5000);
+    }).catch(function() {
+        // 폴백: 선택
+        var range = document.createRange();
+        range.selectNode(tbl);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.execCommand('copy');
+        document.getElementById('erpCopyMsg').textContent = '✅ 복사됨';
+    });
 }
 
 function loadBulkEmps() {

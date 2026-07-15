@@ -5078,6 +5078,9 @@ def schedule_record():
             unpaid = 0
             hol_basic = hol_ot_h = hol_night = hol_time = 0
             etc_sum = 0.0   # 기타 행 숫자(조퇴/외출/공제) 합계 → "조퇴외출" 칸
+            work_days = 0     # 근무일수 (기본근무 있는 날)
+            basic_total = 0   # 기본근무시간 총합
+            annual_days = 0.0 # 연차일수 (기타에 '연차')
             for d in range(1, dim + 1):
                 rec = dd.get(d)
                 is_hol = day_info[d-1]["is_sat"] or day_info[d-1]["is_sun"] or day_info[d-1]["is_holiday"]
@@ -5087,6 +5090,8 @@ def schedule_record():
                     bv, ov, nv, ev = None, None, None, None
                 b_r.append(bv); o_r.append(ov); n_r.append(nv); e_r.append(ev)
                 bval = bv or 0; oval = ov or 0; nval = nv or 0
+                if bval > 0:
+                    work_days += 1; basic_total += bval
                 s_ot += oval; s_ni += nval; nw += nval
                 is_hol_strict = day_info[d-1]["is_sat"] or day_info[d-1]["is_sun"] or day_info[d-1]["is_holiday"]
                 if is_hol_strict:
@@ -5098,7 +5103,7 @@ def schedule_record():
                 if isinstance(ev, str) and "무급" in ev:
                     unpaid += 1; hol_time += 8
                 elif isinstance(ev, str) and "연차" in ev:
-                    pass
+                    annual_days += 0.5 if "반차" in ev else 1
                 elif ev is not None:
                     try:
                         fv = float(str(ev))
@@ -5116,6 +5121,10 @@ def schedule_record():
                 "etc_sum": ("%g" % etc_sum) if etc_sum else 0,
                 "hol_basic": int(hol_basic), "hol_ot_h": int(hol_ot_h),
                 "hol_night": int(hol_night), "hol_total": int(hol_basic + hol_ot_h + hol_night),
+                # ERP 근무내역등록 매핑용
+                "work_days": work_days,
+                "basic_total": int(basic_total),
+                "annual_days": ("%g" % annual_days) if annual_days else 0,
             })
     except Exception as ex:
         flash(f"오류: {ex}", "danger")
