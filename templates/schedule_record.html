@@ -437,13 +437,29 @@ function copyErp(mode) {
     });
     var text = lines.join('\n');
     var msg = document.getElementById('erpCopyMsg');
-    var label = (mode === 'num') ? '근무일수 칸' : (mode === 'emp' ? '사원 칸' : (mode === 'wkday' ? '근무일 칸' : '근무일 칸'));
-    navigator.clipboard.writeText(text).then(function() {
-        msg.textContent = '✅ ' + rows.length + '행 복사됨 — ERP ' + label + '에 붙여넣기';
-        setTimeout(function(){ msg.textContent = ''; }, 6000);
-    }).catch(function() {
-        msg.textContent = '⚠️ 복사 실패 — 표를 드래그해 직접 복사하세요';
-    });
+    var label = (mode === 'num') ? '근무일수 칸' : (mode === 'emp' ? '사원 칸' : '근무일 칸');
+    // textarea + execCommand: 창 전환/포커스 무관하게 항상 동작
+    var ok = false;
+    try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+    } catch (e) { ok = false; }
+    if (!ok && navigator.clipboard) {
+        try { navigator.clipboard.writeText(text); ok = true; } catch (e2) {}
+    }
+    msg.textContent = ok
+        ? ('✅ ' + rows.length + '행 복사됨 — ERP ' + label + '에 붙여넣기')
+        : '⚠️ 복사 실패 — 표를 드래그해 직접 복사하세요';
+    setTimeout(function(){ msg.textContent = ''; }, 6000);
 }
 
 function loadBulkEmps() {
