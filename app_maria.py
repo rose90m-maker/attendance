@@ -858,6 +858,17 @@ def _init_db():
                 `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+        # ERP 동기화 로그
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `erp_sync_log` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `synced_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                `inserted` INT NOT NULL DEFAULT 0,
+                `updated` INT NOT NULL DEFAULT 0,
+                `detail` TEXT,
+                INDEX `idx_synced_at` (`synced_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
         # 근무보고서 그룹
         cur.execute("""
             CREATE TABLE IF NOT EXISTS `wr_groups` (
@@ -6809,11 +6820,17 @@ def roster():
                    ORDER BY age DESC, name""")
     peak_list = [{"name":r[0],"dept":r[1],"position":r[2],"birth_date":r[3],
                   "age":r[4],"hire_date":r[5],"phone":r[6]} for r in cur.fetchall()]
+    # ERP 동기화 내역 (최근 10건)
+    cur.execute("""SELECT synced_at, inserted, updated, detail
+                   FROM erp_sync_log ORDER BY synced_at DESC LIMIT 10""")
+    sync_logs = [{"synced_at": r[0], "inserted": r[1], "updated": r[2], "detail": r[3]}
+                 for r in cur.fetchall()]
     conn.close()
     is_admin = session.get("role") == "admin"
     return render_template("roster.html", rows=rows, dept_list=dept_list, pos_list=pos_list,
                            search=search, sel_dept=sel_dept, sel_pos=sel_pos, is_admin=is_admin,
-                           birthday_list=birthday_list, peak_list=peak_list, cur_month=cur_month)
+                           birthday_list=birthday_list, peak_list=peak_list, cur_month=cur_month,
+                           sync_logs=sync_logs)
 
 
 @app.route("/upload_roster", methods=["POST"])

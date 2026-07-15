@@ -7,6 +7,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     tzdata \
+    freetds-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

@@ -54,8 +54,8 @@
 {% include '_sidebar.html' %}
 
 <div class="container-fluid px-3 mt-4">
-    <!-- 통계 카드 -->
-    <div class="row g-2 mb-3">
+    <!-- 통계 카드 + ERP 동기화 내역 -->
+    <div class="row g-2 mb-3 align-items-start">
         <div class="col-auto">
             <div class="stat-card">
                 <div class="num">{{ rows|length }}</div>
@@ -78,6 +78,47 @@
             <div class="stat-card">
                 <div class="num" style="color:#059669;">{{ dept_list|length }}</div>
                 <div class="label">부서</div>
+            </div>
+        </div>
+        <!-- ERP 동기화 내역 -->
+        <div class="col-auto ms-auto">
+            <div class="info-panel" style="min-width:320px; max-width:420px;">
+                <div class="panel-header" style="background:#f0fdf4; border-bottom:1px solid #d1fae5;">
+                    <span>🔄</span> ERP 동기화 내역
+                </div>
+                <div class="panel-body">
+                    {% if sync_logs %}
+                    <table class="table table-sm table-hover mb-0">
+                        <thead><tr>
+                            <th>동기화 시각</th>
+                            <th>추가</th>
+                            <th>갱신</th>
+                            <th>내용</th>
+                        </tr></thead>
+                        <tbody>
+                        {% for s in sync_logs %}
+                        <tr>
+                            <td>{{ s.synced_at.strftime('%m/%d %H:%M') if s.synced_at else '' }}</td>
+                            <td>
+                                {% if s.inserted > 0 %}
+                                <span class="badge bg-success">+{{ s.inserted }}</span>
+                                {% else %}-{% endif %}
+                            </td>
+                            <td>
+                                {% if s.updated > 0 %}
+                                <span class="badge bg-warning text-dark">{{ s.updated }}</span>
+                                {% else %}-{% endif %}
+                            </td>
+                            <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                                title="{{ s.detail }}">{{ s.detail }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="text-center text-muted py-3" style="font-size:0.82rem;">동기화 내역 없음<br><small>매일 17:30 자동 실행</small></div>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
