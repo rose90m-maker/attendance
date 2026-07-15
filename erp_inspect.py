@@ -15,20 +15,25 @@ c = pymssql.connect(
 )
 cur = c.cursor()
 
+_out = open('/app/erp_inspect_result.txt', 'w', encoding='utf-8')
+def p(s=''):
+    print(s)
+    _out.write(str(s) + '\n')
+
 def q(sql, label=''):
-    print(f'\n{"="*55}\n{label}\n{"-"*55}')
+    p(f'\n{"="*55}\n{label}\n{"-"*55}')
     try:
         cur.execute(sql)
         cols = [d[0] for d in cur.description] if cur.description else []
         rows = cur.fetchall()
         if cols:
-            print(' | '.join(cols))
+            p(' | '.join(cols))
         for r in rows:
-            print(r)
+            p(r)
         if not rows:
-            print('(결과 없음)')
+            p('(결과 없음)')
     except Exception as e:
-        print(f'오류: {e}')
+        p(f'오류: {e}')
 
 # 1) 복호화 관련 함수/프로시저 존재 여부
 q("""SELECT TOP 30 name, type_desc FROM sys.objects
@@ -56,12 +61,16 @@ q("""SELECT TOP 10 e.Empid, e.EmpName, ct.ContactNumber, ct.Tel2, ct.FAX, ct.Ema
      WHERE e.IsInner='1' AND e.RetireDate>='99991231'""",
   "4) _TDAContact 재직자 연락처 샘플")
 
-# 5) _TCOMAddress 실제 데이터 샘플 (주소 형태 확인)
-q("""SELECT TOP 5 * FROM _TCOMAddress WHERE Address1 IS NOT NULL""",
-  "5) _TCOMAddress 샘플")
+# 5) _TCOMAddress 컬럼 구조 + 샘플
+q("""SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_NAME='_TCOMAddress' ORDER BY ORDINAL_POSITION""",
+  "5a) _TCOMAddress 컬럼")
+q("""SELECT TOP 3 * FROM _TCOMAddress""", "5b) _TCOMAddress 샘플")
 
 # 6) 사용자 정의 필드 (_TDAEmpUserDefine) — 회사가 커스텀 저장했을 수 있음
 q("""SELECT TOP 5 * FROM _TDAEmpUserDefine""",
   "6) _TDAEmpUserDefine 샘플")
 
+_out.close()
 c.close()
+print('\n\n>>> 결과 저장: /app/erp_inspect_result.txt')
