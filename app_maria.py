@@ -5193,7 +5193,7 @@ def schedule_record():
         wbx.save(buf)
         buf.seek(0)
         return send_file(buf, as_attachment=True,
-                         download_name=f"ERP근무내역_{year}{mon:02d}.xlsx",
+                         download_name=f"ERP_worktime_{year}{mon:02d}.xlsx",
                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     return render_template("schedule_record.html",
