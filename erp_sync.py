@@ -64,9 +64,11 @@ def run():
     # IsInner='1'만으로는 과거 퇴직자가 포함되므로 RetireDate로 2차 필터
     cur.execute("""
         SELECT e.Empid, e.EmpName, d.DeptName, e.EntDate, e.RetireDate,
-               e.EmpEngFirstName, e.EmpEngLastName
+               e.EmpEngFirstName, e.EmpEngLastName,
+               ei.BirthDate, ei.IsWoman, ei.Email, ei.Extension
         FROM _TDAEmp e
         LEFT JOIN _TDADept d ON e.DeptSeq = d.DeptSeq
+        LEFT JOIN _TDAEmpIn ei ON e.EmpSeq = ei.EmpSeq AND ei.CompanySeq = 1
         WHERE e.IsInner = '1' AND e.RetireDate >= '99991231'
     """)
     erp_data = {}
@@ -79,11 +81,19 @@ def run():
             first = (r[5] or '').strip()
             last  = (r[6] or '').strip()
             name_en = f'{last} {first}'.strip() if (first or last) else ''
+            birth = str(r[7] or '').strip()
+            if len(birth) == 8:
+                birth = f'{birth[:4]}-{birth[4:6]}-{birth[6:]}'
+            gender = '여자' if str(r[8] or '0') == '1' else '남자'
             erp_data[no] = {
                 'name': r[1] or '',
                 'dept': r[2] or '',
                 'hire_date': hire,
                 'name_en': name_en,
+                'birth_date': birth,
+                'gender': gender,
+                'email': str(r[9] or '').strip(),
+                'internal_phone': str(r[10] or '').strip(),
             }
     ec.close()
     log.info('ERP 재직자: %d명', len(erp_data))
@@ -91,11 +101,15 @@ def run():
     # attendance 명부 조회
     ac = att_conn()
     cur2 = ac.cursor()
-    cur2.execute("SELECT emp_no, name, dept, hire_date, name_en FROM employee_roster")
+    cur2.execute("SELECT emp_no, name, dept, hire_date, name_en, birth_date, gender, email, internal_phone FROM employee_roster")
     att_data = {}
     for r in cur2.fetchall():
         no = (r[0] or '').strip()
-        att_data[no] = {'name': r[1] or '', 'dept': r[2] or '', 'hire_date': str(r[3] or ''), 'name_en': r[4] or ''}
+        att_data[no] = {
+            'name': r[1] or '', 'dept': r[2] or '', 'hire_date': str(r[3] or ''),
+            'name_en': r[4] or '', 'birth_date': str(r[5] or ''), 'gender': r[6] or '',
+            'email': r[7] or '', 'internal_phone': r[8] or '',
+        }
     log.info('attendance 명부: %d명', len(att_data))
 
     erp_nos = set(erp_data)
@@ -107,9 +121,12 @@ def run():
     for no in erp_nos - att_nos:
         d = erp_data[no]
         cur2.execute("""
-            INSERT INTO employee_roster (emp_no, name, dept, hire_date, work_status, name_en)
-            VALUES (%s, %s, %s, %s, '재직', %s)
-        """, (no, d['name'], d['dept'], d['hire_date'] or None, d['name_en'] or ''))
+            INSERT INTO employee_roster
+                (emp_no, name, dept, hire_date, work_status, name_en, birth_date, gender, email, internal_phone)
+            VALUES (%s, %s, %s, %s, '재직', %s, %s, %s, %s, %s)
+        """, (no, d['name'], d['dept'], d['hire_date'] or None,
+              d['name_en'] or '', d['birth_date'] or None,
+              d['gender'] or '', d['email'] or '', d['internal_phone'] or ''))
         inserted.append(f"{no} {d['name']} ({d['dept']})")
 
     # 정보 갱신 (이름 또는 부서 변경)
@@ -122,6 +139,14 @@ def run():
             changes['dept'] = e['dept']
         if e['name_en'] and e['name_en'] != a.get('name_en', ''):
             changes['name_en'] = e['name_en']
+        if e['birth_date'] and e['birth_date'] != a.get('birth_date', ''):
+            changes['birth_date'] = e['birth_date']
+        if e['gender'] and not a.get('gender'):
+            changes['gender'] = e['gender']
+        if e['email'] and not a.get('email'):
+            changes['email'] = e['email']
+        if e['internal_phone'] and not a.get('internal_phone'):
+            changes['internal_phone'] = e['internal_phone']
         if changes:
             sets = ', '.join(f"{k}=%s" for k in changes)
             cur2.execute(
