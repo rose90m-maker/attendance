@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ERP HR 뷰에서 복호화된 전화/주소 탐색 (1회용)"""
+"""ERP HR 뷰 전화/주소 복호화 값 확정 조회 (1회용)"""
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -15,47 +15,37 @@ c = pymssql.connect(
 )
 cur = c.cursor()
 
-_out = open('/app/erp_inspect_result.txt', 'w', encoding='utf-8')
-def p(s=''):
-    print(s); _out.write(str(s) + '\n')
-
-def cols_of(tbl):
-    cur.execute(f"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='{tbl}' ORDER BY ORDINAL_POSITION")
-    return [r[0] for r in cur.fetchall()]
-
 def q(sql, label=''):
-    p(f'\n{"="*55}\n{label}\n{"-"*55}')
+    print(f'\n{"="*55}\n{label}\n{"-"*55}')
     try:
         cur.execute(sql)
         cols = [d[0] for d in cur.description] if cur.description else []
         rows = cur.fetchall()
-        if cols: p(' | '.join(cols))
-        for r in rows: p(r)
-        if not rows: p('(결과 없음)')
+        if cols: print(' | '.join(cols))
+        for r in rows: print(r)
+        if not rows: print('(결과 없음)')
     except Exception as e:
-        p(f'오류: {e}')
+        print(f'오류: {e}')
 
-# 후보 HR 뷰들 — 컬럼 구조부터 파악
-hr_views = ['_VXAPIHREmpInfo', '_VXHREmpAddr', '_VWHREmpAddress',
-            '_VWHREmpInfoAddr', '_VWHREmpCodeInfo', '_VWHROrgEmpQueryGw',
-            '_VWHREmpInfo', '_VXHREmpOut']
+# 1) _VWHREmpCodeInfo — 재직자 중 전화/주소 채워진 사람 (핵심!)
+q("""SELECT TOP 10 EmpID, EmpName, Cellphone, Phone, Extension, AddrZip, Addr
+     FROM _VWHREmpCodeInfo
+     WHERE RetireDate >= '99991231'
+       AND (Cellphone <> '' OR Addr <> '')""",
+  "1) _VWHREmpCodeInfo 재직자 전화/주소 (값 있는 것만)")
 
-for v in hr_views:
-    cols = cols_of(v)
-    if cols:
-        p(f'\n{"#"*55}\n[뷰] {v}\n컬럼: {", ".join(cols)}')
-        # 전화/주소 관련 컬럼이 있으면 샘플 조회
-        interesting = [c2 for c2 in cols if any(k in c2.lower() for k in
-                       ['phone','cell','tel','mobile','addr','emp','name','id','zip'])]
-        if interesting:
-            sel = ', '.join(interesting[:12])
-            q(f"SELECT TOP 3 {sel} FROM {v}", f"  ↳ {v} 샘플")
-    else:
-        p(f'\n[뷰] {v} — 존재하지 않음')
+# 2) 전체 재직자 중 전화 있는 사람 수 / 주소 있는 사람 수
+q("""SELECT
+        SUM(CASE WHEN Cellphone <> '' THEN 1 ELSE 0 END) AS 휴대폰있음,
+        SUM(CASE WHEN Phone <> '' THEN 1 ELSE 0 END) AS 일반전화있음,
+        SUM(CASE WHEN Addr <> '' THEN 1 ELSE 0 END) AS 주소있음,
+        COUNT(*) AS 총재직자
+     FROM _VWHREmpCodeInfo WHERE RetireDate >= '99991231'""",
+  "2) 재직자 전화/주소 보유 통계")
 
-# _TDAEmpUserDefine 의 Serl 종류 (차량번호 외 다른 커스텀 필드?)
-q("""SELECT DISTINCT Serl FROM _TDAEmpUserDefine ORDER BY Serl""",
-  "_TDAEmpUserDefine Serl 종류")
+# 3) _VXHREmpAddr — 주소 타입별 (도로명 500052002 우선)
+q("""SELECT TOP 5 EmpSeq, ZipCode, Addr, SMAddressTypeSeq
+     FROM _VXHREmpAddr WHERE Addr <> '' AND SMAddressTypeSeq = 500052002""",
+  "3) _VXHREmpAddr 도로명주소 샘플")
 
-_out.close(); c.close()
-p('\n>>> 저장: /app/erp_inspect_result.txt')
+c.close()

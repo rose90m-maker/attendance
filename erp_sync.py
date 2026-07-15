@@ -94,21 +94,38 @@ def run():
                 'gender': gender,
                 'email': str(r[9] or '').strip(),
                 'internal_phone': str(r[10] or '').strip(),
+                'address': '',
             }
+
+    # 집주소 조회 (도로명주소 500052002, 복호화 뷰 _VXHREmpAddr)
+    # ZipCode 뒤 공백 제거, Addr 뒤 공백 제거
+    cur.execute("""
+        SELECT e.Empid, a.ZipCode, a.Addr
+        FROM _TDAEmp e
+        JOIN _VXHREmpAddr a ON e.EmpSeq = a.EmpSeq
+        WHERE e.IsInner = '1' AND e.RetireDate >= '99991231'
+          AND a.SMAddressTypeSeq = 500052002 AND a.Addr <> ''
+    """)
+    for r in cur.fetchall():
+        no = (r[0] or '').strip()
+        if no in erp_data:
+            zipc = (r[1] or '').strip()
+            addr = (r[2] or '').strip()
+            erp_data[no]['address'] = (f'({zipc}) {addr}' if zipc else addr).strip()
     ec.close()
     log.info('ERP 재직자: %d명', len(erp_data))
 
     # attendance 명부 조회
     ac = att_conn()
     cur2 = ac.cursor()
-    cur2.execute("SELECT emp_no, name, dept, hire_date, name_en, birth_date, gender, email, internal_phone FROM employee_roster")
+    cur2.execute("SELECT emp_no, name, dept, hire_date, name_en, birth_date, gender, email, internal_phone, address FROM employee_roster")
     att_data = {}
     for r in cur2.fetchall():
         no = (r[0] or '').strip()
         att_data[no] = {
             'name': r[1] or '', 'dept': r[2] or '', 'hire_date': str(r[3] or ''),
             'name_en': r[4] or '', 'birth_date': str(r[5] or ''), 'gender': r[6] or '',
-            'email': r[7] or '', 'internal_phone': r[8] or '',
+            'email': r[7] or '', 'internal_phone': r[8] or '', 'address': r[9] or '',
         }
     log.info('attendance 명부: %d명', len(att_data))
 
@@ -122,11 +139,12 @@ def run():
         d = erp_data[no]
         cur2.execute("""
             INSERT INTO employee_roster
-                (emp_no, name, dept, hire_date, work_status, name_en, birth_date, gender, email, internal_phone)
-            VALUES (%s, %s, %s, %s, '재직', %s, %s, %s, %s, %s)
+                (emp_no, name, dept, hire_date, work_status, name_en, birth_date, gender, email, internal_phone, address)
+            VALUES (%s, %s, %s, %s, '재직', %s, %s, %s, %s, %s, %s)
         """, (no, d['name'], d['dept'], d['hire_date'] or None,
               d['name_en'] or '', d['birth_date'] or None,
-              d['gender'] or '', d['email'] or '', d['internal_phone'] or ''))
+              d['gender'] or '', d['email'] or '', d['internal_phone'] or '',
+              d['address'] or ''))
         inserted.append(f"{no} {d['name']} ({d['dept']})")
 
     # 정보 갱신 (이름 또는 부서 변경)
@@ -147,6 +165,9 @@ def run():
             changes['email'] = e['email']
         if e['internal_phone'] and not a.get('internal_phone'):
             changes['internal_phone'] = e['internal_phone']
+        # 집주소는 명부에 비어있을 때만 채움 (기존값 보존)
+        if e['address'] and not a.get('address'):
+            changes['address'] = e['address']
         if changes:
             sets = ', '.join(f"{k}=%s" for k in changes)
             cur2.execute(
