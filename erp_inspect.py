@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ERP 전화번호/주소 소스 심층 조사 (1회용)"""
+"""ERP HR 뷰에서 복호화된 전화/주소 탐색 (1회용)"""
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -17,8 +17,11 @@ cur = c.cursor()
 
 _out = open('/app/erp_inspect_result.txt', 'w', encoding='utf-8')
 def p(s=''):
-    print(s)
-    _out.write(str(s) + '\n')
+    print(s); _out.write(str(s) + '\n')
+
+def cols_of(tbl):
+    cur.execute(f"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='{tbl}' ORDER BY ORDINAL_POSITION")
+    return [r[0] for r in cur.fetchall()]
 
 def q(sql, label=''):
     p(f'\n{"="*55}\n{label}\n{"-"*55}')
@@ -26,51 +29,33 @@ def q(sql, label=''):
         cur.execute(sql)
         cols = [d[0] for d in cur.description] if cur.description else []
         rows = cur.fetchall()
-        if cols:
-            p(' | '.join(cols))
-        for r in rows:
-            p(r)
-        if not rows:
-            p('(결과 없음)')
+        if cols: p(' | '.join(cols))
+        for r in rows: p(r)
+        if not rows: p('(결과 없음)')
     except Exception as e:
         p(f'오류: {e}')
 
-# 1) 복호화 관련 함수/프로시저 존재 여부
-q("""SELECT TOP 30 name, type_desc FROM sys.objects
-     WHERE type IN ('FN','IF','TF','P')
-       AND (name LIKE '%Decrypt%' OR name LIKE '%복호%' OR name LIKE '%Dec%'
-            OR name LIKE '%Crypt%' OR name LIKE '%Phone%' OR name LIKE '%Cell%')
-     ORDER BY name""", "1) 복호화/전화 관련 함수·프로시저")
+# 후보 HR 뷰들 — 컬럼 구조부터 파악
+hr_views = ['_VXAPIHREmpInfo', '_VXHREmpAddr', '_VWHREmpAddress',
+            '_VWHREmpInfoAddr', '_VWHREmpCodeInfo', '_VWHROrgEmpQueryGw',
+            '_VWHREmpInfo', '_VXHREmpOut']
 
-# 2) 전화번호가 들어있을 법한 모든 컬럼 (전 테이블)
-q("""SELECT TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-     WHERE COLUMN_NAME LIKE '%Phone%' OR COLUMN_NAME LIKE '%Cell%'
-        OR COLUMN_NAME LIKE '%Tel%' OR COLUMN_NAME LIKE '%Mobile%'
-        OR COLUMN_NAME LIKE '%HP%'
-     ORDER BY TABLE_NAME""", "2) 전화번호 후보 컬럼 (전 테이블)")
+for v in hr_views:
+    cols = cols_of(v)
+    if cols:
+        p(f'\n{"#"*55}\n[뷰] {v}\n컬럼: {", ".join(cols)}')
+        # 전화/주소 관련 컬럼이 있으면 샘플 조회
+        interesting = [c2 for c2 in cols if any(k in c2.lower() for k in
+                       ['phone','cell','tel','mobile','addr','emp','name','id','zip'])]
+        if interesting:
+            sel = ', '.join(interesting[:12])
+            q(f"SELECT TOP 3 {sel} FROM {v}", f"  ↳ {v} 샘플")
+    else:
+        p(f'\n[뷰] {v} — 존재하지 않음')
 
-# 3) 주소 후보 컬럼
-q("""SELECT TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-     WHERE COLUMN_NAME LIKE '%Addr%' OR COLUMN_NAME LIKE '%주소%'
-        OR COLUMN_NAME LIKE '%Zip%' OR COLUMN_NAME LIKE '%Post%'
-     ORDER BY TABLE_NAME""", "3) 주소 후보 컬럼 (전 테이블)")
+# _TDAEmpUserDefine 의 Serl 종류 (차량번호 외 다른 커스텀 필드?)
+q("""SELECT DISTINCT Serl FROM _TDAEmpUserDefine ORDER BY Serl""",
+  "_TDAEmpUserDefine Serl 종류")
 
-# 4) _TDAContact 에 재직자 전화번호 실제로 있는지 (평문?)
-q("""SELECT TOP 10 e.Empid, e.EmpName, ct.ContactNumber, ct.Tel2, ct.FAX, ct.Email
-     FROM _TDAEmp e JOIN _TDAContact ct ON e.ContactSeq = ct.ContactSeq
-     WHERE e.IsInner='1' AND e.RetireDate>='99991231'""",
-  "4) _TDAContact 재직자 연락처 샘플")
-
-# 5) _TCOMAddress 컬럼 구조 + 샘플
-q("""SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-     WHERE TABLE_NAME='_TCOMAddress' ORDER BY ORDINAL_POSITION""",
-  "5a) _TCOMAddress 컬럼")
-q("""SELECT TOP 3 * FROM _TCOMAddress""", "5b) _TCOMAddress 샘플")
-
-# 6) 사용자 정의 필드 (_TDAEmpUserDefine) — 회사가 커스텀 저장했을 수 있음
-q("""SELECT TOP 5 * FROM _TDAEmpUserDefine""",
-  "6) _TDAEmpUserDefine 샘플")
-
-_out.close()
-c.close()
-print('\n\n>>> 결과 저장: /app/erp_inspect_result.txt')
+_out.close(); c.close()
+p('\n>>> 저장: /app/erp_inspect_result.txt')
