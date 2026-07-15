@@ -4996,8 +4996,9 @@ def save_override():
 
 
 @app.route("/schedule_record")
+@app.route("/schedule_record/<fname>")  # URL 끝 파일명 → 다운로드 저장명 (프록시가 헤더 제거해도 유지)
 @_login_required
-def schedule_record():
+def schedule_record(fname=None):
     is_admin = session.get("role") == "admin"
     can_edit = is_admin or _has_perm("schedule")
     if not can_edit:

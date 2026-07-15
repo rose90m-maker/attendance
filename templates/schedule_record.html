@@ -196,7 +196,7 @@
                 <button type="button" class="btn btn-success btn-sm" onclick="copyErp('wkday')">① 📋 근무일 복사</button>
                 <button type="button" class="btn btn-success btn-sm" onclick="copyErp('emp')">② 📋 사원 복사</button>
                 <button type="button" class="btn btn-success btn-sm" onclick="copyErp('num')">③ 📋 근무일수~시간외수당 복사</button>
-                <a href="/schedule_record?month={{ sel_month }}{% if search %}&search={{ search }}{% endif %}{% if dept_search %}&dept={{ dept_search }}{% endif %}&export=erp_xlsx" download="ERP_worktime_{{ sel_month }}.xlsx" class="btn btn-primary btn-sm">⬇️ 엑셀 다운로드</a>
+                <a href="/schedule_record/ERP_worktime_{{ sel_month }}.xlsx?month={{ sel_month }}{% if search %}&search={{ search }}{% endif %}{% if dept_search %}&dept={{ dept_search }}{% endif %}&export=erp_xlsx" class="btn btn-primary btn-sm">⬇️ 엑셀 다운로드</a>
                 <span id="erpCopyMsg" class="small text-success fw-bold"></span>
             </div>
             <div class="small text-primary mb-1">💡 <b>엑셀 다운로드</b> → 엑셀에서 열어 필요한 열 복사 → ERP에 붙여넣기 (가장 확실)</div>
