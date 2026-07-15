@@ -198,6 +198,7 @@
                 <button type="button" class="btn btn-success btn-sm" onclick="copyErp('num')">③ 📋 근무일수~시간외수당 복사</button>
                 <span id="erpCopyMsg" class="small text-success fw-bold"></span>
             </div>
+            <textarea id="erpClip" readonly style="width:100%; height:70px; font-size:11px; font-family:monospace; margin-bottom:8px; white-space:pre;" placeholder="복사 버튼을 누르면 여기에 복사 내용이 표시됩니다. (버튼이 안 되면 이 칸을 클릭 → Ctrl+A → Ctrl+C)"></textarea>
             <div class="small text-muted mb-2">
                 <b>순서대로 3번 붙여넣기</b> (근무일·사원 필수 입력 / 사원 입력하면 사번·부서 등 자동채움):<br>
                 • <b>①</b> 근무일 → ERP <b>근무일</b> 칸 (월 마지막날·중도퇴사자는 퇴사일 / 요일 자동)<br>
@@ -439,28 +440,19 @@ function copyErp(mode) {
     var text = lines.join('\r\n');
     var msg = document.getElementById('erpCopyMsg');
     var label = (mode === 'num') ? '근무일수 칸' : (mode === 'emp' ? '사원 칸' : '근무일 칸');
-    // textarea + execCommand: 창 전환/포커스 무관하게 항상 동작
+    // 보이는 textarea에 내용 표시 + 선택 + 복사 (몇 행인지 눈으로 확인 가능)
+    var ta = document.getElementById('erpClip');
+    ta.value = text;
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
     var ok = false;
-    try {
-        var ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        ta.style.top = '0';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        ta.setSelectionRange(0, text.length);
-        ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-    } catch (e) { ok = false; }
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
     if (!ok && navigator.clipboard) {
         try { navigator.clipboard.writeText(text); ok = true; } catch (e2) {}
     }
-    msg.textContent = ok
-        ? ('✅ ' + rows.length + '행 복사됨 — ERP ' + label + '에 붙여넣기')
-        : '⚠️ 복사 실패 — 표를 드래그해 직접 복사하세요';
-    setTimeout(function(){ msg.textContent = ''; }, 6000);
+    msg.textContent = (ok ? '✅ ' : '⚠️ 아래 칸 Ctrl+A→Ctrl+C · ')
+        + rows.length + '행 (' + label + ')';
 }
 
 function loadBulkEmps() {
