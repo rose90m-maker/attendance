@@ -193,26 +193,34 @@
         </div>
         <div class="card-body" id="erpPanel" style="display:none;">
             <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-                <button type="button" class="btn btn-success btn-sm" onclick="copyErpTable()">📋 전체 복사 (TSV)</button>
-                <span class="small text-muted">복사 후 영림원 근무내역등록 그리드의 <b>사번</b> 칸에 붙여넣기 (Ctrl+V). ERP가 사번으로 매칭합니다.</span>
+                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('full')">📋 사번부터 전체 복사</button>
+                <button type="button" class="btn btn-outline-success btn-sm" onclick="copyErp('num')">📋 근무일수부터 숫자만 복사</button>
                 <span id="erpCopyMsg" class="small text-success fw-bold"></span>
             </div>
+            <div class="small text-muted mb-2">
+                • <b>사번부터 전체</b>: ERP 그리드의 <b>사번</b> 칸에 붙여넣기 (중간 컬럼은 빈칸 유지 → 정렬용)<br>
+                • <b>근무일수부터 숫자만</b>: ERP 그리드의 <b>근무일수</b> 칸에 붙여넣기 (행 순서가 ERP와 같아야 함)
+            </div>
             <div style="overflow-x:auto;">
-            <table class="table table-sm table-bordered mb-0" id="erp-table" style="font-size:0.8rem;white-space:nowrap;">
+            <table class="table table-sm table-bordered mb-0" id="erp-table" style="font-size:0.75rem;white-space:nowrap;">
                 <thead class="table-light">
                     <tr>
-                        <th>사번</th><th>이름</th><th>부서</th>
-                        <th>근무일수</th><th>기본근무시간</th><th>연차지급일수</th>
-                        <th>연장근로시간</th><th>야간근로시간</th><th>휴일근로시간</th>
-                        <th>휴일연장근로시간</th><th>외출조퇴시간</th>
+                        <th>사번</th><th>사원구분</th><th>부서</th><th>급여형태</th><th>근무유형</th>
+                        <th>일구분</th><th>입사일</th><th>퇴직일</th><th>재직/퇴직</th><th>파견기관</th>
+                        <th>시작익일</th><th>시작시간</th><th>종료시간</th>
+                        <th class="table-success">근무일수</th><th class="table-success">기본근무시간</th>
+                        <th class="table-success">연차지급일수</th><th class="table-success">연장근로시간</th>
+                        <th class="table-success">야간근로시간</th><th class="table-success">휴일근로시간</th>
+                        <th class="table-success">휴일연장근로시간</th><th class="table-success">외출조퇴시간</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for emp in employees %}
                     <tr>
-                        <td class="erp-empno">{{ emp.emp_no }}</td>
-                        <td>{{ emp.name }}</td>
-                        <td>{{ emp.dept }}</td>
+                        <td class="fw-bold">{{ emp.emp_no }}</td>
+                        <td></td><td>{{ emp.dept }}</td><td></td><td></td>
+                        <td></td><td></td><td></td><td></td><td></td>
+                        <td></td><td></td><td></td>
                         <td>{{ emp.work_days }}</td>
                         <td>{{ emp.basic_total }}</td>
                         <td>{{ emp.annual_days }}</td>
@@ -389,33 +397,36 @@ function toggleErpPanel() {
     else { body.style.display = 'none'; arrow.textContent = '▼'; }
 }
 
-function copyErpTable() {
+function copyErp(mode) {
     var tbl = document.getElementById('erp-table');
     if (!tbl) return;
-    // 사번(4열째 인덱스0)부터 시작: 사번 + 숫자 컬럼만, 이름/부서는 제외
-    // 열 순서: 사번, 근무일수, 기본근무시간, 연차지급일수, 연장, 야간, 휴일, 휴일연장, 외출조퇴
+    // 컬럼 인덱스: 0사번 1사원구분 2부서 3급여형태 4근무유형 5일구분 6입사일 7퇴직일
+    //             8재직퇴직 9파견기관 10시작익일 11시작 12종료
+    //             13근무일수 14기본 15연차 16연장 17야간 18휴일 19휴일연장 20외출조퇴
     var rows = tbl.querySelectorAll('tbody tr');
     var lines = [];
     rows.forEach(function(tr) {
         var c = tr.querySelectorAll('td');
-        // 인덱스: 0사번 1이름 2부서 3근무일수 4기본 5연차 6연장 7야간 8휴일 9휴일연장 10외출조퇴
-        var cells = [c[0], c[3], c[4], c[5], c[6], c[7], c[8], c[9], c[10]]
-            .map(function(td){ return (td.textContent || '').trim(); });
-        lines.push(cells.join('\t'));
+        var vals;
+        if (mode === 'num') {
+            // 근무일수(13)부터 끝까지
+            vals = [];
+            for (var i = 13; i <= 20; i++) vals.push((c[i].textContent || '').trim());
+        } else {
+            // 사번(0)부터 전체 (중간 빈칸 포함)
+            vals = [];
+            for (var j = 0; j <= 20; j++) vals.push((c[j].textContent || '').trim());
+        }
+        lines.push(vals.join('\t'));
     });
     var text = lines.join('\n');
+    var msg = document.getElementById('erpCopyMsg');
+    var label = (mode === 'num') ? '근무일수 칸' : '사번 칸';
     navigator.clipboard.writeText(text).then(function() {
-        var msg = document.getElementById('erpCopyMsg');
-        msg.textContent = '✅ ' + rows.length + '행 복사됨 — ERP 사번 칸에 붙여넣기';
-        setTimeout(function(){ msg.textContent = ''; }, 5000);
+        msg.textContent = '✅ ' + rows.length + '행 복사됨 — ERP ' + label + '에 붙여넣기';
+        setTimeout(function(){ msg.textContent = ''; }, 6000);
     }).catch(function() {
-        // 폴백: 선택
-        var range = document.createRange();
-        range.selectNode(tbl);
-        window.getSelection().removeAllRanges();
-        window.getSelection().addRange(range);
-        document.execCommand('copy');
-        document.getElementById('erpCopyMsg').textContent = '✅ 복사됨';
+        msg.textContent = '⚠️ 복사 실패 — 표를 드래그해 직접 복사하세요';
     });
 }
 
