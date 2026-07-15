@@ -5052,7 +5052,23 @@ def schedule_record():
             n = (rname or "").strip()
             if n in tuser_map:
                 tuser_map[n]["dept"] = rdept
+        # 퇴사일 조회 (중도 퇴사자 근무일 = 퇴사일)
+        roster_retire = {}
+        cur.execute("SELECT name, retire_date FROM employee_roster")
+        for rname, rret in cur.fetchall():
+            n = (rname or "").strip()
+            if n:
+                roster_retire[n] = str(rret or "").strip()
         conn.close()
+        # ERP 근무일: 해당월 마지막날 (다음달 입력 기준). 중도 퇴사자는 퇴사일.
+        month_end = f"{year}-{mon:02d}-{dim:02d}"
+        def _erp_wk_date(emp_name):
+            ret = roster_retire.get(emp_name, "")
+            if ret:
+                digits = ret.replace("-", "").replace("/", "")[:8]
+                if len(digits) == 8 and digits[:4] == str(year) and digits[4:6] == f"{mon:02d}":
+                    return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+            return month_end
         # 수정 우선 병합
         merged = {}
         for name, wdate, bh, oh, nh, etc, src in raw:
@@ -5122,6 +5138,7 @@ def schedule_record():
                 "hol_basic": int(hol_basic), "hol_ot_h": int(hol_ot_h),
                 "hol_night": int(hol_night), "hol_total": int(hol_basic + hol_ot_h + hol_night),
                 # ERP 근무내역등록 매핑용
+                "wk_date": _erp_wk_date(name),
                 "work_days": work_days,
                 "basic_total": int(basic_total),
                 "annual_days": ("%g" % annual_days) if annual_days else 0,
