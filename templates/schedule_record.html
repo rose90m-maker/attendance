@@ -193,13 +193,14 @@
         </div>
         <div class="card-body" id="erpPanel" style="display:none;">
             <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('full')">📋 사번부터 전체 복사</button>
-                <button type="button" class="btn btn-outline-success btn-sm" onclick="copyErp('num')">📋 근무일수부터 숫자만 복사</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('empno')">① 📋 사번만 복사</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="copyErp('num')">② 📋 근무일수~외출조퇴 복사</button>
                 <span id="erpCopyMsg" class="small text-success fw-bold"></span>
             </div>
             <div class="small text-muted mb-2">
-                • <b>사번부터 전체</b>: ERP 그리드의 <b>사번</b> 칸에 붙여넣기 (중간 컬럼은 빈칸 유지 → 정렬용)<br>
-                • <b>근무일수부터 숫자만</b>: ERP 그리드의 <b>근무일수</b> 칸에 붙여넣기 (행 순서가 ERP와 같아야 함)
+                <b>순서대로 2번 붙여넣기</b> (사번 입력하면 ERP가 그레이존 자동 채움):<br>
+                • <b>①</b> 사번만 복사 → ERP <b>사번</b> 칸에 붙여넣기 → 사원구분·부서 등 자동 채워짐<br>
+                • <b>②</b> 숫자만 복사 → ERP <b>근무일수</b> 칸에 붙여넣기
             </div>
             <div style="overflow-x:auto;">
             <table class="table table-sm table-bordered mb-0" id="erp-table" style="font-size:0.75rem;white-space:nowrap;">
@@ -412,6 +413,9 @@ function copyErp(mode) {
             // 근무일수(13)부터 끝까지
             vals = [];
             for (var i = 13; i <= 20; i++) vals.push((c[i].textContent || '').trim());
+        } else if (mode === 'empno') {
+            // 사번(0)만
+            vals = [(c[0].textContent || '').trim()];
         } else {
             // 사번(0)부터 전체 (중간 빈칸 포함)
             vals = [];
@@ -421,7 +425,7 @@ function copyErp(mode) {
     });
     var text = lines.join('\n');
     var msg = document.getElementById('erpCopyMsg');
-    var label = (mode === 'num') ? '근무일수 칸' : '사번 칸';
+    var label = (mode === 'num') ? '근무일수 칸' : (mode === 'empno' ? '사번 칸' : '사번 칸');
     navigator.clipboard.writeText(text).then(function() {
         msg.textContent = '✅ ' + rows.length + '행 복사됨 — ERP ' + label + '에 붙여넣기';
         setTimeout(function(){ msg.textContent = ''; }, 6000);
