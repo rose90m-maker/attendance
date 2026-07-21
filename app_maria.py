@@ -308,6 +308,63 @@ def _tg_reply(chat_id, text):
     except Exception:
         pass
 
+# 근무보고서 결재지연 알림: 발송한 날짜 기록 (하루 1회만)
+_wr_overdue_alerted_date = None
+# 결재지연 알림 시행 시작일 — 이 날짜 이후 보고서만 알림 대상 (과거 밀린 건 제외)
+WR_OVERDUE_START = "20260721"
+
+def _wr_overdue_checker():
+    """백그라운드: 매일 09:00에 결재 지연 근무보고서를 태인 알림방으로 통보.
+    기준 = 보고일이 1일 이상 지났는데 status가 '결재'(완료)가 아닌 건."""
+    global _wr_overdue_alerted_date
+    while True:
+        try:
+            import time; time.sleep(300)  # 5분마다 시각 확인
+            now = datetime.now()
+            today = now.strftime("%Y-%m-%d")
+            # 09시대에 하루 한 번만
+            if now.hour != 9 or _wr_overdue_alerted_date == today:
+                continue
+            # 텔레그램 설정 off면 스킵
+            conn = _conn(); cur = conn.cursor()
+            cur.execute("SELECT `enabled` FROM telegram_settings WHERE `key`='wr_overdue'")
+            row = cur.fetchone()
+            if row and not row[0]:
+                _wr_overdue_alerted_date = today
+                conn.close()
+                continue
+            # 보고일 <= 어제 (=1일 이상 경과) & 미완료
+            # 단, 기능 시행일(WR_OVERDUE_START) 이전 과거분은 제외
+            cutoff = (now.date() - timedelta(days=1)).strftime("%Y%m%d")
+            cur.execute("""
+                SELECT r.report_date, r.status, r.created_by_name, g.group_name
+                FROM wr_reports r JOIN wr_groups g ON r.group_id = g.id
+                WHERE r.report_date <= %s AND r.report_date >= %s AND r.status <> '결재'
+                ORDER BY r.report_date DESC, g.group_name
+            """, (cutoff, WR_OVERDUE_START))
+            rows = cur.fetchall()
+            conn.close()
+            _wr_overdue_alerted_date = today
+            if not rows:
+                continue
+            lines = [f"⚠️ 근무보고서 결재 지연 {len(rows)}건", ""]
+            for rd, st, writer, gname in rows[:20]:
+                rd = str(rd)
+                disp = f"{rd[:4]}-{rd[4:6]}-{rd[6:8]}" if len(rd) == 8 else rd
+                try:
+                    late = (now.date() - datetime.strptime(rd, "%Y%m%d").date()).days
+                    late_txt = f"{late}일 경과"
+                except ValueError:
+                    late_txt = ""
+                lines.append(f"· {disp} ({late_txt}) {gname} / {writer or '-'} · 현재: {st}")
+            if len(rows) > 20:
+                lines.append(f"... 외 {len(rows) - 20}건")
+            lines += ["", "👉 https://app.taein.biz/work_report"]
+            _send_telegram("\n".join(lines))
+        except Exception:
+            import time; time.sleep(60)
+
+
 # 출퇴근 싱크 알림 플래그 {날짜: {"morning_alerted": bool, "evening_alerted": bool}}
 _sync_check_alerts = {}
 
@@ -790,7 +847,7 @@ def _init_db():
                 `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
-        for k in ('sync_error', 'sync_check', 'leave', 'meal', 'notice'):
+        for k in ('sync_error', 'sync_check', 'leave', 'meal', 'notice', 'wr_overdue'):
             cur.execute("INSERT IGNORE INTO telegram_settings (`key`, `enabled`) VALUES (%s, 1)", (k,))
         # 사원명부 테이블
         cur.execute("""
@@ -1688,7 +1745,7 @@ def get_telegram_settings():
 def save_telegram_settings():
     data = request.get_json()
     conn = _conn(); cur = conn.cursor()
-    for key in ("sync_error", "leave", "meal", "notice"):
+    for key in ("sync_error", "leave", "meal", "notice", "wr_overdue"):
         enabled = 1 if data.get(key) else 0
         cur.execute("UPDATE telegram_settings SET `enabled`=%s WHERE `key`=%s", (enabled, key))
     conn.commit(); conn.close()
@@ -7416,10 +7473,10 @@ def work_report():
             SELECT r.id, r.group_id, r.report_date, r.status, r.created_by_name,
                    g.group_name
             FROM wr_reports r JOIN wr_groups g ON r.group_id = g.id
-            WHERE r.report_date < %s AND r.status NOT IN ('결재')
+            WHERE r.report_date < %s AND r.report_date >= %s AND r.status NOT IN ('결재')
             ORDER BY r.report_date DESC, g.group_name
             LIMIT 100
-        """, (today_str,))
+        """, (today_str, WR_OVERDUE_START))
         for oid, ogid, ord_, ost, owriter, ogname in cur.fetchall():
             rd = str(ord_)
             disp = f"{rd[:4]}-{rd[4:6]}-{rd[6:8]}" if len(rd) == 8 else rd
@@ -9956,5 +10013,7 @@ if __name__ == "__main__":
     t2.start()
     t3 = threading.Thread(target=_docker_sync_checker, daemon=True)
     t3.start()
+    t4 = threading.Thread(target=_wr_overdue_checker, daemon=True)
+    t4.start()
     app.config["TEMPLATES_AUTO_RELOAD"] = True
     app.run(debug=False, host="0.0.0.0", port=5050)

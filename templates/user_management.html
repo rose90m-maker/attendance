@@ -162,6 +162,12 @@
                         <label class="form-check-label" for="tgNotice">📢 공지 등록/삭제</label>
                     </div>
                 </div>
+                <div class="col-auto">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="tgWrOverdue" onchange="saveTgSettings()">
+                        <label class="form-check-label" for="tgWrOverdue">⚠️ 근무보고서 결재지연 (매일 09시)</label>
+                    </div>
+                </div>
             </div>
             <div class="mt-2"><small class="text-muted" id="tgStatus"></small></div>
         </div>
@@ -533,6 +539,7 @@ function loadTgSettings() {
             document.getElementById('tgLeave').checked = !!s.leave;
             document.getElementById('tgMeal').checked = !!s.meal;
             document.getElementById('tgNotice').checked = !!s.notice;
+            document.getElementById('tgWrOverdue').checked = !!s.wr_overdue;
         }
     });
 }
@@ -541,7 +548,8 @@ function saveTgSettings() {
         sync_error: document.getElementById('tgSyncError').checked,
         leave: document.getElementById('tgLeave').checked,
         meal: document.getElementById('tgMeal').checked,
-        notice: document.getElementById('tgNotice').checked
+        notice: document.getElementById('tgNotice').checked,
+        wr_overdue: document.getElementById('tgWrOverdue').checked
     };
     fetch('/save_telegram_settings', {
         method: 'POST',
