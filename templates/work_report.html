@@ -285,9 +285,9 @@
                 <thead class="table-light">
                     <tr><th>보고일</th><th>경과</th><th>그룹</th><th>작성자</th><th>상태</th></tr>
                 </thead>
-                <tbody>
+                <tbody id="overdueTbody">
                     {% for o in overdue_reports %}
-                    <tr style="cursor:pointer;" onclick="viewReport({{ o.id }})">
+                    <tr class="overdue-row" style="cursor:pointer;" onclick="viewReport({{ o.id }})">
                         <td class="fw-bold">{{ o.date }}</td>
                         <td><span class="badge bg-danger">{{ o.days_late }}일 경과</span></td>
                         <td>{{ o.group_name }}</td>
@@ -308,6 +308,10 @@
                 </tbody>
             </table>
             </div>
+            <div class="d-flex justify-content-between align-items-center mt-2 px-1">
+                <span id="overduePageInfo" class="small text-muted fw-bold"></span>
+                <div id="overduePageBtns"></div>
+            </div>
         </div>
     </div>
     <script>
@@ -317,6 +321,24 @@
         if (p.style.display === 'none') { p.style.display = ''; a.textContent = '▲'; }
         else { p.style.display = 'none'; a.textContent = '▼'; }
     }
+    var OVERDUE_PER_PAGE = 10;
+    function overdueGoPage(p) {
+        var rows = document.querySelectorAll('#overdueTbody tr.overdue-row');
+        var total = rows.length;
+        var pages = Math.max(1, Math.ceil(total / OVERDUE_PER_PAGE));
+        p = Math.min(Math.max(1, p), pages);
+        var start = (p - 1) * OVERDUE_PER_PAGE, end = start + OVERDUE_PER_PAGE;
+        rows.forEach(function(tr, i) { tr.style.display = (i >= start && i < end) ? '' : 'none'; });
+        document.getElementById('overduePageInfo').textContent =
+            (start + 1) + '-' + Math.min(end, total) + ' / ' + total + '건';
+        var html = '<button class="btn btn-sm ' + (p<=1?'btn-outline-secondary disabled':'btn-outline-danger') + '" onclick="overdueGoPage(' + (p-1) + ')">◀</button> ';
+        for (var i = 1; i <= pages; i++) {
+            html += '<button class="btn btn-sm ' + (i===p?'btn-danger':'btn-outline-danger') + '" onclick="overdueGoPage(' + i + ')" style="min-width:32px;">' + i + '</button> ';
+        }
+        html += '<button class="btn btn-sm ' + (p>=pages?'btn-outline-secondary disabled':'btn-outline-danger') + '" onclick="overdueGoPage(' + (p+1) + ')">▶</button>';
+        document.getElementById('overduePageBtns').innerHTML = html;
+    }
+    document.addEventListener('DOMContentLoaded', function(){ overdueGoPage(1); });
     </script>
     {% endif %}
 
