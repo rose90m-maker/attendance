@@ -145,10 +145,53 @@ def run(days=3):
         log.info('임계치 초과 없음 (알림 미발송)')
 
 
+def weekly_report(days=7):
+    """최근 N일 대조 결과를 요약해 태인 알림방으로 발송 (주간 리포트)"""
+    ac = att_conn()
+    cur = ac.cursor()
+    frm = (datetime.now().date() - timedelta(days=days)).strftime('%Y%m%d')
+    cur.execute("""SELECT check_date, caps_cnt, erp_cnt, only_caps, only_erp
+                   FROM tenter_diff_log WHERE check_date >= %s
+                   ORDER BY check_date""", (frm,))
+    rows = cur.fetchall()
+    ac.close()
+
+    if not rows:
+        log.info('주간 리포트: 대조 데이터 없음')
+        return
+
+    lines = [f'📊 출입기록 CAPS/ERP 주간 대조 ({len(rows)}일)', '']
+    miss_days = 0
+    total_miss = 0
+    for d, caps, erp, oc, oe in rows:
+        d = str(d)
+        disp = f'{d[4:6]}/{d[6:]}'
+        if oe > 0:
+            miss_days += 1
+            total_miss += oe
+            lines.append(f'· {disp}  CAPS {caps} / ERP {erp}  ⚠️ 누락 {oe}건')
+        else:
+            lines.append(f'· {disp}  CAPS {caps} / ERP {erp}  ✅ 일치')
+
+    lines.append('')
+    if miss_days == 0:
+        lines.append('✅ 전 기간 일치 — CAPS 정상 동작')
+    else:
+        lines.append(f'⚠️ {miss_days}일에서 CAPS 누락 총 {total_miss}건')
+        lines.append('ERP 기준 전환을 검토해 주세요.')
+
+    tg('\n'.join(lines))
+    log.info('주간 리포트 발송: %d일 / 누락일 %d', len(rows), miss_days)
+
+
 if __name__ == '__main__':
     days = 3
     if '--days' in sys.argv:
         i = sys.argv.index('--days')
         if i + 1 < len(sys.argv):
             days = int(sys.argv[i + 1])
-    run(days)
+    if '--weekly' in sys.argv:
+        # 주간 리포트만 발송 (수집은 매일 작업이 담당)
+        weekly_report(7)
+    else:
+        run(days)
