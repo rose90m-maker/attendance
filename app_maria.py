@@ -337,18 +337,24 @@ def _wr_overdue_checker():
             # 단, 기능 시행일(WR_OVERDUE_START) 이전 과거분은 제외
             cutoff = (now.date() - timedelta(days=1)).strftime("%Y%m%d")
             cur.execute("""
-                SELECT r.report_date, r.status, r.created_by_name, g.group_name
+                SELECT r.report_date, r.status, r.created_by_name, g.group_name, r.group_id
                 FROM wr_reports r JOIN wr_groups g ON r.group_id = g.id
                 WHERE r.report_date <= %s AND r.report_date >= %s AND r.status <> '결재'
                 ORDER BY r.report_date DESC, g.group_name
             """, (cutoff, WR_OVERDUE_START))
             rows = cur.fetchall()
-            conn.close()
-            _wr_overdue_alerted_date = today
             if not rows:
+                conn.close()
+                _wr_overdue_alerted_date = today
                 continue
+
+            # ── 담당자별 이메일 취합 (현재 결재 차례인 사람에게만) ──
+            # 상태 → 다음 결재 단계: 대기=1(작성자), 작성완료=2(검토), 검토=3(2차검토)
+            step_map = {"대기": 1, "작성완료": 2, "검토": 3}
+            # {이메일: {"name": 이름, "items": [지연내역 문자열]}}
+            mail_map = {}
             lines = [f"⚠️ 근무보고서 결재 지연 {len(rows)}건", ""]
-            for rd, st, writer, gname in rows[:20]:
+            for rd, st, writer, gname, gid in rows[:20]:
                 rd = str(rd)
                 disp = f"{rd[:4]}-{rd[4:6]}-{rd[6:8]}" if len(rd) == 8 else rd
                 try:
@@ -357,10 +363,47 @@ def _wr_overdue_checker():
                 except ValueError:
                     late_txt = ""
                 lines.append(f"· {disp} ({late_txt}) {gname} / {writer or '-'} · 현재: {st}")
+                # 이 건의 현재 담당자 찾기
+                nstep = step_map.get(st)
+                if not nstep:
+                    continue
+                try:
+                    cur.execute(
+                        "SELECT user_name FROM wr_group_reviewers WHERE group_id=%s AND step=%s",
+                        (gid, nstep))
+                    cand = [r[0] for r in cur.fetchall()]
+                    # 1단계(작성)는 결재자 지정이 없을 수 있어 작성자에게
+                    if not cand and nstep == 1 and writer:
+                        cand = [writer]
+                    if cand:
+                        ph = ",".join(["%s"] * len(cand))
+                        cur.execute(
+                            f"SELECT name, email FROM employee_roster "
+                            f"WHERE name IN ({ph}) AND email IS NOT NULL AND email <> ''", cand)
+                        for nm, em in cur.fetchall():
+                            mail_map.setdefault(em, {"name": nm, "items": []})["items"].append(
+                                f"{disp} ({late_txt}) · {gname} · 현재: {st}")
+                except Exception:
+                    pass
             if len(rows) > 20:
                 lines.append(f"... 외 {len(rows) - 20}건")
             lines += ["", "👉 https://app.taein.biz/work_report"]
+            conn.close()
+            _wr_overdue_alerted_date = today
+
+            # 태인 알림방 (전체 요약)
             _send_telegram("\n".join(lines))
+
+            # 담당자별 개별 이메일
+            for em, info in mail_map.items():
+                items_html = "".join(f"<li>{it}</li>" for it in info["items"])
+                body = (
+                    f"<p><b>{info['name']}</b>님, 결재 대기 중인 근무보고서가 있습니다.</p>"
+                    f"<ul>{items_html}</ul>"
+                    f"<p>근태관리시스템에 로그인하여 처리해 주세요.<br>"
+                    f"<a href='https://app.taein.biz/work_report'>https://app.taein.biz/work_report</a></p>"
+                )
+                _send_email([em], f"[근태관리시스템] 근무보고서 결재 지연 {len(info['items'])}건", body)
         except Exception:
             import time; time.sleep(60)
 
