@@ -8,13 +8,71 @@ print(f"📦 배포 시작 — 예상 소요시간: {'약 3분 (이미지 재빌
 print("=" * 45)
 
 # ── 0) git 자동 커밋 + 이력 JSON 생성 ─────────────────────
+# 파일 → 한글 화면명 (배포 이력을 사람이 읽을 수 있게)
+_FILE_LABELS = {
+    "app_maria.py": "메인 서버",
+    "templates/work_report.html": "근무보고서",
+    "templates/schedule_record.html": "근무표기록관리",
+    "templates/roster.html": "명부관리",
+    "templates/attendance.html": "근태현황",
+    "templates/dashboard.html": "대시보드",
+    "templates/user_management.html": "사용자관리",
+    "templates/leave_approval.html": "휴가결재",
+    "templates/leave_plan_view.html": "연차계획",
+    "templates/annual_leave.html": "연차관리",
+    "templates/work_schedule.html": "근무표",
+    "templates/meal_management.html": "식수관리",
+    "templates/document_management.html": "문서관리",
+    "templates/education.html": "교육관리",
+    "templates/hazmat.html": "위험물관리",
+    "templates/mes_realtime.html": "MES 실시간",
+    "templates/power_dashboard.html": "전력관리",
+    "templates/fire_management.html": "화재감시",
+    "erp_sync.py": "ERP 동기화",
+    "mes_bp.py": "MES",
+    "edu_bp.py": "교육관리",
+    "hazmat_bp.py": "위험물관리",
+    "tbm_bp.py": "TBM",
+    "signage_bp.py": "사이니지",
+    "deploy_and_restart.py": "배포스크립트",
+}
+# 이력 제목에서 제외할 시스템/자동생성 파일
+_SKIP_PREFIXES = (".bkit/", "static/dev_history.json", "_archive/", "nohup.out")
+
+
+def _auto_summary():
+    """변경 파일을 한글 화면명으로 요약 (시스템 파일 제외)"""
+    status = subprocess.run(["git", "status", "--porcelain"],
+                            capture_output=True, text=True).stdout.strip()
+    if not status:
+        return None, False
+    files = [l[3:].strip().strip('"') for l in status.splitlines()]
+    meaningful = [f for f in files if not any(f.startswith(p) for p in _SKIP_PREFIXES)]
+    if not meaningful:
+        return "시스템 파일 정리", True
+    labels = []
+    for f in meaningful:
+        lb = _FILE_LABELS.get(f)
+        if not lb:
+            lb = os.path.basename(f).rsplit(".", 1)[0]
+        if lb not in labels:
+            labels.append(lb)
+    summary = ", ".join(labels[:5]) + (" 외" if len(labels) > 5 else "")
+    return summary + " 수정", True
+
+
 def _git_auto_commit():
     import json as _json
     try:
-        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True).stdout.strip()
-        if status:
-            changed = [l[3:] for l in status.splitlines()][:8]
-            summary = ", ".join(changed) + (" 외 다수" if len(changed) >= 8 else "")
+        # --msg "내용" 으로 직접 설명 지정 가능 (권장)
+        msg_arg = None
+        if "--msg" in sys.argv:
+            i = sys.argv.index("--msg")
+            if i + 1 < len(sys.argv):
+                msg_arg = sys.argv[i + 1]
+        summary, has_change = _auto_summary()
+        if has_change:
+            summary = msg_arg or summary
             subprocess.run(["git", "add", "-A"], check=True, capture_output=True)
             subprocess.run(["git", "commit", "-m", f"배포: {summary}"], check=True, capture_output=True)
             print(f"  📝 git 커밋: {summary}")
