@@ -29,6 +29,7 @@ _FILE_LABELS = {
     "templates/power_dashboard.html": "전력관리",
     "templates/fire_management.html": "화재감시",
     "erp_sync.py": "ERP 동기화",
+    "erp_enter_sync.py": "ERP 출입연동",
     "mes_bp.py": "MES",
     "edu_bp.py": "교육관리",
     "hazmat_bp.py": "위험물관리",
@@ -171,6 +172,7 @@ files = [
     ("templates/education_detail.html", "templates/education_detail.html"),
     ("tuya_fire.py", "tuya_fire.py"),
     ("erp_sync.py", "erp_sync.py"),
+    ("erp_enter_sync.py", "erp_enter_sync.py"),
     ("erp_inspect.py", "erp_inspect.py"),
     # 위험물·안전관리
     ("hazmat_bp.py", "hazmat_bp.py"),
@@ -366,6 +368,7 @@ docker_files_main = [
     (f"{STAGE_DIR}/kepco_collector.py", f"{DOCKER_APP_DIR}/kepco_collector.py"),
     (f"{STAGE_DIR}/kepco_analyzer.py",  f"{DOCKER_APP_DIR}/kepco_analyzer.py"),
     (f"{STAGE_DIR}/erp_sync.py",        f"{DOCKER_APP_DIR}/erp_sync.py"),
+    (f"{STAGE_DIR}/erp_enter_sync.py",  f"{DOCKER_APP_DIR}/erp_enter_sync.py"),
     (f"{STAGE_DIR}/erp_inspect.py",     f"{DOCKER_APP_DIR}/erp_inspect.py"),
     (f"{STAGE_DIR}/.env",               f"{DOCKER_APP_DIR}/.env"),
 ]

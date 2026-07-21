@@ -969,6 +969,38 @@ def _init_db():
                 INDEX `idx_synced_at` (`synced_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+        # ERP 출입기록 (CAPS 병행 검증용) — tenter와 동일 구조로 비교
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `tenter_erp` (
+                `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+                `e_date` VARCHAR(8) NOT NULL,
+                `e_time` VARCHAR(6) NOT NULL,
+                `e_card` VARCHAR(20) NOT NULL DEFAULT '',
+                `e_mode` VARCHAR(1) NOT NULL DEFAULT '',
+                `e_id` INT DEFAULT NULL,
+                `e_name` VARCHAR(30) NOT NULL DEFAULT '',
+                `e_idno` VARCHAR(32) NOT NULL DEFAULT '',
+                `synced_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY `uq_erp_enter` (`e_date`, `e_time`, `e_card`),
+                INDEX `idx_erp_date` (`e_date`),
+                INDEX `idx_erp_eid` (`e_id`, `e_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        # ERP 출입 대조 결과 로그
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `tenter_diff_log` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `check_date` VARCHAR(8) NOT NULL,
+                `checked_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                `caps_cnt` INT NOT NULL DEFAULT 0,
+                `erp_cnt` INT NOT NULL DEFAULT 0,
+                `only_caps` INT NOT NULL DEFAULT 0,
+                `only_erp` INT NOT NULL DEFAULT 0,
+                `detail` TEXT,
+                UNIQUE KEY `uq_diff_date` (`check_date`),
+                INDEX `idx_diff_checked` (`checked_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
         # 근무보고서 그룹
         cur.execute("""
             CREATE TABLE IF NOT EXISTS `wr_groups` (
