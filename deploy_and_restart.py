@@ -40,8 +40,20 @@ _FILE_LABELS = {
 _SKIP_PREFIXES = (".bkit/", "static/dev_history.json", "_archive/", "nohup.out")
 
 
+# 화면명 → 이력 카테고리 라벨
+_CATEGORY = {
+    "근무보고서": "근무보고서", "근무표기록관리": "근무표", "근무표": "근무표",
+    "명부관리": "명부", "근태현황": "근태", "대시보드": "대시보드",
+    "사용자관리": "사용자", "휴가결재": "휴가", "연차계획": "휴가", "연차관리": "휴가",
+    "식수관리": "식수", "문서관리": "문서", "교육관리": "교육", "위험물관리": "위험물",
+    "MES": "MES", "MES 실시간": "MES", "전력관리": "전력", "화재감시": "화재",
+    "ERP 동기화": "ERP", "TBM": "TBM", "사이니지": "사이니지",
+    "메인 서버": "시스템", "배포스크립트": "시스템",
+}
+
+
 def _auto_summary():
-    """변경 파일을 한글 화면명으로 요약 (시스템 파일 제외)"""
+    """변경 파일을 [라벨] 한글요약 형태로 정리 (시스템 파일 제외)"""
     status = subprocess.run(["git", "status", "--porcelain"],
                             capture_output=True, text=True).stdout.strip()
     if not status:
@@ -49,16 +61,19 @@ def _auto_summary():
     files = [l[3:].strip().strip('"') for l in status.splitlines()]
     meaningful = [f for f in files if not any(f.startswith(p) for p in _SKIP_PREFIXES)]
     if not meaningful:
-        return "시스템 파일 정리", True
+        return "[시스템] 자동 생성 파일 갱신", True
     labels = []
     for f in meaningful:
-        lb = _FILE_LABELS.get(f)
-        if not lb:
-            lb = os.path.basename(f).rsplit(".", 1)[0]
+        lb = _FILE_LABELS.get(f) or os.path.basename(f).rsplit(".", 1)[0]
         if lb not in labels:
             labels.append(lb)
-    summary = ", ".join(labels[:5]) + (" 외" if len(labels) > 5 else "")
-    return summary + " 수정", True
+    # 대표 화면으로 카테고리 결정 (시스템 아닌 것 우선)
+    cat = next((_CATEGORY[l] for l in labels
+                if l in _CATEGORY and _CATEGORY[l] != "시스템"), None)
+    if not cat:
+        cat = _CATEGORY.get(labels[0], "시스템")
+    body = ", ".join(labels[:5]) + (" 외" if len(labels) > 5 else "")
+    return f"[{cat}] {body} 수정", True
 
 
 def _git_auto_commit():
@@ -72,7 +87,13 @@ def _git_auto_commit():
                 msg_arg = sys.argv[i + 1]
         summary, has_change = _auto_summary()
         if has_change:
-            summary = msg_arg or summary
+            if msg_arg:
+                # --msg에 [라벨]이 없으면 자동 판정한 카테고리를 붙임
+                if msg_arg.startswith("["):
+                    summary = msg_arg
+                else:
+                    auto_cat = summary[1:summary.index("]")] if summary.startswith("[") else "시스템"
+                    summary = f"[{auto_cat}] {msg_arg}"
             subprocess.run(["git", "add", "-A"], check=True, capture_output=True)
             subprocess.run(["git", "commit", "-m", f"배포: {summary}"], check=True, capture_output=True)
             print(f"  📝 git 커밋: {summary}")
