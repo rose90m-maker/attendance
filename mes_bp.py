@@ -29,7 +29,10 @@ from flask import (
 
 mes_bp = Blueprint("mes", __name__, url_prefix="/mes")
 _mqtt_app = None  # init_mes_db()에서 주입
-_mqtt_lock_fd = None  # 구독자 단일화용 파일 락 (열린 상태 유지=락 보유)
+import socket as _socket
+_HOSTNAME = _socket.gethostname()   # 컨테이너 ID — MQTT client ID 충돌 방지용
+_mqtt_lock_fd = None
+_mqtt_leader_started = False   # 프로세스당 구독자 1개 보장  # 구독자 단일화용 파일 락 (열린 상태 유지=락 보유)
 
 
 # ── DB 헬퍼 ──────────────────────────────────────────────
@@ -114,7 +117,12 @@ def _start_subscriber_if_leader():
     재접속을 반복 → QoS 0 메시지 대량 유실(실측 10건 중 2건만 저장).
     [해결] 락을 잡은 워커 1개만 구독, 나머지는 스킵 → 단일 소비자 보장.
     """
-    global _mqtt_lock_fd
+    global _mqtt_lock_fd, _mqtt_leader_started
+    # 같은 프로세스에서 초기화가 두 번 돌면 전역 락 fd가 덮여 첫 락이 풀리고(GC close),
+    # 같은 client ID 스레드 2개가 브로커에서 서로를 강퇴하는 1초 루프가 됨(2026-07-22 실사고).
+    if _mqtt_leader_started:
+        print(f"[MQTT] 구독자 이미 기동됨 (PID {os.getpid()}) — 중복 선출 스킵")
+        return
     try:
         _mqtt_lock_fd = open("/tmp/mes_mqtt_subscriber.lock", "w")
         fcntl.flock(_mqtt_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -125,6 +133,7 @@ def _start_subscriber_if_leader():
             _mqtt_lock_fd = None
         print(f"[MQTT] 구독자 미기동 (PID {os.getpid()}) — 다른 워커가 리더")
         return
+    _mqtt_leader_started = True
     print(f"[MQTT] 구독자 리더 선출 (PID {os.getpid()})")
     threading.Thread(target=_start_mqtt_subscriber, daemon=True).start()
     threading.Thread(target=_summary_refresher, daemon=True).start()  # 일별 요약 주기 재계산
@@ -279,7 +288,7 @@ def _start_mqtt_subscriber():
     delay = 5
     while True:
         try:
-            client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, f"mes_subscriber_{os.getpid()}")
+            client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, f"mes_subscriber_{_HOSTNAME}_{os.getpid()}")
             client.on_connect = _mqtt_on_connect
             client.on_message = _mqtt_on_message
             client.connect("192.168.100.11", 1883, 60)
