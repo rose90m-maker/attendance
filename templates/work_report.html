@@ -843,8 +843,19 @@ function autoLoadLeaves() {
     var date = document.getElementById('wrDate').value;
     if (!gid || !date || !groupMembers.length) return;
     if (currentEditId) return;  // 수정 모드에서는 자동 로드 안함
+    // 이전 날짜에서 자동 반영된 연차는 제거 (직접 배정한 인원은 유지)
+    // → 날짜 변경 시 전날 연차자가 따라붙는 문제 방지
+    var removedAuto = false;
+    categories.forEach(function(c) {
+        var before = (assignments[c] || []).length;
+        assignments[c] = (assignments[c] || []).filter(function(a){ return !a.auto_leave; });
+        if (assignments[c].length !== before) removedAuto = true;
+    });
     fetch('/api/wr_approved_leaves/' + gid + '?date=' + date).then(r=>r.json()).then(function(d) {
-        if (!d.ok || !d.leaves || !d.leaves.length) return;
+        if (!d.ok || !d.leaves || !d.leaves.length) {
+            if (removedAuto) { renderPool(); renderTable(); }
+            return;
+        }
         // 이미 배정된 user_id 수집
         var assigned = new Set();
         categories.forEach(function(c) {
@@ -856,7 +867,8 @@ function autoLoadLeaves() {
                 var etcVal = lv.leave_type === '반차' ? '반차' : '연차';
                 assignments['기타'].push({
                     user_id: lv.user_id, user_name: lv.user_name,
-                    deduction: 0, etc_value: etcVal, skipped: 0
+                    deduction: 0, etc_value: etcVal, skipped: 0,
+                    auto_leave: 1   // 연차 자동 반영분 표시 (날짜 변경 시 자동 제거용)
                 });
                 assigned.add(lv.user_id);
                 added.push(lv.user_name + '(' + lv.leave_type + ')');
@@ -866,6 +878,9 @@ function autoLoadLeaves() {
             renderPool();
             renderTable();
             alert('🏖️ 승인된 연차 자동 반영: ' + added.join(', '));
+        } else if (removedAuto) {
+            renderPool();
+            renderTable();
         }
     });
 }
