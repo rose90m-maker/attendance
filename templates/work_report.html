@@ -272,6 +272,54 @@
     </div>
     {% endif %}
 
+    {# ═══════ 관리자: 기한 경과 미결재 ═══════ #}
+    {% if is_admin and overdue_reports %}
+    <div class="card mb-4 border-danger">
+        <div class="card-header bg-danger bg-opacity-10 d-flex justify-content-between align-items-center" style="cursor:pointer;" onclick="toggleOverduePanel()">
+            <span class="fw-bold text-danger">⚠️ 기한 경과 미결재 보고서 <span class="badge bg-danger">{{ overdue_reports|length }}</span></span>
+            <span id="overdueArrow" class="text-danger">▲</span>
+        </div>
+        <div class="card-body p-2" id="overduePanel">
+            <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" style="font-size:0.85rem;">
+                <thead class="table-light">
+                    <tr><th>보고일</th><th>경과</th><th>그룹</th><th>작성자</th><th>상태</th></tr>
+                </thead>
+                <tbody>
+                    {% for o in overdue_reports %}
+                    <tr style="cursor:pointer;" onclick="viewReport({{ o.id }})">
+                        <td class="fw-bold">{{ o.date }}</td>
+                        <td><span class="badge bg-danger">{{ o.days_late }}일 경과</span></td>
+                        <td>{{ o.group_name }}</td>
+                        <td>{{ o.writer }}</td>
+                        <td>
+                            {% if o.status == '반려' %}
+                            <span class="badge bg-dark">반려</span>
+                            {% elif o.status == '검토' %}
+                            <span class="badge bg-warning text-dark">검토</span>
+                            {% elif o.status == '작성완료' %}
+                            <span class="badge bg-info text-dark">작성완료</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ o.status }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+    <script>
+    function toggleOverduePanel() {
+        var p = document.getElementById('overduePanel');
+        var a = document.getElementById('overdueArrow');
+        if (p.style.display === 'none') { p.style.display = ''; a.textContent = '▲'; }
+        else { p.style.display = 'none'; a.textContent = '▼'; }
+    }
+    </script>
+    {% endif %}
+
     {# ═══════ 보고서 목록 ═══════ #}
     <div class="card mb-4">
         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">

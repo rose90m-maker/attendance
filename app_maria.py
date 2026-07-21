@@ -7408,6 +7408,29 @@ def work_report():
     reports_list = []
     wr_total = 0
     wr_total_pages = 1
+    # ── 관리자: 해당일 경과 + 결재 미완료 보고서 목록 ──
+    overdue_reports = []
+    if is_admin:
+        today_str = datetime.now().strftime("%Y%m%d")
+        cur.execute("""
+            SELECT r.id, r.group_id, r.report_date, r.status, r.created_by_name,
+                   g.group_name
+            FROM wr_reports r JOIN wr_groups g ON r.group_id = g.id
+            WHERE r.report_date < %s AND r.status NOT IN ('결재')
+            ORDER BY r.report_date DESC, g.group_name
+            LIMIT 100
+        """, (today_str,))
+        for oid, ogid, ord_, ost, owriter, ogname in cur.fetchall():
+            rd = str(ord_)
+            disp = f"{rd[:4]}-{rd[4:6]}-{rd[6:8]}" if len(rd) == 8 else rd
+            try:
+                days_late = (datetime.now().date() - datetime.strptime(rd, "%Y%m%d").date()).days
+            except ValueError:
+                days_late = 0
+            overdue_reports.append({
+                "id": oid, "gid": ogid, "date": disp, "status": ost,
+                "writer": owriter or "", "group_name": ogname, "days_late": days_late,
+            })
     if member_group_ids:
         ph = ','.join(['%s'] * len(member_group_ids))
         sql = f"""SELECT r.id, r.group_id, r.report_date, r.status, r.created_by_name,
@@ -7550,6 +7573,7 @@ def work_report():
                            user_default_group=list(user_group_steps.keys())[0] if user_group_steps else None,
                            login_user_name=session.get("user_name", ""),
                            is_admin=is_admin, has_wr_perm=has_wr_perm,
+                           overdue_reports=overdue_reports,
                            categories=WR_CATEGORIES)
 
 
