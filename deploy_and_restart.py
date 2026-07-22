@@ -174,6 +174,7 @@ files = [
     ("erp_sync.py", "erp_sync.py"),
     ("erp_enter_sync.py", "erp_enter_sync.py"),
     ("backfill_tenter.py", "backfill_tenter.py"),
+    ("fix_tuser_id.py", "fix_tuser_id.py"),
     ("erp_inspect.py", "erp_inspect.py"),
     # 위험물·안전관리
     ("hazmat_bp.py", "hazmat_bp.py"),
@@ -371,6 +372,7 @@ docker_files_main = [
     (f"{STAGE_DIR}/erp_sync.py",        f"{DOCKER_APP_DIR}/erp_sync.py"),
     (f"{STAGE_DIR}/erp_enter_sync.py",  f"{DOCKER_APP_DIR}/erp_enter_sync.py"),
     (f"{STAGE_DIR}/backfill_tenter.py", f"{DOCKER_APP_DIR}/backfill_tenter.py"),
+    (f"{STAGE_DIR}/fix_tuser_id.py",    f"{DOCKER_APP_DIR}/fix_tuser_id.py"),
     (f"{STAGE_DIR}/erp_inspect.py",     f"{DOCKER_APP_DIR}/erp_inspect.py"),
     (f"{STAGE_DIR}/.env",               f"{DOCKER_APP_DIR}/.env"),
 ]
