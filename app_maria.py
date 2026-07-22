@@ -463,38 +463,39 @@ def _check_attendance_sync(cur):
         "morning_alerted": False, "evening_alerted": False
     })
 
-    # ── 출근 체크: 08:30 이후, 아직 알림 안 보냈으면 ──
-    if not day_flags["morning_alerted"] and now.hour == 8 and now.minute >= 30 or \
-       not day_flags["morning_alerted"] and now.hour == 9 and now.minute < 30:
+    # ── 출근 체크: 09:00 이후, 금일 출근자가 '0명'일 때만 알림 ──
+    # 대시보드 '금일 출근' 리스트와 동일 기준(e_id>=0, e_mode=1, 당일). 시간대 제한 없음.
+    # 동기화 지연으로 인한 오탐 방지를 위해 0명일 때만 발송.
+    if not day_flags["morning_alerted"] and now.hour >= 9:
         cur.execute(
-            "SELECT COUNT(*) FROM tenter "
-            "WHERE e_date=%s AND e_mode='1' AND e_time BETWEEN '060000' AND '083000'",
+            "SELECT COUNT(DISTINCT e_id) FROM tenter "
+            "WHERE e_date=%s AND e_mode='1' AND e_id>=0",
             (today_str,)
         )
         cnt = cur.fetchone()[0]
-        if cnt < 10:
+        if cnt == 0:
             _send_telegram(
                 f"🚨 출근 싱크 이상!\n"
                 f"📅 {today_str}\n"
-                f"⏰ 06:00~08:30 출근 기록: {cnt}건 (기준: 10건 이상)\n"
+                f"⏰ 금일 출근 기록: 0명\n"
                 f"➡️ CAPS 싱크 프로그램 상태를 확인하세요.",
                 "sync_check"
             )
             day_flags["morning_alerted"] = True
 
-    # ── 퇴근 체크: 19:00 이후, 아직 알림 안 보냈으면 ──
+    # ── 퇴근 체크: 19:00 이후, 금일 퇴근자가 '0명'일 때만 알림 ──
     if not day_flags["evening_alerted"] and now.hour >= 19:
         cur.execute(
-            "SELECT COUNT(*) FROM tenter "
-            "WHERE e_date=%s AND e_mode='2'",
+            "SELECT COUNT(DISTINCT e_id) FROM tenter "
+            "WHERE e_date=%s AND e_mode='2' AND e_id>=0",
             (today_str,)
         )
         cnt = cur.fetchone()[0]
-        if cnt < 5:
+        if cnt == 0:
             _send_telegram(
                 f"🚨 퇴근 싱크 이상!\n"
                 f"📅 {today_str}\n"
-                f"🏠 퇴근 기록: {cnt}건 (기준: 5건 이상)\n"
+                f"🏠 금일 퇴근 기록: 0명\n"
                 f"➡️ CAPS 싱크 프로그램 상태를 확인하세요.",
                 "sync_check"
             )
