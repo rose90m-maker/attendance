@@ -3247,11 +3247,15 @@ def dashboard():
             FROM tenter t
             JOIN tuser u ON t.e_id=u.id
             LEFT JOIN employee_roster er ON er.name=u.name
-            WHERE t.e_date=%s AND t.e_mode=1
+            WHERE t.e_date=%s AND t.e_mode=1 AND t.e_id>0 AND t.e_result='0'
             GROUP BY t.e_id, u.name, u.company, er.dept
         """, (today_str,))
         att_rows = cur.fetchall()
-        EXCLUDE_DEPTS = {'경영기획팀', '경영기획실', '임원', '비서팀'}
+        # 임원 포함 (헤더 출근자 수와 동일 기준으로 맞춤)
+        EXCLUDE_DEPTS = set()
+        # 임원·경영기획팀은 별도 부서로 두지 않고 전기사무로 합산 (헤더 인원수와 일치)
+        MERGE_DEPTS = {'임원': '전기사무', '경영기획팀': '전기사무',
+                       '경영기획실': '전기사무', '비서팀': '전기사무'}
         dept_map = {}
         checked_in_count = 0
         for r in att_rows:
@@ -3259,6 +3263,7 @@ def dashboard():
             dept = DEPT_MAP.get((r[1] or '').strip(), '')
             if not dept:
                 dept = '기타'
+            dept = MERGE_DEPTS.get(dept, dept)
             if dept in EXCLUDE_DEPTS or er_dept in EXCLUDE_DEPTS:
                 continue
             checked_in_count += 1
@@ -3681,8 +3686,9 @@ def api_dashboard_stats():
     result = {"ok": True, "checked_in": 0, "leave_count": 0, "report_count": 0, "birthday_count": 0}
     try:
         conn = _conn(); cur = conn.cursor()
-        # 출근자 수
-        cur.execute("SELECT COUNT(DISTINCT e_id) FROM tenter WHERE e_date=%s AND e_mode=1", (today_str,))
+        # 출근자 수 (인증 성공 + 실제 등록자만. e_id=-1은 미등록카드 인증실패 로그)
+        cur.execute("SELECT COUNT(DISTINCT e_id) FROM tenter "
+                    "WHERE e_date=%s AND e_mode=1 AND e_id>0 AND e_result='0'", (today_str,))
         result["checked_in"] = cur.fetchone()[0] or 0
         
         # 휴가자 수

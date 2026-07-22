@@ -373,7 +373,7 @@
                     <span>👥 부서별 출근현황</span>
                     <span class="badge" style="background:rgba(34,197,94,.12);color:#16a34a;font-size:0.75rem;">{{ att_summary.checked_in }}명 출근</span>
                 </div>
-                <div style="padding:2px 14px 0;font-size:0.72rem;color:var(--erp-muted);">* 임원, 서울사무소 제외</div>
+                <div style="padding:2px 14px 0;font-size:0.72rem;color:var(--erp-muted);">* 임원은 전기사무에 포함</div>
                 <div class="panel-body" style="padding:8px 14px;">
                     {% if att_summary.depts %}
                     {% set max_count = att_summary.depts.values()|map(attribute='in')|max %}
