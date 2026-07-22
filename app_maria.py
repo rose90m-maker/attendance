@@ -310,8 +310,10 @@ def _tg_reply(chat_id, text):
 
 # 근무보고서 결재지연 알림: 발송한 날짜 기록 (하루 1회만)
 _wr_overdue_alerted_date = None
-# 결재지연 알림 시행 시작일 — 이 날짜 이후 보고서만 알림 대상 (과거 밀린 건 제외)
+# 결재지연 텔레그램/이메일 알림 시행 시작일 — 이 날짜 이후만 알림 (과거 밀린 건 매일 알림 폭탄 방지)
 WR_OVERDUE_START = "20260721"
+# 화면 패널(관리자용)은 경과한 미결재 전부 표시 (기준선 없음). 단, 너무 오래된 건 제외.
+WR_OVERDUE_PANEL_START = "20260101"
 
 def _wr_overdue_checker():
     """백그라운드: 매일 09:00에 결재 지연 근무보고서를 태인 알림방으로 통보.
@@ -7543,15 +7545,16 @@ def work_report():
     # ── 관리자: 해당일 경과 + 결재 미완료 보고서 목록 ──
     overdue_reports = []
     if is_admin:
-        today_str = datetime.now().strftime("%Y%m%d")
+        # 어제까지 보고일(=1일 이상 경과) & 미결재 전부. 미래 보고일은 제외.
+        cutoff = (datetime.now().date() - timedelta(days=1)).strftime("%Y%m%d")
         cur.execute("""
             SELECT r.id, r.group_id, r.report_date, r.status, r.created_by_name,
                    g.group_name
             FROM wr_reports r JOIN wr_groups g ON r.group_id = g.id
-            WHERE r.report_date < %s AND r.report_date >= %s AND r.status NOT IN ('결재')
+            WHERE r.report_date <= %s AND r.report_date >= %s AND r.status NOT IN ('결재')
             ORDER BY r.report_date DESC, g.group_name
             LIMIT 100
-        """, (today_str, WR_OVERDUE_START))
+        """, (cutoff, WR_OVERDUE_PANEL_START))
         for oid, ogid, ord_, ost, owriter, ogname in cur.fetchall():
             rd = str(ord_)
             disp = f"{rd[:4]}-{rd[4:6]}-{rd[6:8]}" if len(rd) == 8 else rd
