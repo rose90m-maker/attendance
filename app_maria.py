@@ -335,13 +335,14 @@ def _wr_overdue_checker():
                 _wr_overdue_alerted_date = today
                 conn.close()
                 continue
-            # 보고일 <= 어제 (=1일 이상 경과) & 미완료
-            # 단, 기능 시행일(WR_OVERDUE_START) 이전 과거분은 제외
+            # 보고일 <= 어제 (=1일 이상 경과) & 실제 결재 대기('작성완료','검토')만
+            # '대기'(작성자 미제출) 제외 / 기능 시행일 이전 과거분 제외 (알림 폭탄 방지)
             cutoff = (now.date() - timedelta(days=1)).strftime("%Y%m%d")
             cur.execute("""
                 SELECT r.report_date, r.status, r.created_by_name, g.group_name, r.group_id
                 FROM wr_reports r JOIN wr_groups g ON r.group_id = g.id
-                WHERE r.report_date <= %s AND r.report_date >= %s AND r.status <> '결재'
+                WHERE r.report_date <= %s AND r.report_date >= %s
+                  AND r.status IN ('작성완료', '검토')
                 ORDER BY r.report_date DESC, g.group_name
             """, (cutoff, WR_OVERDUE_START))
             rows = cur.fetchall()
@@ -7545,16 +7546,19 @@ def work_report():
     # ── 관리자: 해당일 경과 + 결재 미완료 보고서 목록 ──
     overdue_reports = []
     if is_admin:
-        # 어제까지 보고일(=1일 이상 경과) & 미결재 전부. 미래 보고일은 제외.
+        # 1일 이상 경과 & 실제 결재 대기('작성완료','검토')만. '대기'(작성자 미제출)·미래건 제외.
+        # 최근 60일로 제한 (오래된 미완성 껍데기 배제).
         cutoff = (datetime.now().date() - timedelta(days=1)).strftime("%Y%m%d")
+        since = (datetime.now().date() - timedelta(days=60)).strftime("%Y%m%d")
         cur.execute("""
             SELECT r.id, r.group_id, r.report_date, r.status, r.created_by_name,
                    g.group_name
             FROM wr_reports r JOIN wr_groups g ON r.group_id = g.id
-            WHERE r.report_date <= %s AND r.report_date >= %s AND r.status NOT IN ('결재')
+            WHERE r.report_date <= %s AND r.report_date >= %s
+              AND r.status IN ('작성완료', '검토')
             ORDER BY r.report_date DESC, g.group_name
             LIMIT 100
-        """, (cutoff, WR_OVERDUE_PANEL_START))
+        """, (cutoff, since))
         for oid, ogid, ord_, ost, owriter, ogname in cur.fetchall():
             rd = str(ord_)
             disp = f"{rd[:4]}-{rd[4:6]}-{rd[6:8]}" if len(rd) == 8 else rd
