@@ -4364,7 +4364,7 @@ def attendance():
                     cur2.close()
                     if not had_prev_in:
                         prev_no_in_list.append({
-                            "name": nm, "dept": dept,
+                            "note": "", "name": nm, "dept": dept,
                             "in_time": "-", "out_time": _fmt_time(out_t)
                         })
             # 출입기록이 아예 없는 재직자 (휴가자 제외)
@@ -4378,7 +4378,11 @@ def attendance():
                   AND (u.retire_date IS NULL OR u.retire_date = '')
                   AND u.cardnum IS NOT NULL AND u.cardnum <> ''
             """)
-            for uid, uname, comp, er_dept in cur.fetchall():
+            no_in_cands = cur.fetchall()
+            # 출입기록이 한 번도 없는 사용자 = 카드 미등록(장비 미반영)
+            cur.execute("SELECT DISTINCT e_id FROM tenter WHERE e_id > 0")
+            ever_tagged = {r[0] for r in cur.fetchall()}
+            for uid, uname, comp, er_dept in no_in_cands:
                 if uid in prev_seen_ids or uid in leave_ids:
                     continue
                 dept = DEPT_MAP.get((comp or "").strip(), "")
@@ -4388,6 +4392,7 @@ def attendance():
                 if sel_dept and dept != sel_dept:
                     continue
                 prev_no_in_list.append({
+                    "note": "" if uid in ever_tagged else "카드 미발급",
                     "name": (uname or "").strip(), "dept": dept,
                     "in_time": "-", "out_time": "-"
                 })

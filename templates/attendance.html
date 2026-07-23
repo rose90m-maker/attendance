@@ -582,6 +582,7 @@
                         <th class="text-center">부서</th>
                         <th class="text-center">출근시간</th>
                         <th class="text-center">퇴근시간</th>
+                        <th class="text-center">비고</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -592,6 +593,9 @@
                         <td class="text-center">{{ emp.dept or '-' }}</td>
                         <td class="text-center text-danger fw-bold">{{ emp.in_time }}</td>
                         <td class="text-center fw-bold">{{ emp.out_time }}</td>
+                        <td class="text-center">
+                            {% if emp.note %}<span class="badge bg-secondary">{{ emp.note }}</span>{% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
