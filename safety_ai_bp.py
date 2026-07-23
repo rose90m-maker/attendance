@@ -64,8 +64,8 @@ def _conn():
     return pymysql.connect(**MARIA)
 
 
-def _compress_image_for_db(raw: bytes, max_kb: int = 900) -> bytes:
-    """PIL이 있으면 ~900KB 이하로 압축, 없으면 원본 반환."""
+def _compress_image_for_db(raw: bytes, max_kb: int = 600) -> bytes:
+    """PIL이 있으면 ~600KB 이하로 압축(b64 후에도 max_allowed_packet 1MB 안), 없으면 원본 반환."""
     try:
         from PIL import Image
         import io as _io
