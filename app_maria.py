@@ -463,39 +463,36 @@ def _check_attendance_sync(cur):
         "morning_alerted": False, "evening_alerted": False
     })
 
-    # ── 출근 체크: 09:00 이후, 금일 출근자가 '0명'일 때만 알림 ──
-    # 대시보드 '금일 출근' 리스트와 동일 기준(e_id>=0, e_mode=1, 당일). 시간대 제한 없음.
-    # 동기화 지연으로 인한 오탐 방지를 위해 0명일 때만 발송.
-    if not day_flags["morning_alerted"] and now.hour >= 9:
+    # ── 판정 기준: '근태기록' 화면의 금일 조회 건수 ──
+    # 화면에 기록이 하나라도 보이면 싱크는 살아있는 것이므로 알림을 보내지 않는다.
+    # (출근/퇴근을 따로 세면 조회 시점 타이밍 때문에 오탐이 발생 — 2026-07-23 퇴근 133건인데
+    #  '퇴근 0건' 알림이 나간 사례)
+    def _today_record_cnt():
         cur.execute(
-            "SELECT COUNT(DISTINCT e_id) FROM tenter "
-            "WHERE e_date=%s AND e_mode='1' AND e_id>=0",
+            "SELECT COUNT(*) FROM tenter WHERE e_date=%s AND e_id>=0",
             (today_str,)
         )
-        cnt = cur.fetchone()[0]
-        if cnt == 0:
+        return cur.fetchone()[0]
+
+    # ── 출근 체크: 09:00 이후, 금일 근태기록이 '0건'일 때만 알림 ──
+    if not day_flags["morning_alerted"] and now.hour >= 9:
+        if _today_record_cnt() == 0:
             _send_telegram(
                 f"🚨 출근 싱크 이상!\n"
                 f"📅 {today_str}\n"
-                f"⏰ 금일 출근 기록: 0명\n"
+                f"⏰ 금일 근태기록: 0건\n"
                 f"➡️ CAPS 싱크 프로그램 상태를 확인하세요.",
                 "sync_check"
             )
             day_flags["morning_alerted"] = True
 
-    # ── 퇴근 체크: 19:00 이후, 금일 퇴근자가 '0명'일 때만 알림 ──
+    # ── 퇴근 체크: 19:00 이후, 금일 근태기록이 '0건'일 때만 알림 ──
     if not day_flags["evening_alerted"] and now.hour >= 19:
-        cur.execute(
-            "SELECT COUNT(DISTINCT e_id) FROM tenter "
-            "WHERE e_date=%s AND e_mode='2' AND e_id>=0",
-            (today_str,)
-        )
-        cnt = cur.fetchone()[0]
-        if cnt == 0:
+        if _today_record_cnt() == 0:
             _send_telegram(
                 f"🚨 퇴근 싱크 이상!\n"
                 f"📅 {today_str}\n"
-                f"🏠 금일 퇴근 기록: 0명\n"
+                f"🏠 금일 근태기록: 0건\n"
                 f"➡️ CAPS 싱크 프로그램 상태를 확인하세요.",
                 "sync_check"
             )
