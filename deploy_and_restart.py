@@ -184,6 +184,12 @@ files = [
     ("templates/hazmat.html", "templates/hazmat.html"),
     ("templates/hazmat_recipients.html", "templates/hazmat_recipients.html"),
     ("templates/hazmat_alerts.html", "templates/hazmat_alerts.html"),
+    # AI 안전진단
+    ("safety_ai_bp.py", "safety_ai_bp.py"),
+    ("templates/safety_ai_inspect.html", "templates/safety_ai_inspect.html"),
+    ("templates/safety_ai_report.html",  "templates/safety_ai_report.html"),
+    ("templates/safety_ai_edit.html",    "templates/safety_ai_edit.html"),
+    ("templates/safety_ai_stats.html",   "templates/safety_ai_stats.html"),
     ("templates/welfare.html", "templates/welfare.html"),
     # MES 관리
     ("mes_bp.py", "mes_bp.py"),
@@ -368,6 +374,7 @@ docker_files_main = [
     (f"{STAGE_DIR}/mes_bp.py",           f"{DOCKER_APP_DIR}/mes_bp.py"),
     (f"{STAGE_DIR}/edu_bp.py",           f"{DOCKER_APP_DIR}/edu_bp.py"),
     (f"{STAGE_DIR}/hazmat_bp.py",        f"{DOCKER_APP_DIR}/hazmat_bp.py"),
+    (f"{STAGE_DIR}/safety_ai_bp.py",     f"{DOCKER_APP_DIR}/safety_ai_bp.py"),
     (f"{STAGE_DIR}/tbm_bp.py",           f"{DOCKER_APP_DIR}/tbm_bp.py"),
     (f"{STAGE_DIR}/signage_bp.py",       f"{DOCKER_APP_DIR}/signage_bp.py"),
     (f"{STAGE_DIR}/kepco_collector.py", f"{DOCKER_APP_DIR}/kepco_collector.py"),
