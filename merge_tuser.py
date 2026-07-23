@@ -87,7 +87,9 @@ for label, empno, erp_name, keep, drop in MERGES:
         n = cur.fetchone()[0]
         if not n:
             continue
-        if (tbl, col) in UNIQUE_TABLES:
+        if tbl == 'annual_leave':
+            act = f'{n}건 → 실데이터 우선 보존 (아래 참조)'
+        elif (tbl, col) in UNIQUE_TABLES:
             cur.execute(f"SELECT COUNT(*) FROM `{tbl}` WHERE `{col}`=%s", (keep,))
             k = cur.fetchone()[0]
             act = f'{n}건 삭제 (유지계정에 이미 {k}건 존재)' if k else f'{n}건 이관'
@@ -95,7 +97,39 @@ for label, empno, erp_name, keep, drop in MERGES:
             act = f'{n}건 이관'
         print(f'      {tbl}.{col}: {act}')
 
+    # 연차 보존 판정 미리보기
+    cur.execute("""SELECT e_id, id, year, total, used, generated FROM annual_leave
+                   WHERE e_id IN (%s,%s) ORDER BY year""", (keep, drop))
+    al_prev = {}
+    for eid, aid, yr, tot, used, gen in cur.fetchall():
+        al_prev.setdefault(yr, []).append((eid, aid, float(tot or 0), float(used or 0), float(gen or 0)))
+    for yr, items in al_prev.items():
+        if len(items) < 2:
+            continue
+        items.sort(key=lambda x: (x[4] + x[3], x[2]), reverse=True)
+        w = items[0]
+        print(f'      └ 연차 {yr}년: id={w[1]}(e_id={w[0]}, 총{w[2]:g}/사용{w[3]:g}) 보존 · '
+              f'나머지 {len(items)-1}건 삭제')
+
     if RUN:
+        # 연차(annual_leave)는 양쪽 중복 시 '실데이터'(generated/used 큰 쪽)를 보존
+        cur.execute("""SELECT id, year, total, used, generated FROM annual_leave
+                       WHERE e_id IN (%s,%s)""", (keep, drop))
+        al = {}
+        for aid, yr, tot, used, gen in cur.fetchall():
+            al.setdefault(yr, []).append((aid, float(tot or 0), float(used or 0), float(gen or 0)))
+        for yr, items in al.items():
+            if len(items) < 2:
+                continue
+            # 점수: generated + used 가 큰 쪽이 실데이터
+            items.sort(key=lambda x: (x[3] + x[2], x[1]), reverse=True)
+            win, *lose = items
+            for l in lose:
+                cur.execute("DELETE FROM annual_leave WHERE id=%s", (l[0],))
+            cur.execute("UPDATE annual_leave SET e_id=%s WHERE id=%s", (keep, win[0]))
+            print(f'      연차 {yr}년: id={win[0]} 보존(총{win[1]:g}/사용{win[2]:g}), '
+                  f'{len(lose)}건 삭제')
+
         for tbl, col in refs:
             cur.execute(f"SELECT COUNT(*) FROM `{tbl}` WHERE `{col}`=%s", (drop,))
             if not cur.fetchone()[0]:
