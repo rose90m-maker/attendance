@@ -4336,8 +4336,10 @@ def attendance():
                 GROUP BY t.e_id, t.e_name, u.company
             """, (MODE_IN, MODE_OUT, yesterday_str))
             prev2_str = (datetime.now() - timedelta(days=2)).strftime("%Y%m%d")
-            # 타각 비대상 부서 (임원·서울사무소)
+            # 타각 비대상: company 기준(임원·서울사무소)
             NO_TAG_DEPTS = {"임원", "경영기획팀"}
+            # 타각 비대상: 명부 부서 기준(경비·비서 등 카드 타각 안 하는 직군)
+            NO_TAG_ER_DEPTS = {"총무팀", "비서팀"}
             prev_no_out_list = []
             prev_no_in_list = []      # 전일 출근 미타각 (퇴근만 있거나 기록 없음)
             prev_seen_ids = set()
@@ -4369,16 +4371,17 @@ def attendance():
             cur.execute("SELECT e_id FROM leave_records WHERE leave_date=%s", (yesterday_str,))
             leave_ids = {r[0] for r in cur.fetchall()}
             cur.execute("""
-                SELECT u.id, u.name, u.company FROM tuser u
+                SELECT u.id, u.name, u.company, IFNULL(er.dept,'') FROM tuser u
                 JOIN employee_roster er ON er.emp_no = u.idno
                 WHERE u.idno IS NOT NULL AND u.idno <> ''
                   AND (u.retire_date IS NULL OR u.retire_date = '')
             """)
-            for uid, uname, comp in cur.fetchall():
+            for uid, uname, comp, er_dept in cur.fetchall():
                 if uid in prev_seen_ids or uid in leave_ids:
                     continue
                 dept = DEPT_MAP.get((comp or "").strip(), "")
-                if dept in NO_TAG_DEPTS:      # 임원·서울사무소는 타각 비대상
+                # 임원·서울사무소, 경비·비서 등 타각 비대상 제외
+                if dept in NO_TAG_DEPTS or (er_dept or "").strip() in NO_TAG_ER_DEPTS:
                     continue
                 if sel_dept and dept != sel_dept:
                     continue
