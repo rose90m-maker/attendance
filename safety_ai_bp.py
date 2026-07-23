@@ -64,6 +64,29 @@ def _conn():
     return pymysql.connect(**MARIA)
 
 
+def _compress_image_for_db(raw: bytes, max_kb: int = 900) -> bytes:
+    """PIL이 있으면 ~900KB 이하로 압축, 없으면 원본 반환."""
+    try:
+        from PIL import Image
+        import io as _io
+        target = max_kb * 1024
+        if len(raw) <= target:
+            return raw
+        img = Image.open(_io.BytesIO(raw))
+        if img.width > 1920 or img.height > 1920:
+            img.thumbnail((1920, 1920), Image.LANCZOS)
+        for q in [80, 65, 50, 35, 25]:
+            buf = _io.BytesIO()
+            img.convert("RGB").save(buf, format="JPEG", quality=q)
+            if buf.tell() <= target:
+                return buf.getvalue()
+        buf = _io.BytesIO()
+        img.convert("RGB").save(buf, format="JPEG", quality=20)
+        return buf.getvalue()
+    except Exception:
+        return raw
+
+
 def _login_required(f):
     @wraps(f)
     def deco(*a, **kw):
@@ -161,6 +184,7 @@ def index():
                     data = _vision_call(b64)
                     hazards = _enrich_hazards(data.get("hazards") or [])
                     ins_date = date.fromisoformat(idate) if idate else date.today()
+                    b64_store = base64.b64encode(_compress_image_for_db(raw)).decode()
                     conn = _conn(); cur = conn.cursor()
                     cur.execute("""
                         INSERT INTO safety_ai_inspections
@@ -169,7 +193,7 @@ def index():
                         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
                         site or "(미입력)", inspector or "(미입력)", dept, note,
-                        ins_date, f.mimetype or "image/jpeg", b64,
+                        ins_date, f.mimetype or "image/jpeg", b64_store,
                         data.get("overall") or "검토필요",
                         data.get("summary") or "",
                         data.get("image_summary") or "",
