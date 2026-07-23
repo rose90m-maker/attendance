@@ -313,8 +313,8 @@ _wr_overdue_alerted_date = None
 # 결재지연 텔레그램/이메일 알림 시행 시작일 — 이 날짜 이후 보고서만 알림
 # 7월분부터 발송 (그 이전 과거 밀린 건은 알림 제외)
 WR_OVERDUE_START = "20260701"
-# 화면 패널(관리자용)은 경과한 미결재 전부 표시 (기준선 없음). 단, 너무 오래된 건 제외.
-WR_OVERDUE_PANEL_START = "20260101"
+# 화면 패널(관리자용) 표시 기준일 — 이 날짜 이전 보고서는 패널에서 제외 (과거 밀린 건 정리)
+WR_OVERDUE_PANEL_START = "20260701"
 
 def _wr_overdue_checker():
     """백그라운드: 매일 09:00에 결재 지연 근무보고서를 태인 알림방으로 통보.
@@ -7606,9 +7606,10 @@ def work_report():
     overdue_reports = []
     if is_admin:
         # 1일 이상 경과 & 실제 결재 대기('작성완료','검토')만. '대기'(작성자 미제출)·미래건 제외.
-        # 최근 60일로 제한 (오래된 미완성 껍데기 배제).
+        # 최근 60일로 제한 + WR_OVERDUE_PANEL_START(2026-07-01) 이전 과거분 제외.
         cutoff = (datetime.now().date() - timedelta(days=1)).strftime("%Y%m%d")
         since = (datetime.now().date() - timedelta(days=60)).strftime("%Y%m%d")
+        since = max(since, WR_OVERDUE_PANEL_START)
         cur.execute("""
             SELECT r.id, r.group_id, r.report_date, r.status, r.created_by_name,
                    g.group_name
