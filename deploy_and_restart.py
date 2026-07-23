@@ -461,3 +461,75 @@ c.close()
 
 ok = main_code in ("200","302") and tbm_code in ("200","302")
 print(f"[████████████████████] 100% {'✅ 배포 완료! (main:'+main_code+' tbm:'+tbm_code+')' if ok else '⚠️ 확인필요 main:'+main_code+' tbm:'+tbm_code}")
+
+
+# ── 6) .5 대기(standby) 서버 코드 동기화 ─────────────────────────
+# HA는 DB만 복제하고 앱 코드는 복제하지 않는다. 코드가 .11에만 배포되면
+# .5는 옛 코드로 계속 돌면서 잘못된 알림을 보낸다 (2026-07-24 싱크 오탐 사고).
+# .env 는 절대 덮어쓰지 않는다 — .5는 DB_HOST=db 로 자기 슬레이브를 본다.
+STANDBY_HOST = "192.168.100.5"
+STANDBY_KEY = os.path.expanduser("~/.ssh/id_tams_nas")
+STANDBY_DIR = f"/home/{os.environ['NAS_USER']}/attendance"
+STANDBY_PY = [
+    "app_maria.py", "tuya_fire.py", "mes_bp.py", "edu_bp.py", "hazmat_bp.py",
+    "safety_ai_bp.py", "tbm_bp.py", "signage_bp.py",
+    "kepco_collector.py", "kepco_analyzer.py", "tbm_app.py",
+]
+
+
+def _sync_standby():
+    if "--no-standby" in sys.argv:
+        print("  ⏭  .5 동기화 건너뜀 (--no-standby)")
+        return
+    if not os.path.exists(STANDBY_KEY):
+        print(f"  ⚠️  .5 동기화 생략 — SSH 키 없음 ({STANDBY_KEY})")
+        return
+    try:
+        s5 = paramiko.SSHClient()
+        s5.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        s5.connect(STANDBY_HOST, username=os.environ["NAS_USER"],
+                   key_filename=STANDBY_KEY, timeout=20)
+    except Exception as e:
+        print(f"  ⚠️  .5 접속 실패 (배포는 .11에 완료됨): {e}")
+        return
+
+    def s5run(cmd):
+        _, o, e = s5.exec_command(cmd)
+        return (o.read().decode() + e.read().decode()).strip()
+
+    try:
+        # 코드 tar 전송 (.env 제외)
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+            for f in STANDBY_PY:
+                if os.path.exists(f):
+                    tf.add(f, arcname=f)
+            for d in ("templates", "static"):
+                if os.path.isdir(d):
+                    tf.add(d, arcname=d)
+        buf.seek(0)
+        sf = s5.open_sftp()
+        sf.putfo(buf, "/tmp/_a5.tar.gz")
+        sf.close()
+        s5run(f"cd {STANDBY_DIR} && tar xzf /tmp/_a5.tar.gz && rm -f /tmp/_a5.tar.gz")
+
+        for f in STANDBY_PY:
+            if os.path.exists(f):
+                s5run(f"docker cp {STANDBY_DIR}/{f} attendance-app:/app/{f}")
+        for d in ("templates", "static"):
+            s5run(f"docker cp {STANDBY_DIR}/{d} attendance-app:/app/")
+        for f in ("tbm_app.py", "tbm_bp.py"):
+            s5run(f"docker cp {STANDBY_DIR}/{f} attendance-tbm:/app/{f}")
+
+        s5run("docker restart attendance-app attendance-tbm")
+        time.sleep(12)
+        code5 = s5run("curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5050/")
+        print(f"  {'✅' if code5 in ('200','302') else '⚠️'} .5 대기서버 동기화 완료 (http:{code5})")
+    except Exception as e:
+        print(f"  ⚠️  .5 동기화 중 오류 (배포는 .11에 완료됨): {e}")
+    finally:
+        s5.close()
+
+
+print("[.5 대기서버] 코드 동기화 중...")
+_sync_standby()
