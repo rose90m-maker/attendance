@@ -569,6 +569,40 @@
         </div>
     </div>
     </div>
+    <div class="col-md-6">
+    <div class="card mb-4 border-danger">
+        <div class="card-header fw-bold text-danger">🚫 전일 출근 미타각 ({{ prev_no_in_list|length }}명)</div>
+        <div class="card-body p-0">
+            {% if prev_no_in_list %}
+            <table class="table table-sm table-bordered table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center" style="width:40px">#</th>
+                        <th class="text-center">이름</th>
+                        <th class="text-center">부서</th>
+                        <th class="text-center">출근시간</th>
+                        <th class="text-center">퇴근시간</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in prev_no_in_list %}
+                    <tr>
+                        <td class="text-center">{{ loop.index }}</td>
+                        <td class="text-center"><a href="{{ url_for('attendance', search=emp.name) }}" class="text-decoration-none fw-bold">{{ emp.name }}</a></td>
+                        <td class="text-center">{{ emp.dept or '-' }}</td>
+                        <td class="text-center text-danger fw-bold">{{ emp.in_time }}</td>
+                        <td class="text-center fw-bold">{{ emp.out_time }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center text-muted py-4">전원 출근 타각 완료</div>
+            {% endif %}
+        </div>
+        <div class="card-footer text-muted" style="font-size:0.78rem;">* 휴가자 제외 · 퇴근만 찍었거나 기록이 없는 재직자</div>
+    </div>
+    </div>
     </div>
     {% endif %}
 
