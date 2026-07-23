@@ -1157,7 +1157,6 @@ function renderTable() {
                 '<option value="">-</option>' +
                 '<option value="연차"' + sel('연차') + '>연차</option>' +
                 '<option value="무급"' + sel('무급') + '>무급</option>' +
-                '<option value="휴무"' + sel('휴무') + '>휴무</option>' +
                 '<option value="조퇴"' + sel('조퇴') + '>조퇴</option>' +
                 '<option value="외출"' + sel('외출') + '>외출</option>' +
                 '<option value="훈련"' + sel('훈련') + '>훈련</option>' +
@@ -1307,6 +1306,13 @@ function submitReport(skipLeaveCheck) {
         });
     });
     if (!entries.length) { alert('인원을 배정하세요.\n\n표의 열 제목(주간기본, 주간연장 등)을 클릭하여 인원을 배정한 후 저장하세요.'); return; }
+    // 기타 항목: 사유 미선택("-") 상태로는 저장 불가
+    var etcMissing = entries.filter(function(e){ return e.category === '기타' && !e.skipped && !e.etc_value; })
+                            .map(function(e){ return e.user_name; });
+    if (etcMissing.length) {
+        alert('⚠️ 기타 항목의 사유가 선택되지 않았습니다.\n\n' + etcMissing.join(', ') + '\n\n연차/무급/조퇴 등 사유를 선택한 후 저장하세요.');
+        return;
+    }
     var memo = document.getElementById('wrMemo').value.trim();
     var payload = {group_id: parseInt(gid), report_date: date, entries: entries, memo: memo};
     if (currentEditId) payload.report_id = currentEditId;

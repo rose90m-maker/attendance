@@ -8068,6 +8068,13 @@ def save_wr_report():
         entries = data.get("entries", [])
         edit_id = data.get("report_id")
         skip_leave_check = data.get("skip_leave_check", False)
+        # 기타 항목 사유 미선택 차단
+        etc_missing = [str(e.get("user_name", "")) for e in entries
+                       if str(e.get("category", "")) == "기타"
+                       and not int(e.get("skipped", 0))
+                       and not str(e.get("etc_value", "")).strip()]
+        if etc_missing:
+            return jsonify(ok=False, msg="기타 항목의 사유가 선택되지 않았습니다: " + ", ".join(etc_missing))
         conn = _conn(); cur = conn.cursor()
         # 연차 체크
         if not skip_leave_check:
