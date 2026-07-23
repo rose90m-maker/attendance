@@ -4370,11 +4370,13 @@ def attendance():
             # 출입기록이 아예 없는 재직자 (휴가자 제외)
             cur.execute("SELECT e_id FROM leave_records WHERE leave_date=%s", (yesterday_str,))
             leave_ids = {r[0] for r in cur.fetchall()}
+            # 카드 미발급자는 타각 자체가 불가하므로 제외 (근무표로 별도 관리)
             cur.execute("""
                 SELECT u.id, u.name, u.company, IFNULL(er.dept,'') FROM tuser u
                 JOIN employee_roster er ON er.emp_no = u.idno
                 WHERE u.idno IS NOT NULL AND u.idno <> ''
                   AND (u.retire_date IS NULL OR u.retire_date = '')
+                  AND u.cardnum IS NOT NULL AND u.cardnum <> ''
             """)
             for uid, uname, comp, er_dept in cur.fetchall():
                 if uid in prev_seen_ids or uid in leave_ids:
