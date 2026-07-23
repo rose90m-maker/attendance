@@ -9665,6 +9665,11 @@ init_hazmat_db(app)
 app.register_blueprint(hazmat_bp)
 start_hazmat_monitor()
 
+# ── AI 안전진단 Blueprint 등록 ────────────────────────────
+from safety_ai_bp import safety_ai_bp, init_safety_ai_db
+init_safety_ai_db(app)
+app.register_blueprint(safety_ai_bp)
+
 
 # ── 페이스메이커 대시보드 ─────────────────────────────────
 @app.route("/pacemaker")

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 안전진단</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        .overall-badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:0.72rem; font-weight:700; }
+        .badge-safe   { background:#dcfce7; color:#166534; }
+        .badge-warn   { background:#fef3c7; color:#92722a; }
+        .badge-danger { background:#fee2e2; color:#991b1b; }
+        .badge-review { background:#e2e8f0; color:#334155; }
+        .diag-spinner { border:5px solid #e5e7eb; border-top-color:#0d6efd; border-radius:50%;
+                        animation:diagspin 0.9s linear infinite; }
+        @keyframes diagspin { to { transform:rotate(360deg); } }
+    </style>
+</head>
+<body>
+{% set active_page = 'safety_ai' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div class="page-title mb-0">
+            <span class="title-icon">🤖</span>
+            <span>AI 안전진단</span>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/safety_ai/stats" class="btn btn-outline-secondary btn-sm">📊 통계 보기</a>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger py-2" style="font-size:0.86rem;">{{ error }}</div>
+    {% endif %}
+
+    <!-- 업로드 폼 -->
+    <div class="card shadow-sm mb-3">
+        <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+            <span>📷 현장 사진 업로드 → AI 안전진단</span>
+            <small class="text-muted fw-normal">비전 모델 · {{ vision_model }} · 10~40초 소요</small>
+        </div>
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data" onsubmit="return startDiag(this)">
+                <div class="row g-2 mb-2">
+                    <div class="col-md-3 col-6">
+                        <label class="form-label small text-muted mb-1">현장명</label>
+                        <input class="form-control form-control-sm" name="site_name" placeholder="예: 1공장 SMT">
+                    </div>
+                    <div class="col-md-2 col-6">
+                        <label class="form-label small text-muted mb-1">점검일</label>
+                        <input type="date" class="form-control form-control-sm" name="inspect_date" value="{{ today }}">
+                    </div>
+                    <div class="col-md-2 col-6">
+                        <label class="form-label small text-muted mb-1">점검자</label>
+                        <input class="form-control form-control-sm" name="inspector" placeholder="이름">
+                    </div>
+                    <div class="col-md-2 col-6">
+                        <label class="form-label small text-muted mb-1">부서</label>
+                        <input class="form-control form-control-sm" name="dept" placeholder="예: 생산1팀">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1">비고</label>
+                        <input class="form-control form-control-sm" name="note" placeholder="특이사항(선택)">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted mb-1">현장 사진 (JPG/PNG, 12MB 이하)</label>
+                    <input type="file" class="form-control form-control-sm" name="photo" accept="image/*" required>
+                </div>
+                <div class="d-flex align-items-center gap-3">
+                    <button class="btn btn-primary btn-sm" type="submit" id="diagBtn">🤖 AI 진단 실행</button>
+                    <small class="text-muted">비전 분석 + 기준 검색에 10~40초 소요</small>
+                </div>
+            </form>
+            <p class="text-muted mt-2 mb-0" style="font-size:0.78rem;">
+                ※ AI 분석 결과는 확정 판정이 아닌 <b>점검 보조 의견</b>입니다. 법규 조항은 확실한 경우만 표기합니다.
+            </p>
+        </div>
+    </div>
+
+    <!-- 분석 중 오버레이 -->
+    <div id="diagOverlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:32px 48px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.3);">
+            <div class="diag-spinner" style="width:44px;height:44px;margin:0 auto 16px;"></div>
+            <div style="font-size:16px;font-weight:700;color:#1e293b;">🤖 AI 안전진단 분석 중…</div>
+            <div class="text-muted mt-1" style="font-size:13px;">사진 비전 분석 → 위험요인 추출 → 기준 검색</div>
+            <div id="diagTimer" style="font-size:13px;color:#0d6efd;font-weight:700;margin-top:8px;">0초 경과</div>
+        </div>
+    </div>
+
+    <!-- 최근 진단 목록 -->
+    <div class="card shadow-sm">
+        <div class="card-header fw-bold">
+            최근 진단 내역 <span class="text-muted fw-normal" style="font-size:0.82rem;">{{ recent|length }}건</span>
+        </div>
+        <div class="card-body p-0">
+            {% if recent %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>점검일</th><th>현장명</th><th>점검자</th><th>부서</th>
+                            <th class="text-center">종합판정</th><th class="text-center">위험요인</th>
+                            <th class="text-center">확정</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for r in recent %}
+                    <tr>
+                        <td>{{ r.inspect_date }}</td>
+                        <td>{{ r.site_name }}</td>
+                        <td>{{ r.inspector }}</td>
+                        <td class="text-muted">{{ r.dept or '-' }}</td>
+                        <td class="text-center">
+                            <span class="overall-badge
+                                {% if r.overall == '위험' %}badge-danger
+                                {% elif r.overall == '주의' %}badge-warn
+                                {% elif r.overall == '안전' %}badge-safe
+                                {% else %}badge-review{% endif %}">
+                                {{ r.overall }}
+                            </span>
+                        </td>
+                        <td class="text-center">{{ r.hazard_count }}</td>
+                        <td class="text-center">
+                            {% if r.confirmed %}<span class="text-success fw-bold" style="font-size:0.75rem;">✓ 확정</span>{% else %}-{% endif %}
+                        </td>
+                        <td>
+                            <a href="/safety_ai/{{ r.id }}" class="btn btn-outline-secondary btn-sm py-0" style="font-size:0.75rem;">보고서 →</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-4" style="font-size:0.86rem;">진단 내역 없음 — 위에서 사진을 올려보세요</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function startDiag(form) {
+    var f = form.querySelector('input[type=file]');
+    if (!f || !f.files.length) return true;
+    document.getElementById('diagOverlay').style.display = 'flex';
+    document.getElementById('diagBtn').disabled = true;
+    document.getElementById('diagBtn').textContent = '분석 중…';
+    var s = 0, t = document.getElementById('diagTimer');
+    setInterval(function() { s++; t.textContent = s + '초 경과'; }, 1000);
+    return true;
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

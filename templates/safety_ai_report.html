@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>안전진단 보고서 #{{ rec.id }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        .overall-pill { display:inline-block; padding:5px 16px; font-weight:800; font-size:1rem; border-radius:4px; }
+        .pill-safe   { background:#dcfce7; color:#166534; }
+        .pill-warn   { background:#fef3c7; color:#92722a; }
+        .pill-danger { background:#fee2e2; color:#991b1b; }
+        .pill-review { background:#e2e8f0; color:#334155; }
+        .grade-badge { display:inline-block; padding:2px 8px; font-size:0.72rem; font-weight:800; border-radius:3px; }
+        .grade-hi  { background:#fee2e2; color:#991b1b; }
+        .grade-mid { background:#fef3c7; color:#92722a; }
+        .grade-lo  { background:#dcfce7; color:#166534; }
+        .haz-card { border-left:4px solid #dee2e6; }
+        .haz-card.grade-hi-card { border-left-color:#991b1b; }
+        .haz-card.grade-mid-card { border-left-color:#c2410c; }
+        .haz-card.grade-lo-card  { border-left-color:#15803d; }
+        .meta-label { font-size:0.72rem; font-weight:700; color:#6b7280; min-width:72px; }
+        .meta-val   { font-size:0.84rem; }
+        .ref-block  { background:#f0fdf4; border-left:3px solid #15803d; padding:6px 10px; font-size:0.78rem; color:#15803d; }
+    </style>
+</head>
+<body>
+{% set active_page = 'safety_ai' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <!-- 페이지 헤더 -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div class="page-title mb-0">
+            <span class="title-icon">🤖</span>
+            <span>AI 안전진단 보고서 #{{ rec.id }}</span>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="/safety_ai" class="btn btn-outline-secondary btn-sm">← 목록</a>
+            <a href="/safety_ai/{{ rec.id }}/edit" class="btn btn-outline-primary btn-sm">✏️ 수정/확정</a>
+            <a href="/safety_ai/{{ rec.id }}/docx" class="btn btn-outline-success btn-sm">📄 Word 다운로드</a>
+            <button onclick="window.print()" class="btn btn-outline-dark btn-sm">🖨 인쇄</button>
+        </div>
+    </div>
+
+    <!-- 메타 정보 -->
+    <div class="card shadow-sm mb-3">
+        <div class="card-body py-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div>
+                    <div class="d-flex flex-wrap gap-4 mb-2">
+                        <div><span class="meta-label">현장</span> <span class="meta-val fw-bold">{{ rec.site_name }}</span></div>
+                        <div><span class="meta-label">점검일</span> <span class="meta-val">{{ rec.inspect_date }}</span></div>
+                        <div><span class="meta-label">점검자</span> <span class="meta-val">{{ rec.inspector }}</span></div>
+                        {% if rec.dept %}<div><span class="meta-label">부서</span> <span class="meta-val">{{ rec.dept }}</span></div>{% endif %}
+                    </div>
+                    <div class="text-muted" style="font-size:0.75rem;">AI 모델 · {{ rec.model }} · {{ rec.created_at }}</div>
+                    {% if rec.note %}<div class="text-muted mt-1" style="font-size:0.8rem;">{{ rec.note }}</div>{% endif %}
+                </div>
+                <div class="d-flex gap-2 align-items-center flex-shrink-0">
+                    <span class="overall-pill
+                        {% if rec.overall == '위험' %}pill-danger
+                        {% elif rec.overall == '주의' %}pill-warn
+                        {% elif rec.overall == '안전' %}pill-safe
+                        {% else %}pill-review{% endif %}">
+                        {{ rec.overall }}
+                    </span>
+                    {% if rec.confirmed %}
+                    <span class="badge bg-success">✓ 확정</span>
+                    {% else %}
+                    <a href="/safety_ai/{{ rec.id }}/edit" class="btn btn-outline-success btn-sm py-0">확정 처리</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 사진 + 종합 의견 -->
+    <div class="row g-3 mb-3">
+        {% if rec.image_b64 %}
+        <div class="col-lg-4">
+            <div class="card shadow-sm h-100">
+                <img src="data:{{ rec.image_mime }};base64,{{ rec.image_b64 }}"
+                     alt="현장 사진" class="card-img-top"
+                     style="max-height:320px;object-fit:cover;">
+                {% if rec.image_summary %}
+                <div class="card-footer text-muted" style="font-size:0.78rem;">{{ rec.image_summary }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        <div class="col-lg-{% if rec.image_b64 %}8{% else %}12{% endif %}">
+            <div class="card shadow-sm h-100">
+                <div class="card-header fw-bold">종합 의견</div>
+                <div class="card-body">
+                    <p style="line-height:1.75; margin:0;">{{ rec.summary or '(종합 의견 없음)' }}</p>
+                    {% if rec.workplace_type %}
+                    <p class="text-muted mt-2 mb-2" style="font-size:0.8rem;">작업장 유형: {{ rec.workplace_type }}</p>
+                    {% endif %}
+                    {% if detected %}
+                    <div class="mt-3 d-flex flex-wrap gap-1">
+                        {% for obj in detected %}
+                        <span class="badge rounded-pill" style="background:#e0f2fe;color:#0369a1;font-size:0.72rem;font-weight:700;">{{ obj }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 위험요인 목록 -->
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="fw-bold mb-0">위험요인별 상세 진단 <span class="text-muted fw-normal" style="font-size:0.82rem;">{{ hazards|length }}건</span></h6>
+    </div>
+
+    {% if not hazards %}
+    <div class="card shadow-sm text-center py-5 text-muted">위험요인이 발견되지 않았습니다.</div>
+    {% else %}
+    {% for h in hazards %}
+    {% set grade = h.get('grade','하') %}
+    <div class="card shadow-sm mb-2 haz-card
+        {% if grade == '상' %}grade-hi-card{% elif grade == '중' %}grade-mid-card{% else %}grade-lo-card{% endif %}">
+        <div class="card-body py-3">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                    <h6 class="mb-1 fw-bold">No.{{ loop.index }} {{ h.get('name','') }}</h6>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <span class="grade-badge {% if grade == '상' %}grade-hi{% elif grade == '중' %}grade-mid{% else %}grade-lo{% endif %}">
+                            위험등급 {{ grade }}
+                        </span>
+                        <span class="text-muted" style="font-size:0.8rem;">{{ h.get('category','') }}</span>
+                        {% if h.get('accident_type') %}<span class="text-muted" style="font-size:0.8rem;">· {{ h.get('accident_type') }}</span>{% endif %}
+                        <span class="text-muted" style="font-size:0.72rem;">({{ h.get('visibility','') }})</span>
+                    </div>
+                </div>
+                <small class="text-muted text-nowrap">가능성 {{ h.get('likelihood','') }} / 중대성 {{ h.get('severity','') }}</small>
+            </div>
+
+            <div class="row g-2" style="font-size:0.84rem;">
+                <div class="col-12">
+                    <span class="meta-label">현장 상태</span>
+                    <span class="meta-val">{{ h.get('site_state','-') }}</span>
+                </div>
+                <div class="col-md-4">
+                    <span class="meta-label">즉시조치</span>
+                    <div class="meta-val mt-1">{{ h.get('immediate_action','-') }}</div>
+                </div>
+                <div class="col-md-4">
+                    <span class="meta-label">단기조치</span>
+                    <div class="meta-val mt-1">{{ h.get('short_term_action','-') }}</div>
+                </div>
+                <div class="col-md-4">
+                    <span class="meta-label">재발방지</span>
+                    <div class="meta-val mt-1">{{ h.get('prevention_action','-') }}</div>
+                </div>
+                {% if h.get('refs',{}).get('rule') %}
+                <div class="col-12">
+                    <div class="ref-block mt-1">📋 {{ h.refs.rule }}</div>
+                </div>
+                {% endif %}
+                {% if h.get('report_sentence') %}
+                <div class="col-12">
+                    <div class="ref-block mt-1" style="border-color:#2563eb;background:#eff6ff;color:#1e40af;">
+                        📝 {{ h.report_sentence }}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <footer class="text-muted text-center py-4" style="font-size:0.78rem;">
+        태인관리시스템 · AI 안전진단 보고서 #{{ rec.id }} · ※ 본 결과는 확정 판정이 아닌 점검 보조 의견입니다.
+    </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
