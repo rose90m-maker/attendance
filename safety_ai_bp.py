@@ -161,9 +161,19 @@ def _vision_call(b64: str) -> dict:
         ],
         "stream": False,
         "format": "json",
-        # temperature 0 — 같은 사진에 같은 진단이 나오도록 (0.1에서는 재실행 시
-        # '고소작업 추락 위험' 같은 핵심 항목이 통째로 사라지는 편차가 확인됨)
-        "options": {"temperature": 0},
+        # 현장사진 실측으로 결정한 값 (2026-07-24). 같은 사진 5회 반복 → 결과 100% 동일.
+        #  temperature 0 / top_k 1 / seed 고정 : 같은 사진엔 같은 진단이 나오게. 0.1 에서는
+        #    재실행 시 '고소작업 추락 위험' 같은 핵심 항목이 통째로 사라지는 편차가 있었다.
+        #  num_ctx 8192 : 기본 32768 이면 KV 캐시가 VRAM 을 잠식해 모델 27.1GB 중 4.4GB 가
+        #    CPU 로 밀려나 2배 느려진다. 8192 면 전부 GPU 에 올라가 43초 → 20초.
+        #    실측 최대 사용량은 2,702 토큰(입력 2,037 + 출력 665)이라 8192 는 3배 여유.
+        "options": {
+            "temperature": 0,
+            "top_k": 1,
+            "top_p": 1.0,
+            "seed": 42,
+            "num_ctx": 8192,
+        },
         "think": False,
     }
     body = json.dumps(payload).encode("utf-8")
