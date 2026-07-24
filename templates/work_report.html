@@ -502,6 +502,9 @@
                     <div class="col-auto d-flex align-items-end">
                         <button type="button" class="btn btn-sm btn-outline-primary" onclick="copyPrevReport()">📋 전일복사</button>
                     </div>
+                    <div class="col-auto d-flex align-items-end">
+                        <span id="wrLeaveNotice" class="small" style="display:none;color:#0d9488;font-weight:600;"></span>
+                    </div>
                 </div>
                 <!-- 엑셀 형태 테이블 -->
                 <div class="table-responsive">
@@ -623,7 +626,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (autoGroupId) {
             document.getElementById('wrGroupId').value = autoGroupId;
-            loadGroupMembers(true);  // 페이지 최초 로드: 연차 자동 배정만, 알림 생략
+            loadGroupMembers();
         }
         checkHoliday();
     } catch(e) {
@@ -825,7 +828,7 @@ function copyPrevReport() {
     });
 }
 
-function loadGroupMembers(silent) {
+function loadGroupMembers() {
     var gid = document.getElementById('wrGroupId').value;
     if (!gid) { groupMembers = []; renderTable(); return; }
     fetch('/api/wr_group_members/' + gid).then(r=>r.json()).then(d => {
@@ -834,13 +837,21 @@ function loadGroupMembers(silent) {
         categories.forEach(function(c){ assignments[c] = []; });
         renderPool();
         renderTable();
-        autoLoadLeaves(silent);
+        autoLoadLeaves();
     });
 }
 
-function autoLoadLeaves(silent) {
+function setLeaveNotice(msg) {
+    var el = document.getElementById('wrLeaveNotice');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.style.display = msg ? '' : 'none';
+}
+
+function autoLoadLeaves() {
     var gid = document.getElementById('wrGroupId').value;
     var date = document.getElementById('wrDate').value;
+    setLeaveNotice('');
     if (!gid || !date || !groupMembers.length) return;
     if (currentEditId) return;  // 수정 모드에서는 자동 로드 안함
     // 이전 날짜에서 자동 반영된 연차는 제거 (직접 배정한 인원은 유지)
@@ -877,7 +888,8 @@ function autoLoadLeaves(silent) {
         if (added.length) {
             renderPool();
             renderTable();
-            if (!silent) alert('🏖️ 승인된 연차 자동 반영: ' + added.join(', '));
+            // 팝업 대신 작성창 내 안내 문구로 표시
+            setLeaveNotice('🏖️ 승인된 연차 자동 반영: ' + added.join(', '));
         } else if (removedAuto) {
             renderPool();
             renderTable();
