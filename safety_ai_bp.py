@@ -7,7 +7,10 @@ from flask import Blueprint, render_template, request, redirect, session, jsonif
 safety_ai_bp = Blueprint("safety_ai", __name__, url_prefix="/safety_ai")
 
 AI_HOST = os.environ.get("OLLAMA_HOST", "http://192.168.100.6:11434")
-VISION_MODEL = os.environ.get("AI_VISION_MODEL", "gemma4:26b")
+# 현장사진 8장 비교 결과 qwen 채택 (2026-07-24). gemma는 사람·보호구 미착용과
+# 고소작업 추락 위험을 반복적으로 놓쳤고, 위험이 여럿인 현장에서도 항상 1건만 지적함.
+# 되돌리려면 .env 에 AI_VISION_MODEL=gemma4:26b 지정.
+VISION_MODEL = os.environ.get("AI_VISION_MODEL", "qwen2.5vl:32b")
 
 RULE_KB = {
     "기계안전": "산업안전보건기준에 관한 규칙(방호장치·끼임 방지)",
@@ -158,7 +161,9 @@ def _vision_call(b64: str) -> dict:
         ],
         "stream": False,
         "format": "json",
-        "options": {"temperature": 0.1},
+        # temperature 0 — 같은 사진에 같은 진단이 나오도록 (0.1에서는 재실행 시
+        # '고소작업 추락 위험' 같은 핵심 항목이 통째로 사라지는 편차가 확인됨)
+        "options": {"temperature": 0},
         "think": False,
     }
     body = json.dumps(payload).encode("utf-8")
