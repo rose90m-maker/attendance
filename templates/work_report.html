@@ -623,7 +623,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (autoGroupId) {
             document.getElementById('wrGroupId').value = autoGroupId;
-            loadGroupMembers();
+            loadGroupMembers(true);  // 페이지 최초 로드: 연차 자동 배정만, 알림 생략
         }
         checkHoliday();
     } catch(e) {
@@ -825,7 +825,7 @@ function copyPrevReport() {
     });
 }
 
-function loadGroupMembers() {
+function loadGroupMembers(silent) {
     var gid = document.getElementById('wrGroupId').value;
     if (!gid) { groupMembers = []; renderTable(); return; }
     fetch('/api/wr_group_members/' + gid).then(r=>r.json()).then(d => {
@@ -834,11 +834,11 @@ function loadGroupMembers() {
         categories.forEach(function(c){ assignments[c] = []; });
         renderPool();
         renderTable();
-        autoLoadLeaves();
+        autoLoadLeaves(silent);
     });
 }
 
-function autoLoadLeaves() {
+function autoLoadLeaves(silent) {
     var gid = document.getElementById('wrGroupId').value;
     var date = document.getElementById('wrDate').value;
     if (!gid || !date || !groupMembers.length) return;
@@ -877,7 +877,7 @@ function autoLoadLeaves() {
         if (added.length) {
             renderPool();
             renderTable();
-            alert('🏖️ 승인된 연차 자동 반영: ' + added.join(', '));
+            if (!silent) alert('🏖️ 승인된 연차 자동 반영: ' + added.join(', '));
         } else if (removedAuto) {
             renderPool();
             renderTable();
