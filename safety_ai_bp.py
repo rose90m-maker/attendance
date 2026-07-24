@@ -92,6 +92,27 @@ def _compress_image_for_db(raw: bytes, max_kb: int = 600) -> bytes:
         return raw
 
 
+def _resize_for_vision(raw: bytes, max_px: int = 1280) -> bytes:
+    """비전 모델 입력용 축소. 용량이 아니라 '해상도'를 제한한다.
+
+    원본을 그대로 넘기면 고해상도 사진(아이폰 등)에서 비전 토큰이 폭증해
+    GPU 메모리 부족으로 진단이 실패한다 (qwen2.5vl:32b, cudaMalloc OOM 확인).
+    1280px 이하로 줄이면 정상 동작하며 위험요인 인식률 저하도 없었다.
+    """
+    try:
+        from PIL import Image
+        import io as _io
+        img = Image.open(_io.BytesIO(raw))
+        if img.width <= max_px and img.height <= max_px:
+            return raw
+        img.thumbnail((max_px, max_px), Image.LANCZOS)
+        buf = _io.BytesIO()
+        img.convert("RGB").save(buf, format="JPEG", quality=85)
+        return buf.getvalue()
+    except Exception:
+        return raw
+
+
 def _login_required(f):
     @wraps(f)
     def deco(*a, **kw):
@@ -184,7 +205,8 @@ def index():
             if len(raw) > 12 * 1024 * 1024:
                 error = "이미지가 너무 큽니다 (12MB 이하)."
             else:
-                b64 = base64.b64encode(raw).decode()
+                # AI 입력은 축소본을 쓴다 (원본 그대로 보내면 고해상도 사진에서 GPU OOM)
+                b64 = base64.b64encode(_resize_for_vision(raw)).decode()
                 try:
                     data = _vision_call(b64)
                     hazards = _enrich_hazards(data.get("hazards") or [])
