@@ -43,10 +43,15 @@ SAFETY_VISION_SYSTEM = (
     "위험등급 산정: 중대성 상+가능성 중이상=상, 중대성 중+가능성 중=중, 중대성 하+가능성 하=하. "
     "사망·끼임·추락·감전·화재 위험은 기본 '중' 이상으로 평가.\n"
     "주의: 사진에서 명확히 보이는 것과 추정되는 것을 구분(visibility=명확/추정, 추정이면 site_state에 '추정' 명시). "
-    "작업자 얼굴·회사명 등 개인정보는 익명 처리. "
-    "법규 조항 번호는 단정하지 말 것. 결과는 반드시 아래 JSON만 출력(설명·마크다운 금지, 한국어):\n"
+    "작업자 얼굴·회사명 등 개인정보는 익명 처리.\n"
+    "【법규 — 지어내기 금지】 '제○조' 같은 조문 번호는 어디에도 절대 쓰지 마라. "
+    "근거 법령은 시스템이 카테고리별로 자동 부착하므로 law/근거 필드는 비워라.\n"
+    "결과는 반드시 아래 JSON만 출력(설명·JSON 밖 텍스트 금지, 한국어):\n"
     "{\n"
     '  "overall": "안전|주의|위험",\n'
+    '  "score": 0,\n'
+    '  "grade": "A|B|C|D|E",\n'
+    '  "danger_count": 0,\n'
     '  "summary": "종합 의견 2~3문장",\n'
     '  "image_summary": "사진 한 문장 설명",\n'
     '  "workplace_type": "작업장 유형",\n'
@@ -64,12 +69,35 @@ SAFETY_VISION_SYSTEM = (
     '      "prevention_action": "재발방지조치",\n'
     '      "report_sentence": "보고서용 문장"\n'
     "    }\n"
-    "  ]\n"
+    "  ],\n"
+    '  "checklist": {\n'
+    '    "helmet": "확인|위반|확인불가", "safety_shoes": "확인|위반|확인불가",\n'
+    '    "gloves": "확인|위반|확인불가", "goggles": "확인|위반|확인불가", "harness": "확인|위반|확인불가",\n'
+    '    "machine_guard": "확인|위반|확인불가", "fall": "확인|위반|확인불가", "falling": "확인|위반|확인불가",\n'
+    '    "electrical": "확인|위반|확인불가", "fire": "확인|위반|확인불가", "housekeeping": "확인|위반|확인불가",\n'
+    '    "emergency_exit": "확인|위반|확인불가", "forklift": "확인|위반|확인불가",\n'
+    '    "crane": "확인|위반|확인불가", "oil_leak": "확인|위반|확인불가"\n'
+    "  },\n"
+    '  "recommendation": ["우선개선1", "우선개선2", "우선개선3"],\n'
+    '  "opinion": "안전관리자 관점 종합 의견 2~3문장"\n'
     "}\n"
-    "위험요인이 없으면 hazards를 빈 배열로, overall은 '안전'으로."
+    "【점수·등급】 score=100점 만점 안전점수(상급위험 1건당 대폭 감점, 위험 없으면 90 이상). "
+    "grade: A(90~,매우우수) B(80~,양호) C(65~,보통) D(40~,위험) E(~39,매우위험).\n"
+    "【checklist】 각 항목: 사진에서 정상 확인=확인, 문제 확인=위반, 안 보임=확인불가. "
+    "확인불가여도 hazards 탐지는 위 규칙 3)·4)·5)대로 반드시 수행하라.\n"
+    "위험요인이 없으면 hazards를 빈 배열로, overall은 '안전', score는 90 이상으로."
 )
 
 _GRADE_ORD = {"상": 0, "중": 1, "하": 2}
+
+# KOSHA 점검 항목 한글 라벨 (checklist JSON 키 → 화면 표시명)
+CHECKLIST_LABELS = {
+    "helmet": "안전모", "safety_shoes": "안전화", "gloves": "장갑",
+    "goggles": "보안경", "harness": "안전대", "machine_guard": "기계 방호덮개",
+    "fall": "추락 방지", "falling": "낙하 방지", "electrical": "전기 안전",
+    "fire": "화재/소방", "housekeeping": "정리정돈", "emergency_exit": "비상구/피난",
+    "forklift": "지게차", "crane": "크레인", "oil_leak": "누유",
+}
 
 
 def _conn():
@@ -155,6 +183,21 @@ def init_safety_ai_db(app):
                 `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+        # KOSHA 점검서 필드 (기존 테이블에 없으면 추가 — 구버전 행은 NULL)
+        cur.execute("""SELECT column_name FROM information_schema.columns
+                       WHERE table_schema=DATABASE() AND table_name='safety_ai_inspections'""")
+        existing = {r[0] for r in cur.fetchall()}
+        add_cols = [
+            ("score", "INT DEFAULT NULL"),
+            ("grade", "VARCHAR(2) DEFAULT NULL"),
+            ("danger_count", "INT DEFAULT NULL"),
+            ("checklist_json", "TEXT"),
+            ("recommendation_json", "TEXT"),
+            ("opinion", "TEXT"),
+        ]
+        for col, ddl in add_cols:
+            if col not in existing:
+                cur.execute(f"ALTER TABLE safety_ai_inspections ADD COLUMN `{col}` {ddl}")
         conn.commit(); conn.close()
 
 
@@ -234,11 +277,14 @@ def index():
                     ins_date = date.fromisoformat(idate) if idate else date.today()
                     b64_store = base64.b64encode(_compress_image_for_db(raw)).decode()
                     conn = _conn(); cur = conn.cursor()
+                    _score = data.get("score")
+                    _score = int(_score) if isinstance(_score, (int, float)) else None
                     cur.execute("""
                         INSERT INTO safety_ai_inspections
                         (site_name, inspector, dept, note, inspect_date, image_mime, image_b64,
-                         overall, summary, image_summary, workplace_type, detected_json, hazards_json, model)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                         overall, summary, image_summary, workplace_type, detected_json, hazards_json, model,
+                         score, grade, danger_count, checklist_json, recommendation_json, opinion)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
                         site or "(미입력)", inspector or "(미입력)", dept, note,
                         ins_date, f.mimetype or "image/jpeg", b64_store,
@@ -249,6 +295,12 @@ def index():
                         json.dumps(data.get("detected_objects") or [], ensure_ascii=False),
                         json.dumps(hazards, ensure_ascii=False),
                         VISION_MODEL,
+                        _score,
+                        (data.get("grade") or "")[:2] or None,
+                        len(hazards),
+                        json.dumps(data.get("checklist") or {}, ensure_ascii=False),
+                        json.dumps(data.get("recommendation") or [], ensure_ascii=False),
+                        data.get("opinion") or "",
                     ))
                     conn.commit()
                     new_id = cur.lastrowid
@@ -337,11 +389,16 @@ def report(sid):
         return "진단을 찾을 수 없습니다.", 404
     cols = ["id","site_name","inspector","dept","note","inspect_date","image_mime","image_b64",
             "overall","summary","image_summary","workplace_type","detected_json","hazards_json",
-            "model","confirmed","created_at"]
+            "model","confirmed","created_at",
+            "score","grade","danger_count","checklist_json","recommendation_json","opinion"]
     rec = dict(zip(cols, row))
     hazards = json.loads(rec["hazards_json"] or "[]")
     detected = json.loads(rec["detected_json"] or "[]")
-    return render_template("safety_ai_report.html", rec=rec, hazards=hazards, detected=detected)
+    checklist = json.loads(rec.get("checklist_json") or "{}")
+    recommendation = json.loads(rec.get("recommendation_json") or "[]")
+    return render_template("safety_ai_report.html", rec=rec, hazards=hazards, detected=detected,
+                           checklist=checklist, recommendation=recommendation,
+                           checklist_labels=CHECKLIST_LABELS)
 
 
 # ── 수정 + 확정 ──────────────────────────────────────────────────────

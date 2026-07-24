@@ -59,6 +59,20 @@
                     {% if rec.note %}<div class="text-muted mt-1" style="font-size:0.8rem;">{{ rec.note }}</div>{% endif %}
                 </div>
                 <div class="d-flex gap-2 align-items-center flex-shrink-0">
+                    {% if rec.score is not none %}
+                    <div class="text-center px-2">
+                        <div style="font-size:1.6rem;font-weight:800;line-height:1;
+                            {% if rec.score >= 80 %}color:#166534{% elif rec.score >= 65 %}color:#92722a{% elif rec.score >= 40 %}color:#c2410c{% else %}color:#991b1b{% endif %}">
+                            {{ rec.score }}<span style="font-size:0.8rem;font-weight:600;">점</span>
+                        </div>
+                        <div style="font-size:0.68rem;color:#6b7280;">안전점수</div>
+                    </div>
+                    {% if rec.grade %}
+                    <span class="grade-badge
+                        {% if rec.grade in ['D','E'] %}grade-hi{% elif rec.grade == 'C' %}grade-mid{% else %}grade-lo{% endif %}"
+                        style="font-size:0.9rem;padding:4px 10px;">{{ rec.grade }}등급</span>
+                    {% endif %}
+                    {% endif %}
                     <span class="overall-pill
                         {% if rec.overall == '위험' %}pill-danger
                         {% elif rec.overall == '주의' %}pill-warn
@@ -109,6 +123,58 @@
             </div>
         </div>
     </div>
+
+    <!-- KOSHA 점검 체크리스트 -->
+    {% if checklist %}
+    <div class="card shadow-sm mb-3">
+        <div class="card-header fw-bold py-2">🔍 점검 항목 체크리스트</div>
+        <div class="card-body py-3">
+            <div class="d-flex flex-wrap gap-2">
+                {% for key, label in checklist_labels.items() %}
+                {% set val = checklist.get(key) %}
+                {% if val %}
+                <span class="badge d-inline-flex align-items-center gap-1"
+                    style="font-size:0.76rem;font-weight:600;padding:5px 9px;
+                    {% if val == '위반' %}background:#fee2e2;color:#991b1b;
+                    {% elif val == '확인' %}background:#dcfce7;color:#166534;
+                    {% else %}background:#f1f5f9;color:#94a3b8;{% endif %}">
+                    {% if val == '위반' %}⚠{% elif val == '확인' %}✓{% else %}–{% endif %} {{ label }}
+                </span>
+                {% endif %}
+                {% endfor %}
+            </div>
+            <div class="text-muted mt-2" style="font-size:0.7rem;">✓ 정상 확인 · ⚠ 위반(문제) · – 확인불가(사진에 안 보임)</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 우선 개선순위 + AI 종합의견 -->
+    {% if recommendation or rec.opinion %}
+    <div class="row g-3 mb-3">
+        {% if recommendation %}
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header fw-bold py-2">🎯 우선 개선순위</div>
+                <div class="card-body py-3">
+                    <ol class="mb-0" style="padding-left:1.1rem;line-height:1.9;">
+                        {% for r in recommendation %}{% if r %}<li>{{ r }}</li>{% endif %}{% endfor %}
+                    </ol>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% if rec.opinion %}
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header fw-bold py-2">💬 AI 종합 의견</div>
+                <div class="card-body py-3">
+                    <p class="mb-0" style="line-height:1.75;">{{ rec.opinion }}</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
 
     <!-- 위험요인 목록 -->
     <div class="d-flex justify-content-between align-items-center mb-2">
