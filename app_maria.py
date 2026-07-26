@@ -458,9 +458,12 @@ def _check_attendance_sync(cur):
     # 주말/공휴일은 체크 안 함
     if today.weekday() >= 5 or today in KR_HOLIDAYS:
         return
+    # 회사 자체 휴무일(매년 7/1 창립기념일)도 체크 안 함
+    if today.month == 7 and today.day == 1:
+        return
 
     day_flags = _sync_check_alerts.setdefault(today_str, {
-        "morning_alerted": False, "evening_alerted": False
+        "early_alerted": False, "morning_alerted": False, "evening_alerted": False
     })
 
     # ── 판정 기준: '근태기록' 화면의 금일 조회 건수 ──
@@ -474,13 +477,30 @@ def _check_attendance_sync(cur):
         )
         return cur.fetchone()[0]
 
-    # ── 출근 체크: 09:00 이후, 금일 근태기록이 '0건'일 때만 알림 ──
+    # ── 조기 체크: 07:30 이후, 금일 근태기록이 10건 미만이면 알림 ──
+    # 평소 07:30까지 15~40건 태그됨. 새벽 기록 1~2건 때문에 '0건' 조건으로는
+    # 탐지 실패한 사례 있음 — 2026-07-27 CAPS 단말 수집 중단(08:19까지 미유입)인데
+    # 01:09 기록 1건이 있어 기존 0건 알림이 발송되지 않았음.
+    if not day_flags.get("early_alerted") and (now.hour > 7 or (now.hour == 7 and now.minute >= 30)):
+        cnt = _today_record_cnt()
+        if cnt < 10:
+            _send_telegram(
+                f"🚨 출근 데이터 이상 (조기 경보)!\n"
+                f"📅 {today_str}\n"
+                f"⏰ 07:30 기준 금일 근태기록: {cnt}건 (평소 15건 이상)\n"
+                f"➡️ CAPS 서버/출입단말기 상태를 확인하세요.",
+                "sync_check"
+            )
+            day_flags["early_alerted"] = True
+
+    # ── 출근 체크: 09:00 이후, 금일 근태기록이 50건 미만이면 알림 (평소 115건 이상) ──
     if not day_flags["morning_alerted"] and now.hour >= 9:
-        if _today_record_cnt() == 0:
+        cnt = _today_record_cnt()
+        if cnt < 50:
             _send_telegram(
                 f"🚨 출근 싱크 이상!\n"
                 f"📅 {today_str}\n"
-                f"⏰ 금일 근태기록: 0건\n"
+                f"⏰ 금일 근태기록: {cnt}건 (평소 115건 이상)\n"
                 f"➡️ CAPS 싱크 프로그램 상태를 확인하세요.",
                 "sync_check"
             )
