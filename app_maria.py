@@ -448,9 +448,23 @@ def _sync_log_checker():
             pass
 
 
+def _is_alert_primary():
+    """싱크 알림 발송 주체인지 판정.
+    .5 대기(standby) 서버도 같은 코드를 돌리며 텔레그램 토큰을 갖고 있어
+    중복/오탐 알림이 나간 사례가 있음 (2026-07-27 '퇴근 기록 0건' 오탐).
+    운영 기준 서버(.11 = 마스터 DB 직결)에서만 알림을 보낸다."""
+    db_host = (os.environ.get("DB_HOST") or "").strip()
+    return db_host.startswith("192.168.100.11") or db_host in ("127.0.0.1", "localhost")
+
+
 def _check_attendance_sync(cur):
-    """출퇴근 싱크 데이터 건수 체크 → 부족하면 텔레그램 알림"""
+    """출퇴근 싱크 데이터 건수 체크 → 금일 근태기록이 '0건'일 때만 텔레그램 알림"""
     from datetime import date, datetime
+
+    # 대기서버에서는 알림 발송 안 함 (운영 서버만 발송)
+    if not _is_alert_primary():
+        return
+
     today = date.today()
     today_str = today.strftime("%Y%m%d")
     now = datetime.now()
@@ -467,9 +481,11 @@ def _check_attendance_sync(cur):
     })
 
     # ── 판정 기준: '근태기록' 화면의 금일 조회 건수 ──
-    # 화면에 기록이 하나라도 보이면 싱크는 살아있는 것이므로 알림을 보내지 않는다.
-    # (출근/퇴근을 따로 세면 조회 시점 타이밍 때문에 오탐이 발생 — 2026-07-23 퇴근 133건인데
-    #  '퇴근 0건' 알림이 나간 사례)
+    # ⚠️ 절대 원칙: 금일 근태기록이 1건이라도 조회되면 알림을 보내지 않는다.
+    #   화면에 데이터가 보이는데 '싱크 이상' 알림이 가는 오탐은 금지.
+    #   (2026-07-23 퇴근 133건인데 '퇴근 0건' 알림,
+    #    2026-07-27 출근 100명인데 '퇴근 기록 0건(기준 5건)' 알림 — 모두 오탐 사례)
+    #   → 건수 임계값(N건 미만) 방식 금지. 오직 '0건'일 때만 발송.
     def _today_record_cnt():
         cur.execute(
             "SELECT COUNT(*) FROM tenter WHERE e_date=%s AND e_id>=0",
@@ -477,46 +493,42 @@ def _check_attendance_sync(cur):
         )
         return cur.fetchone()[0]
 
-    # ── 조기 체크: 07:30 이후, 금일 근태기록이 10건 미만이면 알림 ──
-    # 평소 07:30까지 15~40건 태그됨. 새벽 기록 1~2건 때문에 '0건' 조건으로는
-    # 탐지 실패한 사례 있음 — 2026-07-27 CAPS 단말 수집 중단(08:19까지 미유입)인데
-    # 01:09 기록 1건이 있어 기존 0건 알림이 발송되지 않았음.
+    # 데이터가 하나라도 있으면 어떤 알림도 보내지 않고 종료
+    if _today_record_cnt() > 0:
+        return
+
+    # ── 조기 체크: 07:30 이후, 금일 근태기록 0건 ──
     if not day_flags.get("early_alerted") and (now.hour > 7 or (now.hour == 7 and now.minute >= 30)):
-        cnt = _today_record_cnt()
-        if cnt < 10:
-            _send_telegram(
-                f"🚨 출근 데이터 이상 (조기 경보)!\n"
-                f"📅 {today_str}\n"
-                f"⏰ 07:30 기준 금일 근태기록: {cnt}건 (평소 15건 이상)\n"
-                f"➡️ CAPS 서버/출입단말기 상태를 확인하세요.",
-                "sync_check"
-            )
-            day_flags["early_alerted"] = True
+        _send_telegram(
+            f"🚨 출근 데이터 이상 (조기 경보)!\n"
+            f"📅 {today_str}\n"
+            f"⏰ 07:30 기준 금일 근태기록: 0건\n"
+            f"➡️ CAPS 서버/출입단말기 상태를 확인하세요.",
+            "sync_check"
+        )
+        day_flags["early_alerted"] = True
 
-    # ── 출근 체크: 09:00 이후, 금일 근태기록이 50건 미만이면 알림 (평소 115건 이상) ──
+    # ── 출근 체크: 09:00 이후, 금일 근태기록 0건 ──
     if not day_flags["morning_alerted"] and now.hour >= 9:
-        cnt = _today_record_cnt()
-        if cnt < 50:
-            _send_telegram(
-                f"🚨 출근 싱크 이상!\n"
-                f"📅 {today_str}\n"
-                f"⏰ 금일 근태기록: {cnt}건 (평소 115건 이상)\n"
-                f"➡️ CAPS 싱크 프로그램 상태를 확인하세요.",
-                "sync_check"
-            )
-            day_flags["morning_alerted"] = True
+        _send_telegram(
+            f"🚨 출근 싱크 이상!\n"
+            f"📅 {today_str}\n"
+            f"⏰ 금일 근태기록: 0건\n"
+            f"➡️ CAPS 싱크 프로그램 상태를 확인하세요.",
+            "sync_check"
+        )
+        day_flags["morning_alerted"] = True
 
-    # ── 퇴근 체크: 19:00 이후, 금일 근태기록이 '0건'일 때만 알림 ──
+    # ── 퇴근 체크: 19:00 이후, 금일 근태기록 0건 ──
     if not day_flags["evening_alerted"] and now.hour >= 19:
-        if _today_record_cnt() == 0:
-            _send_telegram(
-                f"🚨 퇴근 싱크 이상!\n"
-                f"📅 {today_str}\n"
-                f"🏠 금일 근태기록: 0건\n"
-                f"➡️ CAPS 싱크 프로그램 상태를 확인하세요.",
-                "sync_check"
-            )
-            day_flags["evening_alerted"] = True
+        _send_telegram(
+            f"🚨 퇴근 싱크 이상!\n"
+            f"📅 {today_str}\n"
+            f"🏠 금일 근태기록: 0건\n"
+            f"➡️ CAPS 싱크 프로그램 상태를 확인하세요.",
+            "sync_check"
+        )
+        day_flags["evening_alerted"] = True
 
     # 오래된 날짜 플래그 정리 (3일 이전)
     old_keys = [k for k in _sync_check_alerts if k < (today - __import__('datetime').timedelta(days=3)).strftime("%Y%m%d")]
