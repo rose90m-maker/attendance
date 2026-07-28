@@ -157,6 +157,7 @@ files = [
     ("templates/roster.html", "templates/roster.html"),
     ("templates/schedule_record.html", "templates/schedule_record.html"),
     ("templates/dashboard.html", "templates/dashboard.html"),
+    ("templates/control_center.html", "templates/control_center.html"),
     ("templates/document_management.html", "templates/document_management.html"),
     ("templates/_sidebar.html", "templates/_sidebar.html"),
     ("templates/leave_approval.html", "templates/leave_approval.html"),
