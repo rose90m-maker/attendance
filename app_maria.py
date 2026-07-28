@@ -3526,14 +3526,15 @@ def dashboard():
         d = today + _td(days=(i - _wd))
         week_days.add(d.day) if d.month == today.month else None
 
-    # 오늘부터 7일간 식수 데이터
+    # 이번 주(월~일) 7일간 식수 데이터
     meal_week = []
     try:
         from datetime import timedelta as _td2
         conn2 = _conn(); cur2 = conn2.cursor()
         DOW_KR2 = ["월","화","수","목","금","토","일"]
+        _monday = today - _td2(days=today.weekday())  # 이번 주 월요일
         for i in range(7):
-            d = today + _td2(days=i)
+            d = _monday + _td2(days=i)
             ym = d.strftime("%Y-%m")
             cur2.execute("SELECT dept, meal_type, `count` FROM meal_count WHERE `year_month`=%s AND `day`=%s", (ym, d.day))
             day_meals = {}
