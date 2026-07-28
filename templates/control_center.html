@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>통합관제 — 태인관리시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+.cc-card { border:none; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.07); height:100%; }
+.cc-card .card-body { padding:1rem 1.25rem; }
+.cc-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:.75rem; }
+.cc-title { font-size:0.92rem; font-weight:700; color:#1a1a2e; }
+.cc-more { font-size:0.74rem; color:#6c757d; text-decoration:none; }
+.cc-more:hover { color:#0d6efd; }
+.cc-val { font-size:1.7rem; font-weight:700; line-height:1.1; color:#1a1a2e; }
+.cc-unit { font-size:0.76rem; color:#888; margin-left:3px; font-weight:500; }
+.cc-lbl { font-size:0.7rem; color:#888; font-weight:600; letter-spacing:.03em; }
+.cc-sub { font-size:0.74rem; margin-top:3px; }
+.up { color:#e74c3c; } .dn { color:#27ae60; } .na { color:#aaa; }
+.cc-empty { font-size:0.8rem; color:#aaa; padding:1.2rem 0; text-align:center; }
+.meal-tbl { font-size:0.78rem; width:100%; }
+.meal-tbl th, .meal-tbl td { text-align:center; padding:5px 3px; border-bottom:1px solid #f0f0f0; }
+.meal-tbl th { color:#888; font-weight:600; font-size:0.72rem; }
+.meal-tbl td.today { background:#e7f1ff; font-weight:700; }
+.meal-tbl .hol { color:#dc3545; }
+.bus-row { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid #f2f2f2; font-size:0.84rem; }
+.bus-row:last-child { border-bottom:none; }
+.bus-cnt { font-weight:700; color:#0d6efd; }
+</style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main-content">
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h5 class="fw-bold mb-0" style="font-size:1.05rem;">🖥️ 통합관제</h5>
+  <span class="text-muted" style="font-size:0.78rem;" id="ccUpdated">불러오는 중…</span>
+</div>
+
+<div class="row g-3">
+
+  <!-- 수도 (일일 검침) -->
+  <div class="col-lg-6">
+    <div class="card cc-card">
+      <div class="card-body">
+        <div class="cc-head">
+          <span class="cc-title">💧 수도 (일일 검침)</span>
+          <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
+                  style="font-size:0.74rem;" onclick="openWaterForm()">✏️ 검침 입력</button>
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <div class="cc-lbl">오늘 사용량</div>
+            <div><span class="cc-val" id="wUsage">-</span><span class="cc-unit">㎥</span></div>
+          </div>
+          <div class="col-6">
+            <div class="cc-lbl">오늘 지침</div>
+            <div><span class="cc-val" id="wReading">-</span><span class="cc-unit">㎥</span></div>
+          </div>
+        </div>
+        <div id="wEmpty" class="cc-empty" style="display:none;">
+          오늘 검침이 아직 입력되지 않았습니다.
+        </div>
+        <div style="height:120px;"><canvas id="wChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 전력 -->
+  <div class="col-lg-6">
+    <div class="card cc-card">
+      <div class="card-body">
+        <div class="cc-head">
+          <span class="cc-title">⚡ 전력</span>
+          <a href="/power_dashboard" class="cc-more">상세 →</a>
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <div class="cc-lbl">오늘 누적</div>
+            <div><span class="cc-val" id="pToday">-</span><span class="cc-unit">kWh</span></div>
+            <div class="cc-sub" id="pDiff">&nbsp;</div>
+          </div>
+          <div class="col-6">
+            <div class="cc-lbl">어제 사용량</div>
+            <div><span class="cc-val" id="pYday">-</span><span class="cc-unit">kWh</span></div>
+          </div>
+        </div>
+        <div style="height:120px;"><canvas id="pChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 식수 -->
+  <div class="col-lg-7">
+    <div class="card cc-card">
+      <div class="card-body">
+        <div class="cc-head">
+          <span class="cc-title">🍽️ 식수 (이번 주)</span>
+          <a href="/meal_management" class="cc-more">상세 →</a>
+        </div>
+        <div class="mb-2">
+          <span class="cc-lbl">주간 합계</span>
+          <span class="cc-val ms-2" id="mTotal">-</span><span class="cc-unit">명</span>
+        </div>
+        <div class="table-responsive">
+          <table class="meal-tbl">
+            <thead><tr id="mHead"></tr></thead>
+            <tbody id="mBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 통근버스 -->
+  <div class="col-lg-5">
+    <div class="card cc-card">
+      <div class="card-body">
+        <div class="cc-head">
+          <span class="cc-title">🚌 통근버스</span>
+          <a href="/bus_dispatch" class="cc-more">배차 →</a>
+        </div>
+        <div class="mb-2">
+          <span class="cc-lbl">등록 인원</span>
+          <span class="cc-val ms-2" id="bTotal">-</span><span class="cc-unit">명</span>
+        </div>
+        <div id="bList"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- 수도 검침 입력 모달 -->
+<div class="modal fade" id="waterModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-bold" style="font-size:0.92rem;">💧 수도 검침 입력</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label mb-1 small">검침일</label>
+        <input type="date" id="wDate" class="form-control form-control-sm mb-2" value="{{ today }}">
+        <label class="form-label mb-1 small">계량기 지침 (㎥)</label>
+        <input type="number" id="wInput" class="form-control form-control-sm mb-2" step="0.01" min="0" placeholder="예: 12345.67">
+        <label class="form-label mb-1 small">메모 (선택)</label>
+        <input type="text" id="wMemo" class="form-control form-control-sm" maxlength="200">
+        <div id="wMsg" class="mt-2" style="font-size:0.76rem;"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button type="button" class="btn btn-sm btn-primary" onclick="saveWater()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+var waterModal, wChart = null, pChart = null;
+
+function openWaterForm() {
+    document.getElementById('wMsg').textContent = '';
+    waterModal.show();
+}
+
+function saveWater() {
+    var body = {
+        read_date: document.getElementById('wDate').value,
+        reading:   document.getElementById('wInput').value,
+        memo:      document.getElementById('wMemo').value
+    };
+    fetch('/api/cc_water_save', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    }).then(r => r.json()).then(function(d) {
+        var msg = document.getElementById('wMsg');
+        if (!d.ok) { msg.innerHTML = '<span class="text-danger">' + (d.msg || '저장 실패') + '</span>'; return; }
+        if (d.warn) { msg.innerHTML = '<span class="text-warning">⚠️ ' + d.warn + '</span>'; }
+        else { msg.innerHTML = '<span class="text-success">저장되었습니다.</span>'; }
+        loadOverview();
+        setTimeout(function(){ waterModal.hide(); }, d.warn ? 1800 : 700);
+    }).catch(function(){
+        document.getElementById('wMsg').innerHTML = '<span class="text-danger">통신 오류</span>';
+    });
+}
+
+function fmt(n, digits) {
+    if (n === null || n === undefined) return '-';
+    return Number(n).toLocaleString('ko-KR', {maximumFractionDigits: digits === undefined ? 1 : digits});
+}
+
+function loadOverview() {
+    fetch('/api/cc_overview').then(r => r.json()).then(function(d) {
+        if (!d.ok) return;
+        var now = new Date();
+        document.getElementById('ccUpdated').textContent =
+            '갱신 ' + now.toTimeString().slice(0,8);
+
+        // ── 수도 ──
+        var w = d.water || {};
+        document.getElementById('wUsage').textContent   = fmt(w.today_usage, 2);
+        document.getElementById('wReading').textContent = fmt(w.today_reading, 2);
+        document.getElementById('wEmpty').style.display = w.has_today ? 'none' : '';
+        var wDays = w.days || [];
+        var wCtx = document.getElementById('wChart');
+        var wData = {
+            labels: wDays.map(x => x.date),
+            datasets: [{
+                label: '일 사용량(㎥)',
+                data: wDays.map(x => x.usage),
+                borderColor: '#0dcaf0', backgroundColor: 'rgba(13,202,240,.15)',
+                borderWidth: 2, tension: .3, fill: true, spanGaps: true
+            }]
+        };
+        if (wChart) { wChart.data = wData; wChart.update(); }
+        else { wChart = new Chart(wCtx, {type: 'line', data: wData, options: chartOpts()}); }
+
+        // ── 전력 ──
+        var p = d.power || {};
+        document.getElementById('pToday').textContent = fmt(p.today_kwh);
+        document.getElementById('pYday').textContent  = fmt(p.yday_kwh);
+        var diffEl = document.getElementById('pDiff');
+        if (p.yday_kwh) {
+            var rate = ((p.today_kwh - p.yday_kwh) / p.yday_kwh) * 100;
+            diffEl.innerHTML = '<span class="' + (rate >= 0 ? 'up' : 'dn') + '">'
+                + (rate >= 0 ? '▲' : '▼') + ' ' + Math.abs(rate).toFixed(1) + '% (어제 대비)</span>';
+        } else { diffEl.innerHTML = '<span class="na">비교 데이터 없음</span>'; }
+        var ps = p.series || [];
+        var pData = {
+            labels: ps.map(x => x.t),
+            datasets: [{
+                label: 'kWh',
+                data: ps.map(x => x.kwh),
+                borderColor: '#ffc107', backgroundColor: 'rgba(255,193,7,.15)',
+                borderWidth: 2, tension: .3, fill: true, pointRadius: 0
+            }]
+        };
+        if (pChart) { pChart.data = pData; pChart.update(); }
+        else { pChart = new Chart(document.getElementById('pChart'), {type: 'line', data: pData, options: chartOpts()}); }
+
+        // ── 식수 ──
+        var m = d.meal || {};
+        document.getElementById('mTotal').textContent = fmt(m.week_total, 0);
+        var days = m.days || [];
+        var types = [];
+        days.forEach(function(x){ Object.keys(x.by_type || {}).forEach(function(t){
+            if (types.indexOf(t) < 0) types.push(t);
+        }); });
+        var head = '<th style="text-align:left;">구분</th>';
+        days.forEach(function(x){
+            head += '<th class="' + (x.is_holiday ? 'hol' : '') + '">' + x.dow + '<br><span style="font-weight:400;">' + x.date + '</span></th>';
+        });
+        document.getElementById('mHead').innerHTML = head;
+        var body = '';
+        if (!types.length) {
+            body = '<tr><td colspan="' + (days.length + 1) + '" class="cc-empty">등록된 식수가 없습니다.</td></tr>';
+        } else {
+            types.forEach(function(t){
+                var row = '<td style="text-align:left;font-weight:600;">' + t + '</td>';
+                days.forEach(function(x){
+                    var v = (x.by_type || {})[t];
+                    row += '<td class="' + (x.is_today ? 'today' : '') + '">' + (v ? v : '-') + '</td>';
+                });
+                body += '<tr>' + row + '</tr>';
+            });
+            var tot = '<td style="text-align:left;font-weight:700;">합계</td>';
+            days.forEach(function(x){
+                tot += '<td class="' + (x.is_today ? 'today' : '') + '" style="font-weight:700;">' + (x.total ? x.total : '-') + '</td>';
+            });
+            body += '<tr>' + tot + '</tr>';
+        }
+        document.getElementById('mBody').innerHTML = body;
+
+        // ── 통근버스 ──
+        var b = d.bus || {};
+        document.getElementById('bTotal').textContent = fmt(b.total, 0);
+        var bl = b.by_bus || [];
+        document.getElementById('bList').innerHTML = bl.length
+            ? bl.map(function(x){
+                return '<div class="bus-row"><span>' + x.bus_no + '호차</span>'
+                     + '<span class="bus-cnt">' + x.cnt + '명</span></div>';
+              }).join('')
+            : '<div class="cc-empty">등록된 탑승자가 없습니다.</div>';
+    }).catch(function(){
+        document.getElementById('ccUpdated').textContent = '갱신 실패';
+    });
+}
+
+function chartOpts() {
+    return {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { ticks: { font: { size: 10 } }, grid: { display: false } },
+            y: { ticks: { font: { size: 10 } }, beginAtZero: true }
+        }
+    };
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    waterModal = new bootstrap.Modal(document.getElementById('waterModal'));
+    loadOverview();
+    setInterval(loadOverview, 60000);  // 1분마다 갱신
+});
+</script>
+</body>
+</html>

@@ -1202,6 +1202,20 @@ def _init_db():
                 `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+
+        # ── 수도 일일 검침 테이블 (통합관제) ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `water_meter` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `read_date` DATE NOT NULL,
+                `reading` DECIMAL(14,2) NOT NULL,
+                `memo` VARCHAR(200) DEFAULT '',
+                `created_by` VARCHAR(30) DEFAULT '',
+                `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY `uq_water_date` (`read_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
         # it_requests 사용장소(위치) 컬럼 추가 (없으면)
         try:
             cur.execute("ALTER TABLE it_requests ADD COLUMN `location` VARCHAR(100) NOT NULL DEFAULT '' AFTER `category`")
@@ -8955,6 +8969,136 @@ def power_dashboard():
         active_page="power_dashboard",
         now_month=_dt.now().month,
     )
+
+
+# ══════════════════════════════════════════════════════════
+#  통합관제 — 수도(일일검침) · 전력 · 식수 · 통근버스 한 화면
+# ══════════════════════════════════════════════════════════
+@app.route("/control_center")
+@_login_required
+def control_center():
+    from datetime import date as _date
+    return render_template("control_center.html",
+                           active_page="control_center",
+                           today=_date.today().strftime("%Y-%m-%d"),
+                           is_admin=(session.get("role") == "admin"))
+
+
+@app.route("/api/cc_overview")
+@_login_required
+def api_cc_overview():
+    """통합관제 요약 — 수도/전력/식수/버스를 한 번에 반환"""
+    from datetime import date as _date, timedelta as _td, datetime as _dt
+    today = _date.today()
+    monday = today - _td(days=today.weekday())
+    out = {"ok": True, "date": today.strftime("%Y-%m-%d")}
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        # ── 수도: 최근 14일 검침 + 일일 사용량(지침 차이) ──
+        cur.execute("""SELECT read_date, reading FROM water_meter
+                       WHERE read_date >= %s ORDER BY read_date""",
+                    (today - _td(days=14),))
+        wrows = cur.fetchall()
+        water_days, prev = [], None
+        for rd, rdg in wrows:
+            val = float(rdg or 0)
+            water_days.append({
+                "date": rd.strftime("%m/%d"),
+                "reading": val,
+                "usage": round(val - prev, 2) if prev is not None else None,
+            })
+            prev = val
+        cur.execute("SELECT reading FROM water_meter WHERE read_date=%s", (today,))
+        r = cur.fetchone()
+        today_reading = float(r[0]) if r else None
+        out["water"] = {
+            "days": water_days[-7:],
+            "today_reading": today_reading,
+            "today_usage": (water_days[-1]["usage"] if water_days and
+                            water_days[-1]["date"] == today.strftime("%m/%d") else None),
+            "has_today": today_reading is not None,
+        }
+
+        # ── 전력: 오늘 누적 kWh + 최근 24시간 추이 ──
+        cur.execute("""SELECT COALESCE(SUM(kwh),0) FROM power_usage_raw
+                       WHERE cust_no=%s AND DATE(measured_at)=%s""", (KEPCO_CUST, today))
+        power_today = float(cur.fetchone()[0] or 0)
+        cur.execute("""SELECT COALESCE(SUM(kwh),0) FROM power_usage_raw
+                       WHERE cust_no=%s AND DATE(measured_at)=%s""",
+                    (KEPCO_CUST, today - _td(days=1)))
+        power_yday = float(cur.fetchone()[0] or 0)
+        cur.execute("""SELECT measured_at, kwh FROM power_usage_raw
+                       WHERE cust_no=%s AND measured_at >= %s
+                       ORDER BY measured_at""", (KEPCO_CUST, _dt.now() - _td(hours=24)))
+        power_series = [{"t": m.strftime("%H:%M"), "kwh": float(k or 0)} for m, k in cur.fetchall()]
+        out["power"] = {"today_kwh": round(power_today, 1),
+                        "yday_kwh": round(power_yday, 1),
+                        "series": power_series}
+
+        # ── 식수: 이번 주(월~일) 일자별 합계 ──
+        DOW = ["월","화","수","목","금","토","일"]
+        meal_days = []
+        for i in range(7):
+            d = monday + _td(days=i)
+            cur.execute("""SELECT meal_type, COALESCE(SUM(`count`),0) FROM meal_count
+                           WHERE `year_month`=%s AND `day`=%s GROUP BY meal_type""",
+                        (d.strftime("%Y-%m"), d.day))
+            by_type = {mt: int(c or 0) for mt, c in cur.fetchall()}
+            meal_days.append({
+                "date": d.strftime("%m/%d"), "dow": DOW[d.weekday()],
+                "is_today": d == today,
+                "is_holiday": d.weekday() >= 5 or bool(KR_HOLIDAYS.get(d, "")),
+                "by_type": by_type, "total": sum(by_type.values()),
+            })
+        out["meal"] = {"days": meal_days,
+                       "week_total": sum(m["total"] for m in meal_days)}
+
+        # ── 통근버스: 등록 인원(호차별) ──
+        cur.execute("""SELECT bus_no, COUNT(*) FROM bus_members
+                       WHERE active=1 GROUP BY bus_no ORDER BY bus_no""")
+        by_bus = [{"bus_no": int(b or 0), "cnt": int(c or 0)} for b, c in cur.fetchall()]
+        out["bus"] = {"by_bus": by_bus,
+                      "total": sum(b["cnt"] for b in by_bus)}
+    finally:
+        conn.close()
+    return jsonify(out)
+
+
+@app.route("/api/cc_water_save", methods=["POST"])
+@_login_required
+def api_cc_water_save():
+    """수도 일일 검침 저장 (같은 날짜는 덮어쓰기)"""
+    d = request.get_json(silent=True) or {}
+    read_date = (d.get("read_date") or "").strip()
+    reading   = d.get("reading")
+    memo      = (d.get("memo") or "").strip()[:200]
+    if not read_date:
+        return jsonify({"ok": False, "msg": "날짜를 입력하세요."})
+    try:
+        reading = float(reading)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "검침 지침을 숫자로 입력하세요."})
+    if reading < 0:
+        return jsonify({"ok": False, "msg": "검침 지침은 0 이상이어야 합니다."})
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        # 직전 검침보다 작으면 오입력 가능성 — 경고만 반환하고 저장은 진행
+        cur.execute("""SELECT reading FROM water_meter
+                       WHERE read_date < %s ORDER BY read_date DESC LIMIT 1""", (read_date,))
+        prev = cur.fetchone()
+        warn = ""
+        if prev and reading < float(prev[0]):
+            warn = f"직전 검침({float(prev[0]):,.2f})보다 작습니다. 확인해 주세요."
+        cur.execute("""INSERT INTO water_meter (read_date, reading, memo, created_by)
+                       VALUES (%s,%s,%s,%s)
+                       ON DUPLICATE KEY UPDATE reading=VALUES(reading), memo=VALUES(memo)""",
+                    (read_date, reading, memo, session.get("user_name", "")))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "warn": warn})
 
 
 @app.route("/power_history")
