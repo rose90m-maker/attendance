@@ -1203,6 +1203,23 @@ def _init_db():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
+        # ── 통근버스 탑승인원 (경비실 운행일지 엑셀 취합) ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `bus_ridership` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `ride_date` DATE NOT NULL,
+                `bus_no` TINYINT NOT NULL,
+                `driver` VARCHAR(30) DEFAULT '',
+                `on_0830` INT DEFAULT 0,
+                `off_1730` INT DEFAULT 0,
+                `off_2000` INT DEFAULT 0,
+                `src_file` VARCHAR(120) DEFAULT '',
+                `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY `uq_ride` (`ride_date`, `bus_no`),
+                KEY `idx_ride_date` (`ride_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+
         # ── 수도 일일 검침 테이블 (통합관제) ──
         cur.execute("""
             CREATE TABLE IF NOT EXISTS `water_meter` (
@@ -9054,12 +9071,103 @@ def api_cc_overview():
         out["meal"] = {"days": meal_days,
                        "week_total": sum(m["total"] for m in meal_days)}
 
-        # ── 통근버스: 등록 인원(호차별) ──
+        # ── 통근버스: 등록 인원(호차별) + 실제 탑승 통계(경비실 운행일지) ──
         cur.execute("""SELECT bus_no, COUNT(*) FROM bus_members
                        WHERE active=1 GROUP BY bus_no ORDER BY bus_no""")
         by_bus = [{"bus_no": int(b or 0), "cnt": int(c or 0)} for b, c in cur.fetchall()]
+
+        # 최근 14일 일별 탑승(전 호차 합계)
+        cur.execute("""SELECT ride_date, SUM(on_0830), SUM(off_1730), SUM(off_2000)
+                       FROM bus_ridership
+                       GROUP BY ride_date ORDER BY ride_date DESC LIMIT 14""")
+        daily = [{"date": d.strftime("%m/%d"), "on": int(a or 0),
+                  "off1": int(b2 or 0), "off2": int(c2 or 0)}
+                 for d, a, b2, c2 in cur.fetchall()][::-1]
+
+        # 최근 12개월 월별 평균/합계
+        cur.execute("""SELECT DATE_FORMAT(ride_date,'%%Y-%%m') ym,
+                              COUNT(DISTINCT ride_date) days,
+                              ROUND(AVG(on_0830),1), ROUND(AVG(off_1730),1),
+                              SUM(on_0830)
+                       FROM bus_ridership
+                       GROUP BY ym ORDER BY ym DESC LIMIT 12""")
+        monthly = [{"ym": ym, "days": int(dd or 0), "avg_on": float(ao or 0),
+                    "avg_off": float(af or 0), "sum_on": int(so or 0)}
+                   for ym, dd, ao, af, so in cur.fetchall()][::-1]
+
+        cur.execute("SELECT MAX(ride_date) FROM bus_ridership")
+        last_d = cur.fetchone()[0]
         out["bus"] = {"by_bus": by_bus,
-                      "total": sum(b["cnt"] for b in by_bus)}
+                      "total": sum(b["cnt"] for b in by_bus),
+                      "daily": daily, "monthly": monthly,
+                      "last_date": last_d.strftime("%Y-%m-%d") if last_d else ""}
+
+        # ── 전산실 온·습도: 현재값 + 오늘 최저/최고 + 최근 3시간 추이 ──
+        cur.execute("""SELECT device_id, temperature, humidity, recorded_at
+                       FROM mes_env_log ORDER BY id DESC LIMIT 1""")
+        er = cur.fetchone()
+        env = {"has": False}
+        if er:
+            cur.execute("""SELECT MIN(temperature), MAX(temperature)
+                           FROM mes_env_log WHERE recorded_at >= %s""", (today,))
+            mn, mx = cur.fetchone()
+            cur.execute("""SELECT recorded_at, temperature FROM mes_env_log
+                           WHERE recorded_at >= %s ORDER BY recorded_at""",
+                        (_dt.now() - _td(hours=3),))
+            series = [{"t": t.strftime("%H:%M"), "temp": float(v or 0)} for t, v in cur.fetchall()]
+            temp = float(er[1] or 0)
+            # 상태 판정: 28℃ 이상 경고, 32℃ 이상 위험
+            state = "danger" if temp >= 32 else ("warn" if temp >= 28 else "ok")
+            env = {"has": True, "place": er[0], "temp": temp,
+                   "humi": float(er[2] or 0),
+                   "at": er[3].strftime("%H:%M") if er[3] else "",
+                   "min": float(mn or 0), "max": float(mx or 0),
+                   "state": state, "series": series[::max(1, len(series)//40)]}
+        out["env"] = env
+
+        # ── 화재센서: 장비별 상태 + 최근 경보 ──
+        cur.execute("""SELECT device_name, location, status, battery, last_seen
+                       FROM fire_devices ORDER BY id""")
+        fdevs = []
+        for nm, loc, st, bat, seen in cur.fetchall():
+            # last_seen이 2시간 이상 지났으면 통신 두절로 간주
+            stale = bool(seen and (_dt.now() - seen).total_seconds() > 7200)
+            fdevs.append({"name": nm, "loc": loc, "status": st or "",
+                          "battery": int(bat or 0),
+                          "seen": seen.strftime("%m/%d %H:%M") if seen else "-",
+                          "stale": stale,
+                          "state": "danger" if (st or "") not in ("normal", "") else
+                                   ("warn" if stale or (bat or 0) < 20 else "ok")})
+        cur.execute("""SELECT COUNT(*) FROM fire_alert_logs
+                       WHERE severity IN ('warning','critical') AND created_at >= %s""",
+                    (today - _td(days=7),))
+        out["fire"] = {"devices": fdevs, "warn_7d": int(cur.fetchone()[0] or 0)}
+
+        # ── MES 생산: 라인별 오늘 실적/목표 ──
+        cur.execute("""SELECT device_id, total_count, target FROM mes_daily_summary
+                       WHERE work_date=%s ORDER BY device_id""", (today,))
+        lines = []
+        for dev, cnt, tgt in cur.fetchall():
+            cnt = int(cnt or 0); tgt = int(tgt or 0)
+            lines.append({"line": dev, "count": cnt, "target": tgt,
+                          "rate": round(cnt / tgt * 100, 1) if tgt else 0})
+        out["mes"] = {"lines": lines}
+
+        # ── CAPS 싱크 상태: 오늘 레벨별 건수 + 마지막 정상 시각 ──
+        cur.execute("""SELECT level, COUNT(*) FROM sync_log
+                       WHERE log_time >= %s GROUP BY level""", (today,))
+        lv = {k: int(v or 0) for k, v in cur.fetchall()}
+        cur.execute("SELECT MAX(log_time) FROM sync_log WHERE level IN ('OK','SKIP')")
+        last_ok = cur.fetchone()[0]
+        mins = int((_dt.now() - last_ok).total_seconds() // 60) if last_ok else None
+        # 30분 넘게 정상 싱크가 없으면 경고, 2시간이면 위험
+        sstate = "ok"
+        if mins is None or mins >= 120: sstate = "danger"
+        elif mins >= 30:                sstate = "warn"
+        out["sync"] = {"ok": lv.get("OK", 0), "skip": lv.get("SKIP", 0),
+                       "error": lv.get("ERROR", 0),
+                       "last_ok": last_ok.strftime("%m/%d %H:%M") if last_ok else "-",
+                       "mins_ago": mins, "state": sstate}
     finally:
         conn.close()
     return jsonify(out)

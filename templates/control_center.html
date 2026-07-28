@@ -28,6 +28,21 @@
 .bus-row { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid #f2f2f2; font-size:0.84rem; }
 .bus-row:last-child { border-bottom:none; }
 .bus-cnt { font-weight:700; color:#0d6efd; }
+/* ── 상태 배지 (정상/경고/위험) ── */
+.st-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+.st-ok     { background:#27ae60; }
+.st-warn   { background:#f39c12; }
+.st-danger { background:#e74c3c; }
+.st-badge { font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:10px; }
+.sb-ok     { background:#d4f5e2; color:#1b7a45; }
+.sb-warn   { background:#fff3cd; color:#856404; }
+.sb-danger { background:#f8d7da; color:#842029; }
+.val-ok { color:#1a1a2e; } .val-warn { color:#e67e22; } .val-danger { color:#e74c3c; }
+/* ── 생산 진행바 ── */
+.pg-bar { height:8px; border-radius:4px; background:#e9ecef; overflow:hidden; margin-top:5px; }
+.pg-fill { height:100%; border-radius:4px; background:#0d6efd; transition:width .6s; }
+.line-row { padding:8px 0; border-bottom:1px solid #f2f2f2; font-size:0.84rem; }
+.line-row:last-child { border-bottom:none; }
 </style>
 </head>
 <body>
@@ -131,6 +146,101 @@
     </div>
   </div>
 
+  <!-- ══ 1순위 관제 4종 ══ -->
+
+  <!-- 전산실 온·습도 -->
+  <div class="col-lg-3 col-md-6">
+    <div class="card cc-card">
+      <div class="card-body">
+        <div class="cc-head">
+          <span class="cc-title">🌡️ 전산실 온·습도</span>
+          <span class="st-badge" id="envBadge">-</span>
+        </div>
+        <div class="row g-2 mb-1">
+          <div class="col-6">
+            <div class="cc-lbl">온도</div>
+            <div><span class="cc-val" id="envTemp">-</span><span class="cc-unit">℃</span></div>
+          </div>
+          <div class="col-6">
+            <div class="cc-lbl">습도</div>
+            <div><span class="cc-val" id="envHumi">-</span><span class="cc-unit">%</span></div>
+          </div>
+        </div>
+        <div class="cc-sub text-muted" id="envRange">&nbsp;</div>
+        <div style="height:90px;"><canvas id="envChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 화재센서 -->
+  <div class="col-lg-3 col-md-6">
+    <div class="card cc-card">
+      <div class="card-body">
+        <div class="cc-head">
+          <span class="cc-title">🔥 화재센서</span>
+          <span class="st-badge" id="fireBadge">-</span>
+        </div>
+        <div id="fireList"></div>
+        <div class="cc-sub text-muted mt-2" id="fireWarn">&nbsp;</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MES 생산 -->
+  <div class="col-lg-3 col-md-6">
+    <div class="card cc-card">
+      <div class="card-body">
+        <div class="cc-head">
+          <span class="cc-title">🏭 생산현황 (오늘)</span>
+          <a href="/mes/realtime" class="cc-more">상세 →</a>
+        </div>
+        <div id="mesList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CAPS 싱크 -->
+  <div class="col-lg-3 col-md-6">
+    <div class="card cc-card">
+      <div class="card-body">
+        <div class="cc-head">
+          <span class="cc-title">📡 근태 싱크</span>
+          <span class="st-badge" id="syncBadge">-</span>
+        </div>
+        <div class="mb-2">
+          <div class="cc-lbl">마지막 정상 수집</div>
+          <div><span class="cc-val" id="syncMins">-</span><span class="cc-unit">분 전</span></div>
+          <div class="cc-sub text-muted" id="syncLast">&nbsp;</div>
+        </div>
+        <div class="cc-sub" id="syncCnt">&nbsp;</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 통근버스 탑승 통계 -->
+  <div class="col-lg-7">
+    <div class="card cc-card">
+      <div class="card-body">
+        <div class="cc-head">
+          <span class="cc-title">📊 통근버스 탑승 — 일별 (최근 14일)</span>
+          <span class="cc-lbl" id="brLast">&nbsp;</span>
+        </div>
+        <div style="height:170px;"><canvas id="brDayChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card cc-card">
+      <div class="card-body">
+        <div class="cc-head">
+          <span class="cc-title">📈 통근버스 탑승 — 월별 평균</span>
+        </div>
+        <div style="height:170px;"><canvas id="brMonChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
 </div>
 </div>
 
@@ -161,7 +271,16 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-var waterModal, wChart = null, pChart = null;
+var waterModal, wChart = null, pChart = null,
+    envChart = null, brDayChart = null, brMonChart = null;
+
+var ST_TXT = {ok: '정상', warn: '주의', danger: '위험'};
+
+function stBadge(el, state) {
+    var e = document.getElementById(el);
+    e.className = 'st-badge sb-' + (state || 'ok');
+    e.textContent = ST_TXT[state] || '-';
+}
 
 function openWaterForm() {
     document.getElementById('wMsg').textContent = '';
@@ -286,15 +405,112 @@ function loadOverview() {
                      + '<span class="bus-cnt">' + x.cnt + '명</span></div>';
               }).join('')
             : '<div class="cc-empty">등록된 탑승자가 없습니다.</div>';
+
+        // ── 전산실 온·습도 ──
+        var ev = d.env || {};
+        if (ev.has) {
+            document.getElementById('envTemp').textContent = fmt(ev.temp, 1);
+            document.getElementById('envHumi').textContent = fmt(ev.humi, 0);
+            document.getElementById('envTemp').className = 'cc-val val-' + (ev.state === 'ok' ? 'ok' : ev.state);
+            document.getElementById('envRange').textContent =
+                '오늘 ' + fmt(ev.min,1) + '~' + fmt(ev.max,1) + '℃ · ' + ev.at + ' 기준';
+            stBadge('envBadge', ev.state);
+            var es = ev.series || [];
+            var eData = {
+                labels: es.map(x => x.t),
+                datasets: [{ label:'℃', data: es.map(x => x.temp),
+                    borderColor:'#20c997', backgroundColor:'rgba(32,201,151,.15)',
+                    borderWidth:2, tension:.3, fill:true, pointRadius:0 }]
+            };
+            if (envChart) { envChart.data = eData; envChart.update(); }
+            else { envChart = new Chart(document.getElementById('envChart'), {type:'line', data:eData, options:chartOpts(false)}); }
+        } else {
+            document.getElementById('envRange').textContent = '센서 데이터 없음';
+            stBadge('envBadge', 'warn');
+        }
+
+        // ── 화재센서 ──
+        var fr = d.fire || {};
+        var fds = fr.devices || [];
+        var worst = 'ok';
+        fds.forEach(function(x){
+            if (x.state === 'danger') worst = 'danger';
+            else if (x.state === 'warn' && worst !== 'danger') worst = 'warn';
+        });
+        stBadge('fireBadge', fds.length ? worst : 'warn');
+        document.getElementById('fireList').innerHTML = fds.length
+            ? fds.map(function(x){
+                return '<div class="bus-row"><span><span class="st-dot st-' + x.state + '"></span>'
+                     + x.name + ' <span class="text-muted" style="font-size:.74rem;">' + (x.loc||'') + '</span></span>'
+                     + '<span style="font-size:.76rem;">🔋' + x.battery + '%<br>'
+                     + '<span class="text-muted">' + x.seen + '</span></span></div>';
+              }).join('')
+            : '<div class="cc-empty">등록된 센서가 없습니다.</div>';
+        document.getElementById('fireWarn').textContent =
+            '최근 7일 경보 ' + (fr.warn_7d || 0) + '건';
+
+        // ── MES 생산 ──
+        var ms = (d.mes || {}).lines || [];
+        document.getElementById('mesList').innerHTML = ms.length
+            ? ms.map(function(x){
+                return '<div class="line-row"><div class="d-flex justify-content-between">'
+                     + '<span style="font-weight:600;">' + x.line + '</span>'
+                     + '<span>' + fmt(x.count,0) + ' / ' + fmt(x.target,0) + '</span></div>'
+                     + '<div class="pg-bar"><div class="pg-fill" style="width:' + Math.min(x.rate,100) + '%;"></div></div>'
+                     + '<div class="cc-sub text-muted">달성률 ' + x.rate + '%</div></div>';
+              }).join('')
+            : '<div class="cc-empty">오늘 생산 데이터가 없습니다.</div>';
+
+        // ── 근태 싱크 ──
+        var sy = d.sync || {};
+        document.getElementById('syncMins').textContent = (sy.mins_ago === null || sy.mins_ago === undefined) ? '-' : sy.mins_ago;
+        document.getElementById('syncMins').className = 'cc-val val-' + (sy.state === 'ok' ? 'ok' : sy.state);
+        document.getElementById('syncLast').textContent = '최종 ' + (sy.last_ok || '-');
+        document.getElementById('syncCnt').innerHTML =
+            '<span class="text-muted">오늘</span> OK ' + (sy.ok||0) + ' · 대기 ' + (sy.skip||0)
+            + (sy.error ? ' · <span class="up">오류 ' + sy.error + '</span>' : '');
+        stBadge('syncBadge', sy.state);
+
+        // ── 통근버스 탑승 통계 ──
+        var bd = b.daily || [], bm = b.monthly || [];
+        document.getElementById('brLast').textContent = b.last_date ? ('최종 ' + b.last_date) : '';
+        var bdData = {
+            labels: bd.map(x => x.date),
+            datasets: [
+                {label:'출근(08:30)', data: bd.map(x => x.on),
+                 backgroundColor:'rgba(13,110,253,.75)'},
+                {label:'퇴근(17:30)', data: bd.map(x => x.off1),
+                 backgroundColor:'rgba(25,135,84,.7)'},
+                {label:'퇴근(20:00)', data: bd.map(x => x.off2),
+                 backgroundColor:'rgba(255,193,7,.8)'}
+            ]
+        };
+        if (brDayChart) { brDayChart.data = bdData; brDayChart.update(); }
+        else { brDayChart = new Chart(document.getElementById('brDayChart'), {type:'bar', data:bdData, options:chartOpts(true)}); }
+
+        var bmData = {
+            labels: bm.map(x => x.ym.slice(2)),
+            datasets: [
+                {label:'평균 출근', data: bm.map(x => x.avg_on), type:'line',
+                 borderColor:'#0d6efd', backgroundColor:'rgba(13,110,253,.15)',
+                 borderWidth:2, tension:.3, fill:true},
+                {label:'평균 퇴근', data: bm.map(x => x.avg_off), type:'line',
+                 borderColor:'#198754', backgroundColor:'rgba(25,135,84,.12)',
+                 borderWidth:2, tension:.3, fill:true}
+            ]
+        };
+        if (brMonChart) { brMonChart.data = bmData; brMonChart.update(); }
+        else { brMonChart = new Chart(document.getElementById('brMonChart'), {type:'line', data:bmData, options:chartOpts(true)}); }
     }).catch(function(){
         document.getElementById('ccUpdated').textContent = '갱신 실패';
     });
 }
 
-function chartOpts() {
+function chartOpts(showLegend) {
     return {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: { legend: { display: !!showLegend,
+                             labels: { boxWidth: 10, font: { size: 10 } } } },
         scales: {
             x: { ticks: { font: { size: 10 } }, grid: { display: false } },
             y: { ticks: { font: { size: 10 } }, beginAtZero: true }

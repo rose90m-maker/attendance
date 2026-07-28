@@ -207,6 +207,7 @@ files = [
     ("templates/bus_members.html", "templates/bus_members.html"),
     ("templates/bus_dispatch.html", "templates/bus_dispatch.html"),
     ("templates/bus_sms_log.html", "templates/bus_sms_log.html"),
+    ("bus_ridership_import.py", "bus_ridership_import.py"),
     # KEPCO 전력관리
     ("kepco_collector.py", "kepco_collector.py"),
     ("kepco_analyzer.py", "kepco_analyzer.py"),
