@@ -9128,8 +9128,10 @@ def api_cc_overview():
                 "breakfast": q.get("breakfast", 0), "dinner": q.get("dinner", 0),
                 "qty_total": qty_total,
             })
-        latest = meal_months[-1] if meal_months else None
-        prev   = meal_months[-2] if len(meal_months) > 1 else None
+        # 금액이 집계된 가장 최근 달을 대표값으로 (당월은 결산 전이라 0인 경우가 있음)
+        priced = [x for x in meal_months if x["amount"] > 0]
+        latest = priced[-1] if priced else (meal_months[-1] if meal_months else None)
+        prev   = priced[-2] if len(priced) > 1 else None
         out["meal"] = {
             "months": meal_months,
             "latest": latest, "prev": prev,
@@ -9150,7 +9152,9 @@ def api_cc_overview():
                  for d, a, b2, c2 in cur.fetchall()][::-1]
 
         # 최근 12개월 월별 평균/합계
-        cur.execute("""SELECT DATE_FORMAT(ride_date,'%%Y-%%m') ym,
+        # (인자 없는 execute는 %-치환을 하지 않으므로 '%Y-%m'을 그대로 쓴다.
+        #  '%%Y-%%m'로 쓰면 MySQL이 리터럴 '%Y-%m'으로 해석해 전 행이 한 그룹이 됨)
+        cur.execute("""SELECT DATE_FORMAT(ride_date,'%Y-%m') ym,
                               COUNT(DISTINCT ride_date) days,
                               ROUND(AVG(on_0830),1), ROUND(AVG(off_1730),1),
                               SUM(on_0830)
