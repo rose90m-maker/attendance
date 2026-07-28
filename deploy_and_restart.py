@@ -209,6 +209,8 @@ files = [
     ("templates/bus_sms_log.html", "templates/bus_sms_log.html"),
     ("bus_ridership_import.py", "bus_ridership_import.py"),
     ("water_meter_import.py", "water_meter_import.py"),
+    ("meal_order_import.py", "meal_order_import.py"),
+    ("mgmt_cost_import.py", "mgmt_cost_import.py"),
     # KEPCO 전력관리
     ("kepco_collector.py", "kepco_collector.py"),
     ("kepco_analyzer.py", "kepco_analyzer.py"),

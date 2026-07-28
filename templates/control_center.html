@@ -43,6 +43,17 @@
 .pg-fill { height:100%; border-radius:4px; background:#0d6efd; transition:width .6s; }
 .line-row { padding:8px 0; border-bottom:1px solid #f2f2f2; font-size:0.84rem; }
 .line-row:last-child { border-bottom:none; }
+/* ── 수도 검침 표 ── */
+.wt-wrap { max-height:230px; overflow-y:auto; border:1px solid #eee; border-radius:8px; }
+.wt-tbl { width:100%; font-size:0.78rem; border-collapse:collapse; }
+.wt-tbl th { position:sticky; top:0; background:#f8f9fa; color:#666; font-weight:600;
+             font-size:0.72rem; padding:6px 8px; border-bottom:1px solid #e9ecef; text-align:left; }
+.wt-tbl td { padding:5px 8px; border-bottom:1px solid #f4f4f4; }
+.wt-tbl tr:last-child td { border-bottom:none; }
+.wt-tbl .num { text-align:right; font-variant-numeric:tabular-nums; }
+.wt-tbl .hol { color:#dc3545; }
+.wt-tbl .warn-cell { color:#e67e22; font-weight:700; }
+.wt-tbl .bad-cell  { color:#e74c3c; font-weight:700; }
 </style>
 </head>
 <body>
@@ -78,7 +89,15 @@
         <div id="wEmpty" class="cc-empty" style="display:none;">
           오늘 검침이 아직 입력되지 않았습니다.
         </div>
-        <div style="height:120px;"><canvas id="wChart"></canvas></div>
+        <div style="height:110px;"><canvas id="wChart"></canvas></div>
+        <div class="wt-wrap mt-2">
+          <table class="wt-tbl">
+            <thead>
+              <tr><th>일자</th><th>요일</th><th class="num">지침(㎥)</th><th class="num">검침량(㎥)</th><th>비고</th></tr>
+            </thead>
+            <tbody id="wTable"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -112,19 +131,26 @@
     <div class="card cc-card">
       <div class="card-body">
         <div class="cc-head">
-          <span class="cc-title">🍽️ 식수 (이번 주)</span>
+          <span class="cc-title">🍽️ 식수 (월별 금액)</span>
           <a href="/meal_management" class="cc-more">상세 →</a>
         </div>
-        <div class="mb-2">
-          <span class="cc-lbl">주간 합계</span>
-          <span class="cc-val ms-2" id="mTotal">-</span><span class="cc-unit">명</span>
+        <div class="row g-2 mb-2">
+          <div class="col-4">
+            <div class="cc-lbl" id="mLatestLbl">최근 월</div>
+            <div><span class="cc-val" id="mAmount">-</span><span class="cc-unit">만원</span></div>
+            <div class="cc-sub" id="mDiff">&nbsp;</div>
+          </div>
+          <div class="col-4">
+            <div class="cc-lbl">올해 누계</div>
+            <div><span class="cc-val" id="mYear">-</span><span class="cc-unit">만원</span></div>
+          </div>
+          <div class="col-4">
+            <div class="cc-lbl">발주식수 (중식/야식)</div>
+            <div><span class="cc-val" id="mQty">-</span><span class="cc-unit">식</span></div>
+            <div class="cc-sub text-muted" id="mQtyDetail">&nbsp;</div>
+          </div>
         </div>
-        <div class="table-responsive">
-          <table class="meal-tbl">
-            <thead><tr id="mHead"></tr></thead>
-            <tbody id="mBody"></tbody>
-          </table>
-        </div>
+        <div style="height:150px;"><canvas id="mChart"></canvas></div>
       </div>
     </div>
   </div>
@@ -271,7 +297,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-var waterModal, wChart = null, pChart = null,
+var waterModal, wChart = null, pChart = null, mChart = null,
     envChart = null, brDayChart = null, brMonChart = null;
 
 var ST_TXT = {ok: '정상', warn: '주의', danger: '위험'};
@@ -339,6 +365,27 @@ function loadOverview() {
         if (wChart) { wChart.data = wData; wChart.update(); }
         else { wChart = new Chart(wCtx, {type: 'line', data: wData, options: chartOpts()}); }
 
+        // 수도 검침 표 (일자 · 지침 · 검침량)
+        var wt = w.table || [];
+        document.getElementById('wTable').innerHTML = wt.length
+            ? wt.map(function(x){
+                var cls = '';
+                if (x.usage !== null && x.usage !== undefined) {
+                    if (x.usage < 0) cls = 'bad-cell';
+                    else if (x.usage >= 45) cls = 'warn-cell';
+                }
+                var isHol = (x.dow === '토' || x.dow === '일');
+                return '<tr>'
+                     + '<td>' + x.md + '</td>'
+                     + '<td class="' + (isHol ? 'hol' : '') + '">' + x.dow + '</td>'
+                     + '<td class="num">' + fmt(x.reading, 0) + '</td>'
+                     + '<td class="num ' + cls + '">'
+                     + (x.usage === null || x.usage === undefined ? '-' : fmt(x.usage, 0)) + '</td>'
+                     + '<td class="text-muted">' + (x.memo || '') + '</td>'
+                     + '</tr>';
+              }).join('')
+            : '<tr><td colspan="5" class="cc-empty">검침 자료가 없습니다.</td></tr>';
+
         // ── 전력 ──
         var p = d.power || {};
         document.getElementById('pToday').textContent = fmt(p.today_kwh);
@@ -362,38 +409,38 @@ function loadOverview() {
         if (pChart) { pChart.data = pData; pChart.update(); }
         else { pChart = new Chart(document.getElementById('pChart'), {type: 'line', data: pData, options: chartOpts()}); }
 
-        // ── 식수 ──
+        // ── 식수 (월별 금액) ──
         var m = d.meal || {};
-        document.getElementById('mTotal').textContent = fmt(m.week_total, 0);
-        var days = m.days || [];
-        var types = [];
-        days.forEach(function(x){ Object.keys(x.by_type || {}).forEach(function(t){
-            if (types.indexOf(t) < 0) types.push(t);
-        }); });
-        var head = '<th style="text-align:left;">구분</th>';
-        days.forEach(function(x){
-            head += '<th class="' + (x.is_holiday ? 'hol' : '') + '">' + x.dow + '<br><span style="font-weight:400;">' + x.date + '</span></th>';
-        });
-        document.getElementById('mHead').innerHTML = head;
-        var body = '';
-        if (!types.length) {
-            body = '<tr><td colspan="' + (days.length + 1) + '" class="cc-empty">등록된 식수가 없습니다.</td></tr>';
-        } else {
-            types.forEach(function(t){
-                var row = '<td style="text-align:left;font-weight:600;">' + t + '</td>';
-                days.forEach(function(x){
-                    var v = (x.by_type || {})[t];
-                    row += '<td class="' + (x.is_today ? 'today' : '') + '">' + (v ? v : '-') + '</td>';
-                });
-                body += '<tr>' + row + '</tr>';
-            });
-            var tot = '<td style="text-align:left;font-weight:700;">합계</td>';
-            days.forEach(function(x){
-                tot += '<td class="' + (x.is_today ? 'today' : '') + '" style="font-weight:700;">' + (x.total ? x.total : '-') + '</td>';
-            });
-            body += '<tr>' + tot + '</tr>';
+        var mm = m.months || [], lt = m.latest, pv = m.prev;
+        if (lt) {
+            document.getElementById('mLatestLbl').textContent = lt.ym + ' 금액';
+            document.getElementById('mAmount').textContent = fmt(lt.amount / 10000, 0);
+            document.getElementById('mQty').textContent = fmt(lt.qty_total, 0);
+            document.getElementById('mQtyDetail').textContent =
+                '중식 ' + fmt(lt.lunch,0) + ' · 야식 ' + fmt(lt.night,0);
+            var dEl = document.getElementById('mDiff');
+            if (pv && pv.amount) {
+                var rate = ((lt.amount - pv.amount) / pv.amount) * 100;
+                dEl.innerHTML = '<span class="' + (rate >= 0 ? 'up' : 'dn') + '">'
+                    + (rate >= 0 ? '▲' : '▼') + ' ' + Math.abs(rate).toFixed(1) + '% (전월 대비)</span>';
+            } else { dEl.innerHTML = '<span class="na">전월 자료 없음</span>'; }
         }
-        document.getElementById('mBody').innerHTML = body;
+        document.getElementById('mYear').textContent = fmt((m.year_sum || 0) / 10000, 0);
+        var mData = {
+            labels: mm.map(x => x.ym.slice(2)),
+            datasets: [
+                {label:'금액(만원)', data: mm.map(x => Math.round(x.amount / 10000)),
+                 backgroundColor:'rgba(111,66,193,.75)', order:2, yAxisID:'y'},
+                {label:'발주식수(식)', data: mm.map(x => x.qty_total), type:'line',
+                 borderColor:'#fd7e14', backgroundColor:'rgba(253,126,20,.12)',
+                 borderWidth:2, tension:.3, pointRadius:2, order:1, yAxisID:'y1'}
+            ]
+        };
+        var mOpts = chartOpts(true);
+        mOpts.scales.y1 = { position:'right', beginAtZero:true,
+                            ticks:{ font:{size:10} }, grid:{ display:false } };
+        if (mChart) { mChart.data = mData; mChart.update(); }
+        else { mChart = new Chart(document.getElementById('mChart'), {data: mData, options: mOpts}); }
 
         // ── 통근버스 ──
         var b = d.bus || {};

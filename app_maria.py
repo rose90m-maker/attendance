@@ -1220,6 +1220,35 @@ def _init_db():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
+        # ── 월별 일반관리비 (월결산자료 취합 — 식당/상하수도/전기 등) ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `mgmt_cost_monthly` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `year` SMALLINT NOT NULL,
+                `month` TINYINT NOT NULL,
+                `item` VARCHAR(20) NOT NULL,
+                `amount` BIGINT NOT NULL DEFAULT 0,
+                `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY `uq_cost` (`year`, `month`, `item`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+
+        # ── 월별 발주식수 (식수현황 엑셀 취합) ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `meal_order_monthly` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `year` SMALLINT NOT NULL,
+                `month` TINYINT NOT NULL,
+                `breakfast` INT DEFAULT 0,
+                `lunch` INT DEFAULT 0,
+                `dinner` INT DEFAULT 0,
+                `night` INT DEFAULT 0,
+                `days` SMALLINT DEFAULT 0,
+                `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY `uq_meal_ym` (`year`, `month`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+
         # ── 수도 일일 검침 테이블 (통합관제) ──
         cur.execute("""
             CREATE TABLE IF NOT EXISTS `water_meter` (
@@ -9029,12 +9058,34 @@ def api_cc_overview():
         cur.execute("SELECT reading FROM water_meter WHERE read_date=%s", (today,))
         r = cur.fetchone()
         today_reading = float(r[0]) if r else None
+
+        # 표에 뿌릴 최근 검침 목록 (일자 · 지침 · 사용량) — 최신순
+        cur.execute("""SELECT read_date, reading, memo FROM water_meter
+                       ORDER BY read_date DESC LIMIT 31""")
+        recs = cur.fetchall()
+        prev_map = {}
+        cur.execute("""SELECT a.read_date, a.reading - b.reading
+                       FROM water_meter a
+                       JOIN water_meter b ON b.read_date = a.read_date - INTERVAL 1 DAY
+                       ORDER BY a.read_date DESC LIMIT 31""")
+        for rd, diff in cur.fetchall():
+            prev_map[rd] = float(diff or 0)
+        DOWK = ["월","화","수","목","금","토","일"]
+        table = [{"date": rd.strftime("%Y-%m-%d"),
+                  "md": rd.strftime("%m/%d"),
+                  "dow": DOWK[rd.weekday()],
+                  "reading": float(rg or 0),
+                  "usage": prev_map.get(rd),
+                  "memo": mo or ""} for rd, rg, mo in recs]
+
         out["water"] = {
             "days": water_days[-7:],
+            "table": table,
             "today_reading": today_reading,
             "today_usage": (water_days[-1]["usage"] if water_days and
                             water_days[-1]["date"] == today.strftime("%m/%d") else None),
             "has_today": today_reading is not None,
+            "last_date": recs[0][0].strftime("%Y-%m-%d") if recs else "",
         }
 
         # ── 전력: 오늘 누적 kWh + 최근 24시간 추이 ──
@@ -9053,23 +9104,37 @@ def api_cc_overview():
                         "yday_kwh": round(power_yday, 1),
                         "series": power_series}
 
-        # ── 식수: 이번 주(월~일) 일자별 합계 ──
-        DOW = ["월","화","수","목","금","토","일"]
-        meal_days = []
-        for i in range(7):
-            d = monday + _td(days=i)
-            cur.execute("""SELECT meal_type, COALESCE(SUM(`count`),0) FROM meal_count
-                           WHERE `year_month`=%s AND `day`=%s GROUP BY meal_type""",
-                        (d.strftime("%Y-%m"), d.day))
-            by_type = {mt: int(c or 0) for mt, c in cur.fetchall()}
-            meal_days.append({
-                "date": d.strftime("%m/%d"), "dow": DOW[d.weekday()],
-                "is_today": d == today,
-                "is_holiday": d.weekday() >= 5 or bool(KR_HOLIDAYS.get(d, "")),
-                "by_type": by_type, "total": sum(by_type.values()),
+        # ── 식수: 월별 금액(월결산자료) + 월별 발주식수(식수현황) ──
+        cur.execute("""SELECT `year`, `month`, amount FROM mgmt_cost_monthly
+                       WHERE item='meal' ORDER BY `year`, `month`""")
+        cost_map = {(y, m): int(a or 0) for y, m, a in cur.fetchall()}
+        cur.execute("""SELECT `year`, `month`, breakfast, lunch, dinner, night, days
+                       FROM meal_order_monthly ORDER BY `year`, `month`""")
+        qty_map = {(y, m): {"breakfast": int(b or 0), "lunch": int(l or 0),
+                            "dinner": int(dn or 0), "night": int(n or 0),
+                            "days": int(dy or 0)}
+                   for y, m, b, l, dn, n, dy in cur.fetchall()}
+
+        # 최근 12개월 (금액·수량 중 하나라도 있는 달)
+        keys = sorted(set(cost_map) | set(qty_map))[-12:]
+        meal_months = []
+        for (y, m) in keys:
+            q = qty_map.get((y, m), {})
+            qty_total = q.get("breakfast", 0) + q.get("lunch", 0) + \
+                        q.get("dinner", 0) + q.get("night", 0)
+            meal_months.append({
+                "ym": f"{y}-{m:02d}", "amount": cost_map.get((y, m), 0),
+                "lunch": q.get("lunch", 0), "night": q.get("night", 0),
+                "breakfast": q.get("breakfast", 0), "dinner": q.get("dinner", 0),
+                "qty_total": qty_total,
             })
-        out["meal"] = {"days": meal_days,
-                       "week_total": sum(m["total"] for m in meal_days)}
+        latest = meal_months[-1] if meal_months else None
+        prev   = meal_months[-2] if len(meal_months) > 1 else None
+        out["meal"] = {
+            "months": meal_months,
+            "latest": latest, "prev": prev,
+            "year_sum": sum(v for (y, m), v in cost_map.items() if y == today.year),
+        }
 
         # ── 통근버스: 등록 인원(호차별) + 실제 탑승 통계(경비실 운행일지) ──
         cur.execute("""SELECT bus_no, COUNT(*) FROM bus_members
