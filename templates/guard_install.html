@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>경비일지 앱 설치</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        .wrap{max-width:460px;margin:0 auto;}
+        .step{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;margin-bottom:8px;font-size:0.86rem;}
+        .step b{display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;
+                background:#1e40af;color:#fff;border-radius:50%;font-size:0.75rem;margin-right:6px;}
+        #qr{display:flex;justify-content:center;padding:12px 0;}
+    </style>
+</head>
+<body>
+{% include '_sidebar.html' %}
+<div class="container-fluid mt-4 wrap">
+    <h4 class="fw-bold mb-3 text-center">📱 경비일지 앱 설치</h4>
+
+    {% if rel %}
+    <div class="text-center mb-3">
+        <div class="fw-bold" style="font-size:1.1rem;">v{{ rel.version_name }}</div>
+        <div class="text-muted" style="font-size:0.8rem;">
+            {{ '%.1f'|format(rel.filesize / 1024 / 1024) }}MB · {{ rel.uploaded_at }}
+        </div>
+    </div>
+
+    <div id="qr"></div>
+    <div class="text-center text-muted mb-3" style="font-size:0.78rem;">
+        휴대폰으로 QR 을 찍거나, 폰 브라우저에서 이 페이지를 열어 아래 버튼을 누르세요.
+    </div>
+
+    <a href="/guard/app/download/{{ rel.version_code }}" class="btn btn-primary w-100 mb-3">APK 다운로드</a>
+
+    {% if rel.release_note %}
+    <div class="alert alert-light border" style="font-size:0.82rem;white-space:pre-wrap;">{{ rel.release_note }}</div>
+    {% endif %}
+
+    <h6 class="fw-bold mt-4 mb-2">설치 방법</h6>
+    <div class="step"><b>1</b> 위 <b>APK 다운로드</b> 를 누릅니다.</div>
+    <div class="step"><b>2</b> "이 유형의 파일은 기기에 해로울 수 있습니다" 경고가 나오면 <b>계속</b> 을 누릅니다. (사내 배포 앱이라 정상입니다)</div>
+    <div class="step"><b>3</b> 다운로드된 파일을 열면 <b>출처를 알 수 없는 앱</b> 설치 권한을 묻습니다. 브라우저에 권한을 허용해 주세요.</div>
+    <div class="step"><b>4</b> <b>설치</b> 를 누르고, 앱을 열어 <b>태인관리시스템 사번/비밀번호</b> 로 로그인합니다.</div>
+
+    <div class="alert alert-light border mt-3" style="font-size:0.8rem;">
+        설치 후에는 앱이 실행될 때마다 새 버전을 자동으로 확인합니다. 다음부터는 이 페이지에 오지 않아도
+        앱 안에서 바로 업데이트할 수 있습니다.
+    </div>
+    {% else %}
+    <div class="alert alert-warning">아직 배포된 앱이 없습니다. 관리자에게 문의하세요.</div>
+    {% endif %}
+</div>
+
+{% if rel %}
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+new QRCode(document.getElementById('qr'), {
+    text: window.location.origin + '/guard/app/install',
+    width: 168, height: 168
+});
+</script>
+{% endif %}
+</body>
+</html>

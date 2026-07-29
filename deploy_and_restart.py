@@ -185,6 +185,13 @@ files = [
     ("templates/hazmat.html", "templates/hazmat.html"),
     ("templates/hazmat_recipients.html", "templates/hazmat_recipients.html"),
     ("templates/hazmat_alerts.html", "templates/hazmat_alerts.html"),
+    # 경비일지 (웹 조회·인쇄 + APK 연동 + OTA)
+    ("guard_bp.py", "guard_bp.py"),
+    ("templates/guard_list.html", "templates/guard_list.html"),
+    ("templates/guard_print.html", "templates/guard_print.html"),
+    ("templates/guard_points.html", "templates/guard_points.html"),
+    ("templates/guard_app.html", "templates/guard_app.html"),
+    ("templates/guard_install.html", "templates/guard_install.html"),
     # AI 안전진단
     ("safety_ai_bp.py", "safety_ai_bp.py"),
     ("templates/safety_ai_inspect.html", "templates/safety_ai_inspect.html"),
@@ -477,7 +484,7 @@ STANDBY_KEY = os.path.expanduser("~/.ssh/id_tams_nas")
 STANDBY_DIR = f"/home/{os.environ['NAS_USER']}/attendance"
 STANDBY_PY = [
     "app_maria.py", "tuya_fire.py", "mes_bp.py", "edu_bp.py", "hazmat_bp.py",
-    "safety_ai_bp.py", "tbm_bp.py", "signage_bp.py",
+    "safety_ai_bp.py", "tbm_bp.py", "signage_bp.py", "guard_bp.py",
     "kepco_collector.py", "kepco_analyzer.py", "tbm_app.py",
 ]
 

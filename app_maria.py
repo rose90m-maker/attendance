@@ -10117,6 +10117,11 @@ from safety_ai_bp import safety_ai_bp, init_safety_ai_db
 init_safety_ai_db(app)
 app.register_blueprint(safety_ai_bp)
 
+# ── 경비일지 Blueprint 등록 ───────────────────────────────
+from guard_bp import guard_bp, init_guard_db
+init_guard_db(app)
+app.register_blueprint(guard_bp)
+
 
 # ── 페이스메이커 대시보드 ─────────────────────────────────
 @app.route("/pacemaker")

@@ -91,8 +91,19 @@
     <!-- 대시보드: 단일 항목이라 그룹 없음 -->
     <a href="/" class="side-link{% if active_page == 'dashboard' %} active{% endif %}"><span class="sl-icon">🏠</span>대시보드</a>
 
-    <!-- 통합관제: 수도·전력·식수·통근버스 요약 -->
-    <a href="/control_center" class="side-link{% if active_page == 'control_center' %} active{% endif %}"><span class="sl-icon">🖥️</span>통합관제</a>
+    <!-- 통합관제: 수도·전력·식수·통근버스 요약 + 경비일지 -->
+    <button class="nav-group-toggle" data-group="grp-control">
+        <span class="ng-icon">🖥️</span><span class="ng-label">통합관제</span><span class="ng-arrow">▸</span>
+    </button>
+    <div class="nav-group-items" data-group="grp-control">
+        <a href="/control_center" class="side-link{% if active_page == 'control_center' %} active{% endif %}"><span class="sl-icon">📡</span>관제 대시보드</a>
+        {% if is_admin or 'guard' in session.get('permissions','') %}
+        <a href="/guard" class="side-link{% if active_page == 'guard' %} active{% endif %}"><span class="sl-icon">🌙</span>경비일지</a>
+        {% endif %}
+        {% if is_admin %}
+        <a href="/guard/admin/app" class="side-link{% if active_page == 'guard_app' %} active{% endif %}"><span class="sl-icon">📦</span>경비일지 앱 배포</a>
+        {% endif %}
+    </div>
 
     <div class="side-group-divider"></div>
 
