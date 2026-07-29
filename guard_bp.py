@@ -273,6 +273,19 @@ def init_guard_db(app):
         """)
 
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS `guard_instructions` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `target_date` DATE NOT NULL,
+                `content` TEXT,
+                `created_by` INT NULL,
+                `created_by_name` VARCHAR(50) DEFAULT '',
+                `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY `uq_guard_instruction` (`target_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS `guard_app_releases` (
                 `id` INT AUTO_INCREMENT PRIMARY KEY,
                 `version_code` INT NOT NULL,
@@ -308,6 +321,18 @@ def _load_points(cur, active_only=True):
     sql += " ORDER BY seq, id"
     cur.execute(sql)
     return [{"id": r[0], "seq": r[1], "name": r[2], "is_active": int(r[3])} for r in cur.fetchall()]
+
+
+def _instruction_for(cur, d):
+    """해당 날짜에 관리자가 등록해 둔 지시사항 (없으면 None)"""
+    cur.execute("""
+        SELECT content, created_by_name, updated_at
+          FROM guard_instructions WHERE target_date=%s
+    """, (d,))
+    r = cur.fetchone()
+    if not r or not (r[0] or "").strip():
+        return None
+    return {"content": r[0], "author": r[1] or "", "updated_at": _fmt_dt(r[2])}
 
 
 def _load_log(cur, log_id):
@@ -393,6 +418,12 @@ def _save_snapshot(cur, payload, actor, force=False):
         water_meter=payload.get("water_meter") or "",
         waste_request=payload.get("waste_request") or "",
     )
+
+    # 관리자가 등록해 둔 지시사항이 있고 일지에 아직 내용이 없으면 자동으로 채운다
+    if not (fields["instructions"] or "").strip():
+        ins = _instruction_for(cur, d)
+        if ins:
+            fields["instructions"] = ins["content"]
 
     if exist:
         log_id = exist[0]
@@ -537,6 +568,17 @@ def api_guard_points():
     pts = _load_points(cur)
     conn.close()
     return jsonify(ok=True, points=pts, rounds=GUARD_ROUNDS)
+
+
+@guard_bp.route("/api/guard/instructions")
+@_api_auth
+def api_guard_instructions():
+    """앱이 일지를 열 때 해당 날짜의 관리자 지시사항을 받아간다."""
+    d = _parse_date(request.args.get("date")) or date.today()
+    conn = _conn(); cur = conn.cursor()
+    ins = _instruction_for(cur, d)
+    conn.close()
+    return jsonify(ok=True, date=d.strftime("%Y-%m-%d"), instruction=ins)
 
 
 @guard_bp.route("/api/guard/logs")
@@ -1011,6 +1053,62 @@ def guard_print(log_id):
                            rounds=GUARD_ROUNDS, visitors=visitors, staff=staff,
                            blank_rows=blank, prev_id=prev_id, next_id=next_id,
                            result_ng=RESULT_NG, result_ok=RESULT_OK)
+
+
+@guard_bp.route("/guard/instructions", methods=["GET", "POST"])
+@_guard_required
+def guard_instructions():
+    """지시사항 등록 — 날짜별로 미리 걸어두면 그날 일지에 자동으로 들어간다."""
+    can_edit = session.get("role") == "admin" or _has_perm("guard")
+    conn = _conn(); cur = conn.cursor()
+
+    if request.method == "POST":
+        if not can_edit:
+            conn.close()
+            flash("등록 권한이 없습니다.", "danger")
+            return redirect("/guard/instructions")
+
+        action = request.form.get("action")
+        if action == "delete":
+            cur.execute("DELETE FROM guard_instructions WHERE id=%s", (request.form.get("iid"),))
+            flash("삭제했습니다.", "success")
+        else:
+            d = _parse_date(request.form.get("target_date"))
+            content = (request.form.get("content") or "").strip()
+            if not d:
+                flash("날짜를 선택하세요.", "danger")
+            elif not content:
+                flash("지시사항 내용을 입력하세요.", "danger")
+            else:
+                cur.execute("""
+                    INSERT INTO guard_instructions (target_date, content, created_by, created_by_name)
+                    VALUES (%s,%s,%s,%s)
+                    ON DUPLICATE KEY UPDATE content=VALUES(content),
+                                            created_by=VALUES(created_by),
+                                            created_by_name=VALUES(created_by_name)
+                """, (d, content, session.get("user_id"), session.get("user_name") or ""))
+                # 이미 작성 시작된 그날 일지 중 지시사항이 비어 있는 건에 반영
+                cur.execute("""
+                    UPDATE guard_logs SET instructions=%s
+                     WHERE log_date=%s AND (instructions IS NULL OR instructions='')
+                """, (content, d))
+                flash("%s 지시사항을 등록했습니다." % d.strftime("%Y-%m-%d"), "success")
+        conn.commit(); conn.close()
+        return redirect("/guard/instructions")
+
+    cur.execute("""
+        SELECT i.id, i.target_date, i.content, i.created_by_name, i.updated_at,
+               (SELECT COUNT(*) FROM guard_logs l WHERE l.log_date = i.target_date)
+          FROM guard_instructions i
+         ORDER BY i.target_date DESC
+         LIMIT 120
+    """)
+    rows = [{"id": r[0], "target_date": r[1], "content": r[2] or "", "author": r[3] or "",
+             "updated_at": r[4], "log_cnt": r[5]} for r in cur.fetchall()]
+    conn.close()
+    return render_template("guard_instructions.html", active_page="guard_instructions",
+                           items=rows, today=date.today().strftime("%Y-%m-%d"),
+                           can_edit=can_edit)
 
 
 @guard_bp.route("/guard/admin/points", methods=["GET", "POST"])

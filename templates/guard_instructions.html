@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>경비일지 — 지시사항 등록</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        .ins{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;margin-bottom:8px;}
+        .ins-date{font-weight:700;font-size:0.95rem;}
+        .ins-body{font-size:0.86rem;white-space:pre-wrap;margin-top:5px;line-height:1.6;}
+        .ins-meta{font-size:0.74rem;color:#9ca3af;margin-top:6px;}
+        .badge-applied{font-size:0.68rem;padding:2px 8px;border-radius:10px;background:#d1fae5;color:#065f46;}
+        .badge-pending{font-size:0.68rem;padding:2px 8px;border-radius:10px;background:#f3f4f6;color:#6b7280;}
+    </style>
+</head>
+<body>
+{% include '_sidebar.html' %}
+<div class="container-fluid mt-4" style="max-width:760px;">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0">📢 지시사항 등록</h4>
+        <a href="/guard" class="btn btn-sm btn-outline-secondary">&laquo; 경비일지</a>
+    </div>
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in msgs %}
+    <div class="alert alert-{{ 'danger' if cat == 'danger' else 'success' }} py-2">{{ msg }}</div>
+    {% endfor %}
+    {% endwith %}
+
+    <div class="alert alert-light border py-2" style="font-size:0.82rem;">
+        날짜별로 미리 등록해 두면 그날 경비원이 일지를 열 때 <b>앱 상단에 지시사항이 표시</b>되고,
+        인쇄 양식의 「지시사항」 칸에도 자동으로 들어갑니다.
+        같은 날짜로 다시 등록하면 내용이 교체됩니다.
+    </div>
+
+    {% if can_edit %}
+    <div class="card mb-4">
+        <div class="card-header py-2 fw-bold" style="font-size:0.9rem;">지시사항 등록 / 수정</div>
+        <div class="card-body">
+            <form method="post">
+                <div class="mb-2" style="max-width:220px;">
+                    <label class="form-label mb-1" style="font-size:0.8rem;">적용 날짜</label>
+                    <input type="date" class="form-control form-control-sm" name="target_date" value="{{ today }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label mb-1" style="font-size:0.8rem;">지시사항</label>
+                    <textarea class="form-control form-control-sm" name="content" rows="4" required
+                              placeholder="예) 주말 외벽공사 자재 반입 예정 — 정문 개방 협조&#10;예) 3F 전기실 야간 점검 시 담당자 동행 요망"></textarea>
+                </div>
+                <button class="btn btn-primary btn-sm">등록</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <h6 class="fw-bold mb-2">등록 이력</h6>
+    {% if items %}
+    {% for i in items %}
+    <div class="ins">
+        <div class="d-flex align-items-center gap-2">
+            <span class="ins-date">{{ i.target_date.strftime('%Y-%m-%d (%a)') }}</span>
+            {% if i.log_cnt %}
+            <span class="badge-applied">일지 {{ i.log_cnt }}건에 반영</span>
+            {% else %}
+            <span class="badge-pending">아직 일지 없음</span>
+            {% endif %}
+            {% if can_edit %}
+            <form method="post" class="ms-auto" onsubmit="return confirm('{{ i.target_date }} 지시사항을 삭제할까요?\n이미 일지에 들어간 내용은 지워지지 않습니다.')">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="iid" value="{{ i.id }}">
+                <button class="btn btn-outline-danger btn-sm py-0" style="font-size:0.74rem;">삭제</button>
+            </form>
+            {% endif %}
+        </div>
+        <div class="ins-body">{{ i.content }}</div>
+        <div class="ins-meta">
+            {{ i.author }} · {{ i.updated_at.strftime('%Y-%m-%d %H:%M') if i.updated_at else '' }}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="text-muted text-center py-4" style="font-size:0.9rem;">등록된 지시사항이 없습니다.</div>
+    {% endif %}
+</div>
+</body>
+</html>
