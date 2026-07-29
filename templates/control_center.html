@@ -177,7 +177,7 @@
         </div>
         <div class="row g-2 mb-2">
           <div class="col-6">
-            <div class="cc-lbl">이번달 발주식수</div>
+            <div class="cc-lbl">이번달 식수(아워홈 실적)</div>
             <div><span class="cc-val" id="mmTotal">-</span><span class="cc-unit">식</span></div>
           </div>
           <div class="col-6">
@@ -489,7 +489,7 @@ function loadOverview() {
                     {label:'금액(만원)', type:'bar',
                      data: mm.map(x => x.amount ? Math.round(x.amount / 10000) : null),
                      backgroundColor:'rgba(111,66,193,.75)', order:2, yAxisID:'y'},
-                    {label:'발주식수(식)', type:'line',
+                    {label:'식수(식)', type:'line',
                      data: mm.map(x => x.qty_total || null),
                      borderColor:'#fd7e14', backgroundColor:'rgba(253,126,20,.12)',
                      borderWidth:2, tension:.3, pointRadius:2, order:1, yAxisID:'y1',

@@ -26,7 +26,9 @@ load_dotenv()
 SRC_DIR = os.environ.get("MEAL_DIR", "/Volumes/taein_hq/이민영/식수현황")
 SHEET = "식수관리"
 DATA_START_ROW = 5
-COLS = {"breakfast": 5, "lunch": 6, "dinner": 7, "night": 8}   # 조/중/석/야
+# 아워홈식수(19~22열) = 실제 배식된 '실적'. 발주식수(5~8열)는 고정 계약값이라 안 씀.
+# 컬럼 배치는 2025~2026 전 파일에서 동일(아워홈식수@19, 조/중/석/야). 2026-07 재확인.
+COLS = {"breakfast": 19, "lunch": 20, "dinner": 21, "night": 22}   # 아워홈 조/중/석/야
 
 
 def _nfc(s):
