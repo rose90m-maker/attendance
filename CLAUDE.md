@@ -30,6 +30,16 @@ Korean workplace attendance management system (㈜태인 근태관리). Flask we
 
 ## Deployment — Docker
 
+> ⚠️ **새 `*_bp.py` 를 추가할 때 `deploy_and_restart.py` 의 목록 3곳을 모두 고칠 것.**
+> `files`(SCP 전송) 하나만 추가하면 파일이 NAS 까지만 가고 컨테이너에는 안 들어가
+> `ModuleNotFoundError` 로 앱이 크래시 루프에 빠진다 (2026-07-29 사고, 다운타임 약 7분).
+> - `files` — NAS staging 으로 SCP (templates/ 는 여기만 추가하면 자동으로 따라감)
+> - `docker_files_main` — **`.py` 는 여기 하드코딩 목록에 반드시 추가**
+> - `STANDBY_PY` — .5 대기서버용. 빠지면 대기서버가 기동 실패
+>
+> 또한 `docker cp` 가 NAS 의 ACL 을 옮기면서 파일 권한이 `000` 이 되는 경우가 있어
+> 파이썬이 모듈을 못 읽는다. cp 루프 뒤에 `chmod a+r` 보정 단계를 넣어 두었다.
+
 **The Flask app runs as a Docker container on the NAS.** Direct `nohup python app.py` does not work because docker-proxy holds the port.
 
 - NAS: `192.168.100.11`, user `rose90m` (or `admin`), SSH port 22

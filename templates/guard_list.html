@@ -25,11 +25,15 @@
 <body>
 {% include '_sidebar.html' %}
 <div class="container-fluid mt-4" style="max-width:960px;">
-    <div class="d-flex align-items-center justify-content-between mb-3">
+    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
         <h4 class="fw-bold mb-0">🛡️ 경비일지</h4>
-        {% if is_admin %}
-        <a href="/guard/admin/points" class="btn btn-sm btn-outline-secondary">점검장소 관리</a>
-        {% endif %}
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="/guard/instructions" class="btn btn-sm btn-outline-secondary">📢 지시사항 등록</a>
+            {% if is_admin %}
+            <a href="/guard/admin/points" class="btn btn-sm btn-outline-secondary">🧭 점검장소 관리</a>
+            <a href="/guard/admin/app" class="btn btn-sm btn-outline-secondary">📦 앱 배포</a>
+            {% endif %}
+        </div>
     </div>
 
     <div class="d-flex align-items-center justify-content-center gap-3 mb-3">

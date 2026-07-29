@@ -99,10 +99,6 @@
         <a href="/control_center" class="side-link{% if active_page == 'control_center' %} active{% endif %}"><span class="sl-icon">📡</span>관제 대시보드</a>
         {% if is_admin or 'guard' in session.get('permissions','') %}
         <a href="/guard" class="side-link{% if active_page == 'guard' %} active{% endif %}"><span class="sl-icon">🌙</span>경비일지</a>
-        <a href="/guard/instructions" class="side-link{% if active_page == 'guard_instructions' %} active{% endif %}"><span class="sl-icon">📢</span>지시사항 등록</a>
-        {% endif %}
-        {% if is_admin %}
-        <a href="/guard/admin/app" class="side-link{% if active_page == 'guard_app' %} active{% endif %}"><span class="sl-icon">📦</span>경비일지 앱 배포</a>
         {% endif %}
     </div>
 

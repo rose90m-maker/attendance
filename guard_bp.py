@@ -1106,7 +1106,7 @@ def guard_instructions():
     rows = [{"id": r[0], "target_date": r[1], "content": r[2] or "", "author": r[3] or "",
              "updated_at": r[4], "log_cnt": r[5]} for r in cur.fetchall()]
     conn.close()
-    return render_template("guard_instructions.html", active_page="guard_instructions",
+    return render_template("guard_instructions.html", active_page="guard",
                            items=rows, today=date.today().strftime("%Y-%m-%d"),
                            can_edit=can_edit)
 
