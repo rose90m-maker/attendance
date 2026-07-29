@@ -506,7 +506,7 @@ function loadOverview() {
 
         // ── 이번달 식수 현황 (일별) ──
         safe('이번달 식수 현황 (일별)', function() {
-            var tm = m.this_month || {}, tmd = tm.days || [];
+            var tm = (d.meal || {}).this_month || {}, tmd = tm.days || [];
             document.getElementById('mmYm').textContent = tm.ym || '';
             document.getElementById('mmTotal').textContent = fmt(tm.total, 0);
             document.getElementById('mmDetail').textContent =
@@ -616,11 +616,11 @@ function loadOverview() {
 
         // ── 통근버스 탑승 통계 ──
         safe('통근버스 탑승 통계', function() {
-            var bmo = b.by_month || [];
+            var bs = d.bus || {}, bmo = bs.by_month || [];
             document.getElementById('brTitle').textContent =
-                '📊 통근버스 탑승 — ' + (b.year || '') + '년 월별 인원';
+                '📊 통근버스 탑승 — ' + (bs.year || '') + '년 월별 인원';
             document.getElementById('brLast').textContent =
-                b.last_date ? ('자료 최종 ' + b.last_date) : '';
+                bs.last_date ? ('자료 최종 ' + bs.last_date) : '';
             var bmData = {
                 labels: bmo.map(x => x.label),
                 datasets: [
