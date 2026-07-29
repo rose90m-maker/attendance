@@ -9214,13 +9214,19 @@ def api_cc_overview():
                        WHERE active=1 GROUP BY bus_no ORDER BY bus_no""")
         by_bus = [{"bus_no": int(b or 0), "cnt": int(c or 0)} for b, c in cur.fetchall()]
 
-        # 최근 14일 일별 탑승(전 호차 합계)
-        cur.execute("""SELECT ride_date, SUM(on_0830), SUM(off_1730), SUM(off_2000)
+        # 올해 1월~전월 월별 탑승 인원 (자료 있는 달만)
+        cur.execute("""SELECT MONTH(ride_date) mo,
+                              COUNT(DISTINCT ride_date) days,
+                              SUM(on_0830), SUM(off_1730), SUM(off_2000),
+                              ROUND(AVG(on_0830),1)
                        FROM bus_ridership
-                       GROUP BY ride_date ORDER BY ride_date DESC LIMIT 14""")
-        daily = [{"date": d.strftime("%m/%d"), "on": int(a or 0),
-                  "off1": int(b2 or 0), "off2": int(c2 or 0)}
-                 for d, a, b2, c2 in cur.fetchall()][::-1]
+                       WHERE YEAR(ride_date)=%s AND ride_date < %s
+                       GROUP BY mo ORDER BY mo""",
+                    (today.year, today.replace(day=1)))
+        by_month = [{"label": f"{int(mo)}월", "days": int(dd or 0),
+                     "on": int(a or 0), "off1": int(b2 or 0), "off2": int(c2 or 0),
+                     "avg_on": float(av or 0)}
+                    for mo, dd, a, b2, c2, av in cur.fetchall()]
 
         # 최근 12개월 월별 평균/합계
         # (인자 없는 execute는 %-치환을 하지 않으므로 '%Y-%m'을 그대로 쓴다.
@@ -9239,7 +9245,8 @@ def api_cc_overview():
         last_d = cur.fetchone()[0]
         out["bus"] = {"by_bus": by_bus,
                       "total": sum(b["cnt"] for b in by_bus),
-                      "daily": daily, "monthly": monthly,
+                      "by_month": by_month, "monthly": monthly,
+                      "year": today.year,
                       "last_date": last_d.strftime("%Y-%m-%d") if last_d else ""}
 
         # ── 전산실 온·습도: 현재값 + 오늘 최저/최고 + 최근 3시간 추이 ──

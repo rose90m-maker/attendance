@@ -266,7 +266,7 @@
     <div class="card cc-card">
       <div class="card-body">
         <div class="cc-head">
-          <span class="cc-title">📊 통근버스 탑승 — 일별 (최근 14일)</span>
+          <span class="cc-title" id="brTitle">📊 통근버스 탑승 — 월별 인원</span>
           <span class="cc-lbl" id="brLast">&nbsp;</span>
         </div>
         <div style="height:170px;"><canvas id="brDayChart"></canvas></div>
@@ -616,21 +616,31 @@ function loadOverview() {
 
         // ── 통근버스 탑승 통계 ──
         safe('통근버스 탑승 통계', function() {
-            var bd = b.daily || [];
-            document.getElementById('brLast').textContent = b.last_date ? ('최종 ' + b.last_date) : '';
-            var bdData = {
-                labels: bd.map(x => x.date),
+            var bmo = b.by_month || [];
+            document.getElementById('brTitle').textContent =
+                '📊 통근버스 탑승 — ' + (b.year || '') + '년 월별 인원';
+            document.getElementById('brLast').textContent =
+                b.last_date ? ('자료 최종 ' + b.last_date) : '';
+            var bmData = {
+                labels: bmo.map(x => x.label),
                 datasets: [
-                    {label:'출근(08:30)', data: bd.map(x => x.on),
-                     backgroundColor:'rgba(13,110,253,.75)'},
-                    {label:'퇴근(17:30)', data: bd.map(x => x.off1),
-                     backgroundColor:'rgba(25,135,84,.7)'},
-                    {label:'퇴근(20:00)', data: bd.map(x => x.off2),
-                     backgroundColor:'rgba(255,193,7,.8)'}
+                    {label:'출근(08:30)', type:'bar', data: bmo.map(x => x.on),
+                     backgroundColor:'rgba(13,110,253,.75)', order:3, yAxisID:'y'},
+                    {label:'퇴근(17:30)', type:'bar', data: bmo.map(x => x.off1),
+                     backgroundColor:'rgba(25,135,84,.7)', order:3, yAxisID:'y'},
+                    {label:'퇴근(20:00)', type:'bar', data: bmo.map(x => x.off2),
+                     backgroundColor:'rgba(255,193,7,.8)', order:3, yAxisID:'y'},
+                    {label:'일평균(명)', type:'line', data: bmo.map(x => x.avg_on),
+                     borderColor:'#dc3545', backgroundColor:'rgba(220,53,69,.1)',
+                     borderWidth:2, tension:.3, pointRadius:3, order:1, yAxisID:'y1'}
                 ]
             };
-            if (brDayChart) { brDayChart.data = bdData; brDayChart.update(); }
-            else { brDayChart = new Chart(document.getElementById('brDayChart'), {type:'bar', data:bdData, options:chartOpts(true)}); }
+            var bmOpts = chartOpts(true);
+            bmOpts.scales.y1 = { position:'right', beginAtZero:true,
+                                 ticks:{ font:{size:10} }, grid:{ display:false } };
+            if (brDayChart) { brDayChart.data = bmData; brDayChart.options = bmOpts; brDayChart.update(); }
+            else { brDayChart = new Chart(document.getElementById('brDayChart'),
+                                          {type:'bar', data:bmData, options:bmOpts}); }
         });
 
     }).catch(function(){
