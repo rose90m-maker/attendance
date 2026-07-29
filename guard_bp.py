@@ -338,23 +338,18 @@ def _instruction_for(cur, d):
 WATER_SRC = "경비일지"
 
 
-def _sync_water_meter(cur, d, raw, guard_name):
-    """경비일지의 상수도 지침을 통합관제 water_meter 테이블에 반영한다.
-
-    - 숫자로 읽히지 않으면 아무것도 하지 않는다 (앱은 숫자만 받지만 옛 일지는 자유 입력이었다)
-    - 관리자가 통합관제에서 직접 넣거나 고친 값은 덮어쓰지 않는다
-      (created_by 가 '경비일지…' 인 행, 즉 이 경로로 들어온 값만 갱신)
-    """
+def _to_reading(raw):
+    """자유 입력 문자열 → 검침값. 숫자가 아니거나 음수면 None."""
     try:
-        reading = float(str(raw).strip())
+        v = float(str(raw).strip())
     except (TypeError, ValueError):
-        reading = None
-    if reading is None or reading < 0:
-        # 값을 지웠거나 숫자가 아니면, 이 경로로 등록됐던 검침도 거둬들인다
-        # (관리자가 통합관제에서 직접 넣은 값은 건드리지 않는다)
-        cur.execute("DELETE FROM water_meter WHERE read_date=%s AND created_by LIKE %s",
-                    (d, WATER_SRC + "%"))
-        return
+        return None
+    return v if v >= 0 else None
+
+
+def _write_water_meter(cur, d, reading, guard_name):
+    """관리자가 통합관제에서 직접 넣거나 고친 값은 덮어쓰지 않는다
+    (created_by 가 '경비일지…' 인 행, 즉 이 경로로 들어온 값만 갱신)"""
     cur.execute("""
         INSERT INTO water_meter (read_date, reading, memo, created_by)
         VALUES (%s,%s,'경비일지 자동등록',%s)
@@ -364,6 +359,36 @@ def _sync_water_meter(cur, d, raw, guard_name):
     """, (d, reading,
           ("%s %s" % (WATER_SRC, guard_name)).strip()[:30],  # created_by 는 VARCHAR(30), STRICT 모드라 초과 시 저장 전체가 실패한다
           WATER_SRC + "%", WATER_SRC + "%"))
+
+
+def _reclaim_water_meter(cur, d):
+    """그날 남아 있는 일지에서 지침을 다시 찾아 반영한다.
+
+    하루에 근무자별로 여러 건이 있을 수 있다 (guard_logs 는 (log_date, guard_e_id) 유니크).
+    한 사람이 상수도를 비운 채 저장했다고 해서 다른 근무자가 적어 둔 검침까지 지우면 안 된다.
+    숫자 지침이 하나도 없을 때만 이 경로로 등록됐던 검침을 거둬들인다.
+    """
+    cur.execute("SELECT water_meter, guard_name FROM guard_logs WHERE log_date=%s ORDER BY id", (d,))
+    for raw, name in cur.fetchall():
+        reading = _to_reading(raw)
+        if reading is not None:
+            _write_water_meter(cur, d, reading, name or "")
+            return
+    cur.execute("DELETE FROM water_meter WHERE read_date=%s AND created_by LIKE %s",
+                (d, WATER_SRC + "%"))
+
+
+def _sync_water_meter(cur, d, raw, guard_name):
+    """경비일지의 상수도 지침을 통합관제 water_meter 테이블에 반영한다.
+
+    숫자로 읽히지 않으면(값을 지웠거나 옛 일지의 자유 입력이면) 그날 다른 일지의
+    지침으로 되돌리고, 그것도 없을 때만 거둬들인다.
+    """
+    reading = _to_reading(raw)
+    if reading is None:
+        _reclaim_water_meter(cur, d)
+        return
+    _write_water_meter(cur, d, reading, guard_name)
 
 
 def _load_log(cur, log_id):
@@ -419,13 +444,10 @@ def _delete_log(cur, log_id):
         cur.execute("DELETE FROM `%s` WHERE log_id=%%s" % t, (log_id,))
     cur.execute("DELETE FROM guard_logs WHERE id=%s", (log_id,))
 
-    # 그날 일지가 하나도 안 남으면, 이 경로로 등록됐던 수도검침도 거둬들인다
-    # (관리자가 통합관제에서 직접 넣은 값은 건드리지 않는다)
+    # 지운 일지의 지침이 통합관제에 남아 있을 수 있다.
+    # 그날 남은 일지 기준으로 다시 맞추고, 남은 게 없으면 거둬들인다.
     if row:
-        cur.execute("SELECT COUNT(*) FROM guard_logs WHERE log_date=%s", (row[0],))
-        if cur.fetchone()[0] == 0:
-            cur.execute("DELETE FROM water_meter WHERE read_date=%s AND created_by LIKE %s",
-                        (row[0], WATER_SRC + "%"))
+        _reclaim_water_meter(cur, row[0])
     return files
 
 
