@@ -387,6 +387,7 @@ docker_files_main = [
     (f"{STAGE_DIR}/edu_bp.py",           f"{DOCKER_APP_DIR}/edu_bp.py"),
     (f"{STAGE_DIR}/hazmat_bp.py",        f"{DOCKER_APP_DIR}/hazmat_bp.py"),
     (f"{STAGE_DIR}/safety_ai_bp.py",     f"{DOCKER_APP_DIR}/safety_ai_bp.py"),
+    (f"{STAGE_DIR}/guard_bp.py",         f"{DOCKER_APP_DIR}/guard_bp.py"),
     (f"{STAGE_DIR}/tbm_bp.py",           f"{DOCKER_APP_DIR}/tbm_bp.py"),
     (f"{STAGE_DIR}/signage_bp.py",       f"{DOCKER_APP_DIR}/signage_bp.py"),
     (f"{STAGE_DIR}/kepco_collector.py", f"{DOCKER_APP_DIR}/kepco_collector.py"),
@@ -449,6 +450,12 @@ for src, dst in docker_files_tbm:
     r = sudo_nas(f"docker cp {src} {DOCKER_TBM}:{dst}; echo EXIT_$?")
     if "EXIT_0" not in r:
         print(f"  ⚠️  cp {src} → {DOCKER_TBM}:{dst}: {r}")
+
+# NAS 의 ACL 이 docker cp 로 옮겨지면서 파일 권한이 000 이 되는 경우가 있다.
+# 그대로 두면 파이썬이 모듈을 못 읽어 컨테이너가 기동 실패한다 (2026-07-29 사고).
+for _cont in (DOCKER_MAIN, DOCKER_TBM):
+    sudo_nas(f"docker exec {_cont} sh -c 'chmod -R a+r {DOCKER_APP_DIR}/templates {DOCKER_APP_DIR}/static 2>/dev/null; "
+             f"chmod a+r {DOCKER_APP_DIR}/*.py 2>/dev/null; true'")
 
 # ── 4) Docker 재시작 (또는 이미지 재빌드) ────────────────────────
 if REBUILD:
