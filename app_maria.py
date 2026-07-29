@@ -1249,6 +1249,20 @@ def _init_db():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
+        # ── 일별 발주식수 (식수현황 엑셀 취합) ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `meal_order_daily` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `order_date` DATE NOT NULL,
+                `breakfast` INT DEFAULT 0,
+                `lunch` INT DEFAULT 0,
+                `dinner` INT DEFAULT 0,
+                `night` INT DEFAULT 0,
+                `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY `uq_meal_day` (`order_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+
         # ── 수도 일일 검침 테이블 (통합관제) ──
         cur.execute("""
             CREATE TABLE IF NOT EXISTS `water_meter` (
@@ -9100,9 +9114,39 @@ def api_cc_overview():
                        WHERE cust_no=%s AND measured_at >= %s
                        ORDER BY measured_at""", (KEPCO_CUST, _dt.now() - _td(hours=24)))
         power_series = [{"t": m.strftime("%H:%M"), "kwh": float(k or 0)} for m, k in cur.fetchall()]
+
+        # 이번 달 누적 · 최대 수요전력
+        cur.execute("""SELECT COALESCE(SUM(kwh),0), COALESCE(MAX(kw_demand),0)
+                       FROM power_usage_raw
+                       WHERE cust_no=%s AND measured_at >= %s""",
+                    (KEPCO_CUST, today.replace(day=1)))
+        mon_kwh, mon_peak = cur.fetchone()
+
+        # 최근 14일 일별 사용량 (오늘은 진행 중이라 제외)
+        cur.execute("""SELECT DATE(measured_at) d, ROUND(SUM(kwh),1)
+                       FROM power_usage_raw
+                       WHERE cust_no=%s AND measured_at >= %s AND measured_at < %s
+                       GROUP BY d ORDER BY d""",
+                    (KEPCO_CUST, today - _td(days=14), today))
+        power_daily = [{"date": d.strftime("%m/%d"), "kwh": float(k or 0)}
+                       for d, k in cur.fetchall()]
+
+        # 전기요금 (월결산자료 일반관리비 '(전기)')
+        cur.execute("""SELECT `year`, `month`, amount FROM mgmt_cost_monthly
+                       WHERE item='power' ORDER BY `year`, `month`""")
+        pw_cost = [(y, m, int(a or 0)) for y, m, a in cur.fetchall()]
+        pw_year = [x for x in pw_cost if x[0] == today.year and x[2] > 0]
+        bill = pw_year[-1] if pw_year else None
+
         out["power"] = {"today_kwh": round(power_today, 1),
                         "yday_kwh": round(power_yday, 1),
-                        "series": power_series}
+                        "series": power_series,
+                        "month_kwh": round(float(mon_kwh or 0), 1),
+                        "month_peak": round(float(mon_peak or 0), 1),
+                        "daily": power_daily,
+                        "bill_ym": f"{bill[0]}-{bill[1]:02d}" if bill else "",
+                        "bill_amount": bill[2] if bill else 0,
+                        "bill_year_sum": sum(x[2] for x in pw_year)}
 
         # ── 식수: 월별 금액(월결산자료) + 월별 발주식수(식수현황) ──
         cur.execute("""SELECT `year`, `month`, amount FROM mgmt_cost_monthly
@@ -9115,26 +9159,53 @@ def api_cc_overview():
                             "days": int(dy or 0)}
                    for y, m, b, l, dn, n, dy in cur.fetchall()}
 
-        # 최근 12개월 (금액·수량 중 하나라도 있는 달)
-        keys = sorted(set(cost_map) | set(qty_map))[-12:]
+        # 올해 1~12월 금액 추이 (미집계 달은 0)
         meal_months = []
-        for (y, m) in keys:
-            q = qty_map.get((y, m), {})
+        for m in range(1, 13):
+            q = qty_map.get((today.year, m), {})
             qty_total = q.get("breakfast", 0) + q.get("lunch", 0) + \
                         q.get("dinner", 0) + q.get("night", 0)
             meal_months.append({
-                "ym": f"{y}-{m:02d}", "amount": cost_map.get((y, m), 0),
+                "ym": f"{today.year}-{m:02d}", "label": f"{m}월",
+                "amount": cost_map.get((today.year, m), 0),
                 "lunch": q.get("lunch", 0), "night": q.get("night", 0),
                 "breakfast": q.get("breakfast", 0), "dinner": q.get("dinner", 0),
                 "qty_total": qty_total,
             })
         # 금액이 집계된 가장 최근 달을 대표값으로 (당월은 결산 전이라 0인 경우가 있음)
         priced = [x for x in meal_months if x["amount"] > 0]
-        latest = priced[-1] if priced else (meal_months[-1] if meal_months else None)
+        latest = priced[-1] if priced else None
         prev   = priced[-2] if len(priced) > 1 else None
+
+        # 이번 달 일별 식수 현황
+        cur.execute("""SELECT order_date, breakfast, lunch, dinner, night
+                       FROM meal_order_daily
+                       WHERE order_date >= %s AND order_date < %s
+                       ORDER BY order_date""",
+                    (today.replace(day=1),
+                     (today.replace(day=28) + _td(days=4)).replace(day=1)))
+        DOWK = ["월","화","수","목","금","토","일"]
+        cur_days = []
+        for od, b, l, dn, n in cur.fetchall():
+            cur_days.append({"day": od.day, "dow": DOWK[od.weekday()],
+                             "breakfast": int(b or 0), "lunch": int(l or 0),
+                             "dinner": int(dn or 0), "night": int(n or 0),
+                             "total": int(b or 0) + int(l or 0) + int(dn or 0) + int(n or 0),
+                             "is_today": od == today})
+        this_month = {
+            "ym": f"{today.year}-{today.month:02d}",
+            "days": cur_days,
+            "lunch": sum(x["lunch"] for x in cur_days),
+            "night": sum(x["night"] for x in cur_days),
+            "breakfast": sum(x["breakfast"] for x in cur_days),
+            "dinner": sum(x["dinner"] for x in cur_days),
+            "total": sum(x["total"] for x in cur_days),
+        }
+
         out["meal"] = {
             "months": meal_months,
             "latest": latest, "prev": prev,
+            "this_month": this_month,
             "year_sum": sum(v for (y, m), v in cost_map.items() if y == today.year),
         }
 

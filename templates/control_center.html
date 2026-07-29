@@ -121,53 +121,71 @@
             <div><span class="cc-val" id="pYday">-</span><span class="cc-unit">kWh</span></div>
           </div>
         </div>
-        <div style="height:120px;"><canvas id="pChart"></canvas></div>
+        <div class="row g-2 mb-2 pt-2" style="border-top:1px solid #f2f2f2;">
+          <div class="col-4">
+            <div class="cc-lbl">이번달 누적</div>
+            <div><span class="cc-val" style="font-size:1.25rem;" id="pMonth">-</span><span class="cc-unit">MWh</span></div>
+          </div>
+          <div class="col-4">
+            <div class="cc-lbl">최대 수요전력</div>
+            <div><span class="cc-val" style="font-size:1.25rem;" id="pPeak">-</span><span class="cc-unit">kW</span></div>
+          </div>
+          <div class="col-4">
+            <div class="cc-lbl" id="pBillLbl">전기요금</div>
+            <div><span class="cc-val" style="font-size:1.25rem;" id="pBill">-</span><span class="cc-unit">만원</span></div>
+            <div class="cc-sub text-muted" id="pBillYear">&nbsp;</div>
+          </div>
+        </div>
+        <div class="cc-lbl mb-1">24시간 추이</div>
+        <div style="height:105px;"><canvas id="pChart"></canvas></div>
+        <div class="cc-lbl mt-2 mb-1">최근 14일 일별 사용량 (kWh)</div>
+        <div style="height:115px;"><canvas id="pDayChart"></canvas></div>
       </div>
     </div>
   </div>
 
-  <!-- 식수 -->
+  <!-- 식수 — 올해 금액 추이 + 이번달 현황 -->
   <div class="col-lg-7">
     <div class="card cc-card">
       <div class="card-body">
         <div class="cc-head">
-          <span class="cc-title">🍽️ 식수 (월별 금액)</span>
+          <span class="cc-title">🍽️ 올해 식수 금액 추이</span>
           <a href="/meal_management" class="cc-more">상세 →</a>
         </div>
         <div class="row g-2 mb-2">
-          <div class="col-4">
-            <div class="cc-lbl" id="mLatestLbl">최근 월</div>
+          <div class="col-6">
+            <div class="cc-lbl" id="mLatestLbl">최근 결산월</div>
             <div><span class="cc-val" id="mAmount">-</span><span class="cc-unit">만원</span></div>
             <div class="cc-sub" id="mDiff">&nbsp;</div>
           </div>
-          <div class="col-4">
+          <div class="col-6">
             <div class="cc-lbl">올해 누계</div>
             <div><span class="cc-val" id="mYear">-</span><span class="cc-unit">만원</span></div>
           </div>
-          <div class="col-4">
-            <div class="cc-lbl">발주식수 (중식/야식)</div>
-            <div><span class="cc-val" id="mQty">-</span><span class="cc-unit">식</span></div>
-            <div class="cc-sub text-muted" id="mQtyDetail">&nbsp;</div>
-          </div>
         </div>
-        <div style="height:150px;"><canvas id="mChart"></canvas></div>
+        <div style="height:165px;"><canvas id="mChart"></canvas></div>
       </div>
     </div>
   </div>
 
-  <!-- 통근버스 -->
   <div class="col-lg-5">
     <div class="card cc-card">
       <div class="card-body">
         <div class="cc-head">
-          <span class="cc-title">🚌 통근버스</span>
-          <a href="/bus_dispatch" class="cc-more">배차 →</a>
+          <span class="cc-title">🍚 이번달 식수 현황</span>
+          <span class="cc-lbl" id="mmYm">&nbsp;</span>
         </div>
-        <div class="mb-2">
-          <span class="cc-lbl">등록 인원</span>
-          <span class="cc-val ms-2" id="bTotal">-</span><span class="cc-unit">명</span>
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <div class="cc-lbl">이번달 발주식수</div>
+            <div><span class="cc-val" id="mmTotal">-</span><span class="cc-unit">식</span></div>
+          </div>
+          <div class="col-6">
+            <div class="cc-lbl">중식 / 야식</div>
+            <div class="cc-sub mt-1" id="mmDetail" style="font-size:.9rem;font-weight:600;">-</div>
+          </div>
         </div>
-        <div id="bList"></div>
+        <div style="height:165px;"><canvas id="mmChart"></canvas></div>
       </div>
     </div>
   </div>
@@ -256,13 +274,19 @@
     </div>
   </div>
 
+  <!-- 통근버스 (등록 인원) — 기존 '월별 평균' 자리로 이동 -->
   <div class="col-lg-5">
     <div class="card cc-card">
       <div class="card-body">
         <div class="cc-head">
-          <span class="cc-title">📈 통근버스 탑승 — 월별 평균</span>
+          <span class="cc-title">🚌 통근버스</span>
+          <a href="/bus_dispatch" class="cc-more">배차 →</a>
         </div>
-        <div style="height:170px;"><canvas id="brMonChart"></canvas></div>
+        <div class="mb-2">
+          <span class="cc-lbl">등록 인원</span>
+          <span class="cc-val ms-2" id="bTotal">-</span><span class="cc-unit">명</span>
+        </div>
+        <div id="bList"></div>
       </div>
     </div>
   </div>
@@ -297,8 +321,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-var waterModal, wChart = null, pChart = null, mChart = null,
-    envChart = null, brDayChart = null, brMonChart = null;
+var waterModal, wChart = null, pChart = null, pDayChart = null,
+    mChart = null, mmChart = null, envChart = null, brDayChart = null;
 
 var ST_TXT = {ok: '정상', warn: '주의', danger: '위험'};
 
@@ -339,6 +363,13 @@ function fmt(n, digits) {
     return Number(n).toLocaleString('ko-KR', {maximumFractionDigits: digits === undefined ? 1 : digits});
 }
 
+// 패널 하나가 실패해도 나머지는 계속 그리도록 감싼다
+// (2026-07-29: 식수 차트 오류로 이후 패널이 전부 비었던 사례)
+function safe(name, fn) {
+    try { fn(); }
+    catch (e) { console.error('[통합관제] ' + name + ' 패널 오류:', e); }
+}
+
 function loadOverview() {
     fetch('/api/cc_overview').then(r => r.json()).then(function(d) {
         if (!d.ok) return;
@@ -347,207 +378,261 @@ function loadOverview() {
             '갱신 ' + now.toTimeString().slice(0,8);
 
         // ── 수도 ──
-        var w = d.water || {};
-        document.getElementById('wUsage').textContent   = fmt(w.today_usage, 2);
-        document.getElementById('wReading').textContent = fmt(w.today_reading, 2);
-        document.getElementById('wEmpty').style.display = w.has_today ? 'none' : '';
-        var wDays = w.days || [];
-        var wCtx = document.getElementById('wChart');
-        var wData = {
-            labels: wDays.map(x => x.date),
-            datasets: [{
-                label: '일 사용량(㎥)',
-                data: wDays.map(x => x.usage),
-                borderColor: '#0dcaf0', backgroundColor: 'rgba(13,202,240,.15)',
-                borderWidth: 2, tension: .3, fill: true, spanGaps: true
-            }]
-        };
-        if (wChart) { wChart.data = wData; wChart.update(); }
-        else { wChart = new Chart(wCtx, {type: 'line', data: wData, options: chartOpts()}); }
+        safe('수도', function() {
+            var w = d.water || {};
+            document.getElementById('wUsage').textContent   = fmt(w.today_usage, 2);
+            document.getElementById('wReading').textContent = fmt(w.today_reading, 2);
+            document.getElementById('wEmpty').style.display = w.has_today ? 'none' : '';
+            var wDays = w.days || [];
+            var wCtx = document.getElementById('wChart');
+            var wData = {
+                labels: wDays.map(x => x.date),
+                datasets: [{
+                    label: '일 사용량(㎥)',
+                    data: wDays.map(x => x.usage),
+                    borderColor: '#0dcaf0', backgroundColor: 'rgba(13,202,240,.15)',
+                    borderWidth: 2, tension: .3, fill: true, spanGaps: true
+                }]
+            };
+            if (wChart) { wChart.data = wData; wChart.update(); }
+            else { wChart = new Chart(wCtx, {type: 'line', data: wData, options: chartOpts()}); }
 
-        // 수도 검침 표 (일자 · 지침 · 검침량)
-        var wt = w.table || [];
-        document.getElementById('wTable').innerHTML = wt.length
-            ? wt.map(function(x){
-                var cls = '';
-                if (x.usage !== null && x.usage !== undefined) {
-                    if (x.usage < 0) cls = 'bad-cell';
-                    else if (x.usage >= 45) cls = 'warn-cell';
-                }
-                var isHol = (x.dow === '토' || x.dow === '일');
-                return '<tr>'
-                     + '<td>' + x.md + '</td>'
-                     + '<td class="' + (isHol ? 'hol' : '') + '">' + x.dow + '</td>'
-                     + '<td class="num">' + fmt(x.reading, 0) + '</td>'
-                     + '<td class="num ' + cls + '">'
-                     + (x.usage === null || x.usage === undefined ? '-' : fmt(x.usage, 0)) + '</td>'
-                     + '<td class="text-muted">' + (x.memo || '') + '</td>'
-                     + '</tr>';
-              }).join('')
-            : '<tr><td colspan="5" class="cc-empty">검침 자료가 없습니다.</td></tr>';
+            // 수도 검침 표 (일자 · 지침 · 검침량)
+            var wt = w.table || [];
+            document.getElementById('wTable').innerHTML = wt.length
+                ? wt.map(function(x){
+                    var cls = '';
+                    if (x.usage !== null && x.usage !== undefined) {
+                        if (x.usage < 0) cls = 'bad-cell';
+                        else if (x.usage >= 45) cls = 'warn-cell';
+                    }
+                    var isHol = (x.dow === '토' || x.dow === '일');
+                    return '<tr>'
+                         + '<td>' + x.md + '</td>'
+                         + '<td class="' + (isHol ? 'hol' : '') + '">' + x.dow + '</td>'
+                         + '<td class="num">' + fmt(x.reading, 0) + '</td>'
+                         + '<td class="num ' + cls + '">'
+                         + (x.usage === null || x.usage === undefined ? '-' : fmt(x.usage, 0)) + '</td>'
+                         + '<td class="text-muted">' + (x.memo || '') + '</td>'
+                         + '</tr>';
+                  }).join('')
+                : '<tr><td colspan="5" class="cc-empty">검침 자료가 없습니다.</td></tr>';
+        });
 
         // ── 전력 ──
-        var p = d.power || {};
-        document.getElementById('pToday').textContent = fmt(p.today_kwh);
-        document.getElementById('pYday').textContent  = fmt(p.yday_kwh);
-        var diffEl = document.getElementById('pDiff');
-        if (p.yday_kwh) {
-            var rate = ((p.today_kwh - p.yday_kwh) / p.yday_kwh) * 100;
-            diffEl.innerHTML = '<span class="' + (rate >= 0 ? 'up' : 'dn') + '">'
-                + (rate >= 0 ? '▲' : '▼') + ' ' + Math.abs(rate).toFixed(1) + '% (어제 대비)</span>';
-        } else { diffEl.innerHTML = '<span class="na">비교 데이터 없음</span>'; }
-        var ps = p.series || [];
-        var pData = {
-            labels: ps.map(x => x.t),
-            datasets: [{
-                label: 'kWh',
-                data: ps.map(x => x.kwh),
-                borderColor: '#ffc107', backgroundColor: 'rgba(255,193,7,.15)',
-                borderWidth: 2, tension: .3, fill: true, pointRadius: 0
-            }]
-        };
-        if (pChart) { pChart.data = pData; pChart.update(); }
-        else { pChart = new Chart(document.getElementById('pChart'), {type: 'line', data: pData, options: chartOpts()}); }
+        safe('전력', function() {
+            var p = d.power || {};
+            document.getElementById('pToday').textContent = fmt(p.today_kwh);
+            document.getElementById('pYday').textContent  = fmt(p.yday_kwh);
+            var diffEl = document.getElementById('pDiff');
+            if (p.yday_kwh) {
+                var rate = ((p.today_kwh - p.yday_kwh) / p.yday_kwh) * 100;
+                diffEl.innerHTML = '<span class="' + (rate >= 0 ? 'up' : 'dn') + '">'
+                    + (rate >= 0 ? '▲' : '▼') + ' ' + Math.abs(rate).toFixed(1) + '% (어제 대비)</span>';
+            } else { diffEl.innerHTML = '<span class="na">비교 데이터 없음</span>'; }
+            var ps = p.series || [];
+            var pData = {
+                labels: ps.map(x => x.t),
+                datasets: [{
+                    label: 'kWh',
+                    data: ps.map(x => x.kwh),
+                    borderColor: '#ffc107', backgroundColor: 'rgba(255,193,7,.15)',
+                    borderWidth: 2, tension: .3, fill: true, pointRadius: 0
+                }]
+            };
+            if (pChart) { pChart.data = pData; pChart.update(); }
+            else { pChart = new Chart(document.getElementById('pChart'), {type: 'line', data: pData, options: chartOpts()}); }
 
-        // ── 식수 (월별 금액) ──
-        var m = d.meal || {};
-        var mm = m.months || [], lt = m.latest, pv = m.prev;
-        if (lt) {
-            document.getElementById('mLatestLbl').textContent = lt.ym + ' 금액';
-            document.getElementById('mAmount').textContent = fmt(lt.amount / 10000, 0);
-            document.getElementById('mQty').textContent = fmt(lt.qty_total, 0);
-            document.getElementById('mQtyDetail').textContent =
-                '중식 ' + fmt(lt.lunch,0) + ' · 야식 ' + fmt(lt.night,0);
-            var dEl = document.getElementById('mDiff');
-            if (pv && pv.amount) {
-                var rate = ((lt.amount - pv.amount) / pv.amount) * 100;
-                dEl.innerHTML = '<span class="' + (rate >= 0 ? 'up' : 'dn') + '">'
-                    + (rate >= 0 ? '▲' : '▼') + ' ' + Math.abs(rate).toFixed(1) + '% (전월 대비)</span>';
-            } else { dEl.innerHTML = '<span class="na">전월 자료 없음</span>'; }
-        }
-        document.getElementById('mYear').textContent = fmt((m.year_sum || 0) / 10000, 0);
-        var mData = {
-            labels: mm.map(x => x.ym.slice(2)),
-            datasets: [
-                {label:'금액(만원)', data: mm.map(x => Math.round(x.amount / 10000)),
-                 backgroundColor:'rgba(111,66,193,.75)', order:2, yAxisID:'y'},
-                {label:'발주식수(식)', data: mm.map(x => x.qty_total), type:'line',
-                 borderColor:'#fd7e14', backgroundColor:'rgba(253,126,20,.12)',
-                 borderWidth:2, tension:.3, pointRadius:2, order:1, yAxisID:'y1'}
-            ]
-        };
-        var mOpts = chartOpts(true);
-        mOpts.scales.y1 = { position:'right', beginAtZero:true,
-                            ticks:{ font:{size:10} }, grid:{ display:false } };
-        if (mChart) { mChart.data = mData; mChart.update(); }
-        else { mChart = new Chart(document.getElementById('mChart'), {data: mData, options: mOpts}); }
+            // 이번달 누적 · 최대 수요전력 · 전기요금
+            document.getElementById('pMonth').textContent = fmt((p.month_kwh || 0) / 1000, 1);
+            document.getElementById('pPeak').textContent  = fmt(p.month_peak, 0);
+            if (p.bill_amount) {
+                document.getElementById('pBillLbl').textContent = p.bill_ym + ' 전기요금';
+                document.getElementById('pBill').textContent = fmt(p.bill_amount / 10000, 0);
+                document.getElementById('pBillYear').textContent =
+                    '올해 누계 ' + fmt((p.bill_year_sum || 0) / 10000, 0) + '만원';
+            } else {
+                document.getElementById('pBill').textContent = '-';
+                document.getElementById('pBillYear').textContent = '결산 자료 없음';
+            }
+
+            // 최근 14일 일별 사용량
+            var pd = p.daily || [];
+            var pdData = {
+                labels: pd.map(x => x.date),
+                datasets: [{ label: 'kWh', data: pd.map(x => x.kwh),
+                             backgroundColor: 'rgba(255,153,0,.75)' }]
+            };
+            if (pDayChart) { pDayChart.data = pdData; pDayChart.update(); }
+            else { pDayChart = new Chart(document.getElementById('pDayChart'),
+                                         {type:'bar', data: pdData, options: chartOpts()}); }
+        });
+
+        // ── 식수: 올해 금액 추이 ──
+        safe('식수: 올해 금액 추이', function() {
+            var m = d.meal || {};
+            var mm = m.months || [], lt = m.latest, pv = m.prev;
+            if (lt) {
+                document.getElementById('mLatestLbl').textContent = lt.ym + ' 금액';
+                document.getElementById('mAmount').textContent = fmt(lt.amount / 10000, 0);
+                var dEl = document.getElementById('mDiff');
+                if (pv && pv.amount) {
+                    var rate = ((lt.amount - pv.amount) / pv.amount) * 100;
+                    dEl.innerHTML = '<span class="' + (rate >= 0 ? 'up' : 'dn') + '">'
+                        + (rate >= 0 ? '▲' : '▼') + ' ' + Math.abs(rate).toFixed(1) + '% (전월 대비)</span>';
+                } else { dEl.innerHTML = '<span class="na">전월 자료 없음</span>'; }
+            }
+            document.getElementById('mYear').textContent = fmt((m.year_sum || 0) / 10000, 0);
+            var mData = {
+                labels: mm.map(x => x.label),
+                datasets: [
+                    {label:'금액(만원)', type:'bar',
+                     data: mm.map(x => x.amount ? Math.round(x.amount / 10000) : null),
+                     backgroundColor:'rgba(111,66,193,.75)', order:2, yAxisID:'y'},
+                    {label:'발주식수(식)', type:'line',
+                     data: mm.map(x => x.qty_total || null),
+                     borderColor:'#fd7e14', backgroundColor:'rgba(253,126,20,.12)',
+                     borderWidth:2, tension:.3, pointRadius:2, order:1, yAxisID:'y1',
+                     spanGaps:true}
+                ]
+            };
+            var mOpts = chartOpts(true);
+            mOpts.scales.y1 = { position:'right', beginAtZero:true,
+                                ticks:{ font:{size:10} }, grid:{ display:false } };
+            if (mChart) { mChart.data = mData; mChart.options = mOpts; mChart.update(); }
+            else { mChart = new Chart(document.getElementById('mChart'),
+                                      {type:'bar', data: mData, options: mOpts}); }
+        });
+
+        // ── 이번달 식수 현황 (일별) ──
+        safe('이번달 식수 현황 (일별)', function() {
+            var tm = m.this_month || {}, tmd = tm.days || [];
+            document.getElementById('mmYm').textContent = tm.ym || '';
+            document.getElementById('mmTotal').textContent = fmt(tm.total, 0);
+            document.getElementById('mmDetail').textContent =
+                fmt(tm.lunch, 0) + ' / ' + fmt(tm.night, 0);
+            var mmData = {
+                labels: tmd.map(x => x.day + '(' + x.dow + ')'),
+                datasets: [
+                    {label:'중식', data: tmd.map(x => x.lunch),
+                     backgroundColor:'rgba(13,110,253,.75)'},
+                    {label:'야식', data: tmd.map(x => x.night),
+                     backgroundColor:'rgba(253,126,20,.8)'}
+                ]
+            };
+            var mmOpts = chartOpts(true);
+            mmOpts.scales.x.stacked = true;
+            mmOpts.scales.y.stacked = true;
+            if (mmChart) { mmChart.data = mmData; mmChart.update(); }
+            else { mmChart = new Chart(document.getElementById('mmChart'),
+                                       {type:'bar', data: mmData, options: mmOpts}); }
+        });
 
         // ── 통근버스 ──
-        var b = d.bus || {};
-        document.getElementById('bTotal').textContent = fmt(b.total, 0);
-        var bl = b.by_bus || [];
-        document.getElementById('bList').innerHTML = bl.length
-            ? bl.map(function(x){
-                return '<div class="bus-row"><span>' + x.bus_no + '호차</span>'
-                     + '<span class="bus-cnt">' + x.cnt + '명</span></div>';
-              }).join('')
-            : '<div class="cc-empty">등록된 탑승자가 없습니다.</div>';
+        safe('통근버스', function() {
+            var b = d.bus || {};
+            document.getElementById('bTotal').textContent = fmt(b.total, 0);
+            var bl = b.by_bus || [];
+            document.getElementById('bList').innerHTML = bl.length
+                ? bl.map(function(x){
+                    return '<div class="bus-row"><span>' + x.bus_no + '호차</span>'
+                         + '<span class="bus-cnt">' + x.cnt + '명</span></div>';
+                  }).join('')
+                : '<div class="cc-empty">등록된 탑승자가 없습니다.</div>';
+        });
 
         // ── 전산실 온·습도 ──
-        var ev = d.env || {};
-        if (ev.has) {
-            document.getElementById('envTemp').textContent = fmt(ev.temp, 1);
-            document.getElementById('envHumi').textContent = fmt(ev.humi, 0);
-            document.getElementById('envTemp').className = 'cc-val val-' + (ev.state === 'ok' ? 'ok' : ev.state);
-            document.getElementById('envRange').textContent =
-                '오늘 ' + fmt(ev.min,1) + '~' + fmt(ev.max,1) + '℃ · ' + ev.at + ' 기준';
-            stBadge('envBadge', ev.state);
-            var es = ev.series || [];
-            var eData = {
-                labels: es.map(x => x.t),
-                datasets: [{ label:'℃', data: es.map(x => x.temp),
-                    borderColor:'#20c997', backgroundColor:'rgba(32,201,151,.15)',
-                    borderWidth:2, tension:.3, fill:true, pointRadius:0 }]
-            };
-            if (envChart) { envChart.data = eData; envChart.update(); }
-            else { envChart = new Chart(document.getElementById('envChart'), {type:'line', data:eData, options:chartOpts(false)}); }
-        } else {
-            document.getElementById('envRange').textContent = '센서 데이터 없음';
-            stBadge('envBadge', 'warn');
-        }
+        safe('전산실 온·습도', function() {
+            var ev = d.env || {};
+            if (ev.has) {
+                document.getElementById('envTemp').textContent = fmt(ev.temp, 1);
+                document.getElementById('envHumi').textContent = fmt(ev.humi, 0);
+                document.getElementById('envTemp').className = 'cc-val val-' + (ev.state === 'ok' ? 'ok' : ev.state);
+                document.getElementById('envRange').textContent =
+                    '오늘 ' + fmt(ev.min,1) + '~' + fmt(ev.max,1) + '℃ · ' + ev.at + ' 기준';
+                stBadge('envBadge', ev.state);
+                var es = ev.series || [];
+                var eData = {
+                    labels: es.map(x => x.t),
+                    datasets: [{ label:'℃', data: es.map(x => x.temp),
+                        borderColor:'#20c997', backgroundColor:'rgba(32,201,151,.15)',
+                        borderWidth:2, tension:.3, fill:true, pointRadius:0 }]
+                };
+                if (envChart) { envChart.data = eData; envChart.update(); }
+                else { envChart = new Chart(document.getElementById('envChart'), {type:'line', data:eData, options:chartOpts(false)}); }
+            } else {
+                document.getElementById('envRange').textContent = '센서 데이터 없음';
+                stBadge('envBadge', 'warn');
+            }
+        });
 
         // ── 화재센서 ──
-        var fr = d.fire || {};
-        var fds = fr.devices || [];
-        var worst = 'ok';
-        fds.forEach(function(x){
-            if (x.state === 'danger') worst = 'danger';
-            else if (x.state === 'warn' && worst !== 'danger') worst = 'warn';
+        safe('화재센서', function() {
+            var fr = d.fire || {};
+            var fds = fr.devices || [];
+            var worst = 'ok';
+            fds.forEach(function(x){
+                if (x.state === 'danger') worst = 'danger';
+                else if (x.state === 'warn' && worst !== 'danger') worst = 'warn';
+            });
+            stBadge('fireBadge', fds.length ? worst : 'warn');
+            document.getElementById('fireList').innerHTML = fds.length
+                ? fds.map(function(x){
+                    return '<div class="bus-row"><span><span class="st-dot st-' + x.state + '"></span>'
+                         + x.name + ' <span class="text-muted" style="font-size:.74rem;">' + (x.loc||'') + '</span></span>'
+                         + '<span style="font-size:.76rem;">🔋' + x.battery + '%<br>'
+                         + '<span class="text-muted">' + x.seen + '</span></span></div>';
+                  }).join('')
+                : '<div class="cc-empty">등록된 센서가 없습니다.</div>';
+            document.getElementById('fireWarn').textContent =
+                '최근 7일 경보 ' + (fr.warn_7d || 0) + '건';
         });
-        stBadge('fireBadge', fds.length ? worst : 'warn');
-        document.getElementById('fireList').innerHTML = fds.length
-            ? fds.map(function(x){
-                return '<div class="bus-row"><span><span class="st-dot st-' + x.state + '"></span>'
-                     + x.name + ' <span class="text-muted" style="font-size:.74rem;">' + (x.loc||'') + '</span></span>'
-                     + '<span style="font-size:.76rem;">🔋' + x.battery + '%<br>'
-                     + '<span class="text-muted">' + x.seen + '</span></span></div>';
-              }).join('')
-            : '<div class="cc-empty">등록된 센서가 없습니다.</div>';
-        document.getElementById('fireWarn').textContent =
-            '최근 7일 경보 ' + (fr.warn_7d || 0) + '건';
 
         // ── MES 생산 ──
-        var ms = (d.mes || {}).lines || [];
-        document.getElementById('mesList').innerHTML = ms.length
-            ? ms.map(function(x){
-                return '<div class="line-row"><div class="d-flex justify-content-between">'
-                     + '<span style="font-weight:600;">' + x.line + '</span>'
-                     + '<span>' + fmt(x.count,0) + ' / ' + fmt(x.target,0) + '</span></div>'
-                     + '<div class="pg-bar"><div class="pg-fill" style="width:' + Math.min(x.rate,100) + '%;"></div></div>'
-                     + '<div class="cc-sub text-muted">달성률 ' + x.rate + '%</div></div>';
-              }).join('')
-            : '<div class="cc-empty">오늘 생산 데이터가 없습니다.</div>';
+        safe('MES 생산', function() {
+            var ms = (d.mes || {}).lines || [];
+            document.getElementById('mesList').innerHTML = ms.length
+                ? ms.map(function(x){
+                    return '<div class="line-row"><div class="d-flex justify-content-between">'
+                         + '<span style="font-weight:600;">' + x.line + '</span>'
+                         + '<span>' + fmt(x.count,0) + ' / ' + fmt(x.target,0) + '</span></div>'
+                         + '<div class="pg-bar"><div class="pg-fill" style="width:' + Math.min(x.rate,100) + '%;"></div></div>'
+                         + '<div class="cc-sub text-muted">달성률 ' + x.rate + '%</div></div>';
+                  }).join('')
+                : '<div class="cc-empty">오늘 생산 데이터가 없습니다.</div>';
+        });
 
         // ── 근태 싱크 ──
-        var sy = d.sync || {};
-        document.getElementById('syncMins').textContent = (sy.mins_ago === null || sy.mins_ago === undefined) ? '-' : sy.mins_ago;
-        document.getElementById('syncMins').className = 'cc-val val-' + (sy.state === 'ok' ? 'ok' : sy.state);
-        document.getElementById('syncLast').textContent = '최종 ' + (sy.last_ok || '-');
-        document.getElementById('syncCnt').innerHTML =
-            '<span class="text-muted">오늘</span> OK ' + (sy.ok||0) + ' · 대기 ' + (sy.skip||0)
-            + (sy.error ? ' · <span class="up">오류 ' + sy.error + '</span>' : '');
-        stBadge('syncBadge', sy.state);
+        safe('근태 싱크', function() {
+            var sy = d.sync || {};
+            document.getElementById('syncMins').textContent = (sy.mins_ago === null || sy.mins_ago === undefined) ? '-' : sy.mins_ago;
+            document.getElementById('syncMins').className = 'cc-val val-' + (sy.state === 'ok' ? 'ok' : sy.state);
+            document.getElementById('syncLast').textContent = '최종 ' + (sy.last_ok || '-');
+            document.getElementById('syncCnt').innerHTML =
+                '<span class="text-muted">오늘</span> OK ' + (sy.ok||0) + ' · 대기 ' + (sy.skip||0)
+                + (sy.error ? ' · <span class="up">오류 ' + sy.error + '</span>' : '');
+            stBadge('syncBadge', sy.state);
+        });
 
         // ── 통근버스 탑승 통계 ──
-        var bd = b.daily || [], bm = b.monthly || [];
-        document.getElementById('brLast').textContent = b.last_date ? ('최종 ' + b.last_date) : '';
-        var bdData = {
-            labels: bd.map(x => x.date),
-            datasets: [
-                {label:'출근(08:30)', data: bd.map(x => x.on),
-                 backgroundColor:'rgba(13,110,253,.75)'},
-                {label:'퇴근(17:30)', data: bd.map(x => x.off1),
-                 backgroundColor:'rgba(25,135,84,.7)'},
-                {label:'퇴근(20:00)', data: bd.map(x => x.off2),
-                 backgroundColor:'rgba(255,193,7,.8)'}
-            ]
-        };
-        if (brDayChart) { brDayChart.data = bdData; brDayChart.update(); }
-        else { brDayChart = new Chart(document.getElementById('brDayChart'), {type:'bar', data:bdData, options:chartOpts(true)}); }
+        safe('통근버스 탑승 통계', function() {
+            var bd = b.daily || [];
+            document.getElementById('brLast').textContent = b.last_date ? ('최종 ' + b.last_date) : '';
+            var bdData = {
+                labels: bd.map(x => x.date),
+                datasets: [
+                    {label:'출근(08:30)', data: bd.map(x => x.on),
+                     backgroundColor:'rgba(13,110,253,.75)'},
+                    {label:'퇴근(17:30)', data: bd.map(x => x.off1),
+                     backgroundColor:'rgba(25,135,84,.7)'},
+                    {label:'퇴근(20:00)', data: bd.map(x => x.off2),
+                     backgroundColor:'rgba(255,193,7,.8)'}
+                ]
+            };
+            if (brDayChart) { brDayChart.data = bdData; brDayChart.update(); }
+            else { brDayChart = new Chart(document.getElementById('brDayChart'), {type:'bar', data:bdData, options:chartOpts(true)}); }
+        });
 
-        var bmData = {
-            labels: bm.map(x => x.ym.slice(2)),
-            datasets: [
-                {label:'평균 출근', data: bm.map(x => x.avg_on), type:'line',
-                 borderColor:'#0d6efd', backgroundColor:'rgba(13,110,253,.15)',
-                 borderWidth:2, tension:.3, fill:true},
-                {label:'평균 퇴근', data: bm.map(x => x.avg_off), type:'line',
-                 borderColor:'#198754', backgroundColor:'rgba(25,135,84,.12)',
-                 borderWidth:2, tension:.3, fill:true}
-            ]
-        };
-        if (brMonChart) { brMonChart.data = bmData; brMonChart.update(); }
-        else { brMonChart = new Chart(document.getElementById('brMonChart'), {type:'line', data:bmData, options:chartOpts(true)}); }
     }).catch(function(){
         document.getElementById('ccUpdated').textContent = '갱신 실패';
     });

@@ -60,36 +60,47 @@ def list_files():
 
 
 def parse(path):
-    """→ (year, month, breakfast, lunch, dinner, night, days) 또는 None"""
+    """→ (월합계튜플, [일별튜플...]) 또는 (None, [])
+       월합계: (year, month, breakfast, lunch, dinner, night, days)
+       일별  : (date, breakfast, lunch, dinner, night)"""
     import openpyxl
+    from datetime import datetime as _dt
     base = _nfc(os.path.basename(path))
     m = re.match(r"식수현황_(\d{4})_(\d{1,2})", base)
     if not m:
-        return None
+        return None, []
     year, month = int(m.group(1)), int(m.group(2))
 
     wb = openpyxl.load_workbook(path, data_only=True)
     if SHEET not in wb.sheetnames:
         print(f"  ⚠️  '{SHEET}' 시트 없음 — 건너뜀: {base}")
-        return None
+        return None, []
     ws = wb[SHEET]
 
     tot = {k: 0 for k in COLS}
     days = 0
+    daily = []
     for r in range(DATA_START_ROW, ws.max_row + 1):
         day = ws.cell(r, 1).value
         # '주간누계' 등 소계 행은 문자열이라 자동 제외
         if not isinstance(day, (int, float)) or not (1 <= day <= 31):
             continue
         days += 1
+        vals = {}
         for k, c in COLS.items():
             v = ws.cell(r, c).value
-            if isinstance(v, (int, float)):
-                tot[k] += int(v)
+            vals[k] = int(v) if isinstance(v, (int, float)) else 0
+            tot[k] += vals[k]
+        try:
+            d = _dt(year, month, int(day)).date()
+        except ValueError:
+            continue
+        daily.append((d, vals["breakfast"], vals["lunch"],
+                      vals["dinner"], vals["night"]))
     if not days:
-        return None
+        return None, []
     return (year, month, tot["breakfast"], tot["lunch"],
-            tot["dinner"], tot["night"], days)
+            tot["dinner"], tot["night"], days), daily
 
 
 def main():
@@ -102,11 +113,12 @@ def main():
         print(f"❌ 대상 엑셀이 없습니다: {SRC_DIR}")
         return 1
 
-    rows = []
+    rows, daily_rows = [], []
     for f in files:
-        rec = parse(f)
+        rec, daily = parse(f)
         if rec:
             rows.append(rec)
+            daily_rows.extend(daily)
             print(f"  📄 {_nfc(os.path.basename(f))} — "
                   f"{rec[6]}일 · 중식 {rec[3]:,} · 야식 {rec[5]:,}")
     if not rows:
@@ -122,9 +134,22 @@ def main():
             breakfast=VALUES(breakfast), lunch=VALUES(lunch),
             dinner=VALUES(dinner), night=VALUES(night), days=VALUES(days)
     """, rows)
+    if daily_rows:
+        cur.executemany("""
+            INSERT INTO meal_order_daily
+                (order_date, breakfast, lunch, dinner, night)
+            VALUES (%s,%s,%s,%s,%s)
+            ON DUPLICATE KEY UPDATE
+                breakfast=VALUES(breakfast), lunch=VALUES(lunch),
+                dinner=VALUES(dinner), night=VALUES(night)
+        """, daily_rows)
     conn.commit()
     cur.execute("SELECT COUNT(*) FROM meal_order_monthly")
-    print(f"\n✅ 저장 완료 — 이번 처리 {len(rows)}개월 / 누적 {cur.fetchone()[0]}개월")
+    n_m = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM meal_order_daily")
+    n_d = cur.fetchone()[0]
+    print(f"\n✅ 저장 완료 — 월별 {len(rows)}개월(누적 {n_m}) · "
+          f"일별 {len(daily_rows)}건(누적 {n_d})")
     conn.close()
     return 0
 
