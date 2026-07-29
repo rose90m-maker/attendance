@@ -608,9 +608,12 @@ function loadOverview() {
             document.getElementById('syncMins').textContent = (sy.mins_ago === null || sy.mins_ago === undefined) ? '-' : sy.mins_ago;
             document.getElementById('syncMins').className = 'cc-val val-' + (sy.state === 'ok' ? 'ok' : sy.state);
             document.getElementById('syncLast').textContent = '최종 ' + (sy.last_ok || '-');
+            // 일시적 ODBC 오류는 실오류로 세지 않고 회색으로만 표기
             document.getElementById('syncCnt').innerHTML =
                 '<span class="text-muted">오늘</span> OK ' + (sy.ok||0) + ' · 대기 ' + (sy.skip||0)
-                + (sy.error ? ' · <span class="up">오류 ' + sy.error + '</span>' : '');
+                + (sy.error ? ' · <span class="up">오류 ' + sy.error + '</span>' : '')
+                + (sy.transient ? ' · <span class="text-muted" title="ODBC 임시 접속 오류 — 재시도로 자동 복구">일시적 '
+                                  + sy.transient + '</span>' : '');
             stBadge('syncBadge', sy.state);
         });
 

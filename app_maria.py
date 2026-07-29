@@ -9304,6 +9304,16 @@ def api_cc_overview():
         cur.execute("""SELECT level, COUNT(*) FROM sync_log
                        WHERE log_time >= %s GROUP BY level""", (today,))
         lv = {k: int(v or 0) for k, v in cur.fetchall()}
+
+        # 일시적 ODBC 오류(-1905 / SQLDriverConnect)는 실오류에서 제외.
+        # Windows ODBC 임시 DSN 레지스트리 충돌로, 30초 뒤 재시도하면 정상 수집됨.
+        # 텔레그램 알림(_sync_log_checker)도 동일 기준으로 무시하므로 화면도 맞춘다.
+        cur.execute("""SELECT COUNT(*) FROM sync_log
+                       WHERE level='ERROR' AND log_time >= %s
+                         AND (message LIKE %s OR message LIKE %s)""",
+                    (today, "%SQLDriverConnect%", "%-1905%"))
+        transient = int(cur.fetchone()[0] or 0)
+        lv["ERROR"] = max(0, lv.get("ERROR", 0) - transient)
         cur.execute("SELECT MAX(log_time) FROM sync_log WHERE level IN ('OK','SKIP')")
         last_ok = cur.fetchone()[0]
         mins = int((_dt.now() - last_ok).total_seconds() // 60) if last_ok else None
@@ -9312,7 +9322,7 @@ def api_cc_overview():
         if mins is None or mins >= 120: sstate = "danger"
         elif mins >= 30:                sstate = "warn"
         out["sync"] = {"ok": lv.get("OK", 0), "skip": lv.get("SKIP", 0),
-                       "error": lv.get("ERROR", 0),
+                       "error": lv.get("ERROR", 0), "transient": transient,
                        "last_ok": last_ok.strftime("%m/%d %H:%M") if last_ok else "-",
                        "mins_ago": mins, "state": sstate}
     finally:
