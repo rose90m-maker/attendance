@@ -191,6 +191,7 @@ files = [
     ("templates/guard_print.html", "templates/guard_print.html"),
     ("templates/guard_points.html", "templates/guard_points.html"),
     ("templates/guard_instructions.html", "templates/guard_instructions.html"),
+    ("templates/guard_edit.html", "templates/guard_edit.html"),
     ("templates/guard_app.html", "templates/guard_app.html"),
     ("templates/guard_install.html", "templates/guard_install.html"),
     # AI 안전진단

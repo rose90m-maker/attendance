@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ '경비일지 작성' if is_new else '경비일지 수정' }}</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        .sec{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;margin-bottom:12px;}
+        .sec-h{font-weight:700;font-size:0.9rem;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #f1f5f9;}
+        .ptbl{width:100%;font-size:0.8rem;}
+        .ptbl th{background:#fdf0e3;padding:5px 6px;text-align:center;font-weight:700;border:1px solid #e5e7eb;}
+        .ptbl td{padding:3px 5px;border:1px solid #e5e7eb;vertical-align:middle;}
+        .ptbl select,.ptbl input{font-size:0.78rem;padding:2px 5px;}
+        .vrow td{padding:3px;border:1px solid #e5e7eb;}
+        .vrow input{font-size:0.78rem;padding:2px 5px;width:100%;border:1px solid #d1d5db;border-radius:4px;}
+        .req{color:#c00;font-size:0.72rem;font-weight:700;}
+        .hint{font-size:0.74rem;color:#9ca3af;}
+    </style>
+</head>
+<body>
+{% include '_sidebar.html' %}
+<div class="container-fluid mt-4" style="max-width:1000px;">
+    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+        <h4 class="fw-bold mb-0">{{ '📝 경비일지 작성' if is_new else '✏️ 경비일지 수정' }}</h4>
+        <div class="d-flex gap-2">
+            {% if not is_new %}
+            <a href="/guard/{{ log.id }}" class="btn btn-sm btn-outline-secondary">인쇄 보기</a>
+            {% endif %}
+            <a href="/guard" class="btn btn-sm btn-outline-secondary">&laquo; 목록</a>
+        </div>
+    </div>
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in msgs %}
+    <div class="alert alert-{{ 'danger' if cat == 'danger' else 'success' }} py-2">{{ msg }}</div>
+    {% endfor %}
+    {% endwith %}
+
+    <form method="post" id="frm">
+        <div class="sec">
+            <div class="sec-h">기본 정보</div>
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label mb-1" style="font-size:0.78rem;">일자</label>
+                    <input type="date" class="form-control form-control-sm" name="log_date"
+                           value="{{ log.log_date }}" {% if not is_new %}readonly{% endif %} required>
+                    {% if not is_new %}<div class="hint">날짜와 근무자는 바꿀 수 없습니다</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label mb-1" style="font-size:0.78rem;">근무자</label>
+                    {% if is_new %}
+                    <select class="form-select form-select-sm" name="guard_e_id" required>
+                        {% for e in employees %}
+                        <option value="{{ e.id }}" {% if e.id == log.guard_e_id %}selected{% endif %}>{{ e.name }}</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <input type="text" class="form-control form-control-sm" value="{{ log.guard_name }}" readonly>
+                    <input type="hidden" name="guard_e_id" value="{{ log.guard_e_id }}">
+                    <input type="hidden" name="guard_name" value="{{ log.guard_name }}">
+                    {% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label mb-1" style="font-size:0.78rem;">상태</label>
+                    <select class="form-select form-select-sm" name="status">
+                        <option value="draft" {% if log.status != 'submitted' %}selected{% endif %}>작성중</option>
+                        <option value="submitted" {% if log.status == 'submitted' %}selected{% endif %}>제출</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="sec">
+            <div class="sec-h">순찰 점검</div>
+            <table class="ptbl">
+                <tr>
+                    <th style="width:4%;">NO</th>
+                    <th style="width:22%;">점검장소</th>
+                    {% for r in rounds %}
+                    <th style="width:11%;">{{ r }}</th>
+                    <th>{{ r }} 비고</th>
+                    {% endfor %}
+                </tr>
+                {% for row in rows %}
+                <tr>
+                    <td class="text-center">{{ loop.index }}</td>
+                    <td>{{ row.point.name }}</td>
+                    {% for c in row.cells %}
+                    {% set rk = rounds[loop.index0] %}
+                    <td>
+                        <select class="form-select form-select-sm" name="res_{{ row.point.id }}_{{ rk }}">
+                            {% for v in results %}
+                            <option value="{{ v }}" {% if c.result == v %}selected{% endif %}>{{ v }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="hidden" name="at_{{ row.point.id }}_{{ rk }}" value="{{ c.checked_at or '' }}">
+                    </td>
+                    <td><input type="text" class="form-control form-control-sm"
+                               name="note_{{ row.point.id }}_{{ rk }}" value="{{ c.note }}"
+                               placeholder="이상 시 필수"></td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </table>
+            <div class="hint mt-2">‘이상’으로 두면 비고를 반드시 입력해야 저장됩니다.</div>
+        </div>
+
+        {% for blk, label, items in [('visitor', '출입기록 — 업체', visitors), ('staff', '출입기록 — 사내', staff)] %}
+        <div class="sec">
+            <div class="sec-h">{{ label }}</div>
+            <table style="width:100%;font-size:0.8rem;" id="tbl_{{ blk }}">
+                <tr>
+                    <th style="width:8%;">入</th><th style="width:8%;">出</th>
+                    {% if blk == 'visitor' %}<th style="width:16%;">업체</th>{% endif %}
+                    <th style="width:12%;">성명</th>
+                    <th>용무</th>
+                    {% if blk == 'visitor' %}<th style="width:14%;">차량번호</th>
+                    {% else %}<th style="width:16%;">비고</th>{% endif %}
+                    <th style="width:5%;"></th>
+                </tr>
+                {% for v in items %}
+                <tr class="vrow">
+                    <td><input type="hidden" name="{{ blk }}_idx" value="{{ loop.index0 }}">
+                        <input type="text" name="{{ blk }}_in_{{ loop.index0 }}" value="{{ v.in_time }}" placeholder="20:40"></td>
+                    <td><input type="text" name="{{ blk }}_out_{{ loop.index0 }}" value="{{ v.out_time }}" placeholder="21:55"></td>
+                    {% if blk == 'visitor' %}
+                    <td><input type="text" name="{{ blk }}_company_{{ loop.index0 }}" value="{{ v.company }}"></td>
+                    {% endif %}
+                    <td><input type="text" name="{{ blk }}_name_{{ loop.index0 }}" value="{{ v.name }}"></td>
+                    <td><input type="text" name="{{ blk }}_purpose_{{ loop.index0 }}" value="{{ v.purpose }}"></td>
+                    {% if blk == 'visitor' %}
+                    <td><input type="text" name="{{ blk }}_car_{{ loop.index0 }}" value="{{ v.car_no }}"></td>
+                    {% else %}
+                    <td><input type="text" name="{{ blk }}_note_{{ loop.index0 }}" value="{{ v.note }}"></td>
+                    {% endif %}
+                    <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
+                            style="font-size:0.7rem;" onclick="this.closest('tr').remove()">×</button></td>
+                </tr>
+                {% endfor %}
+            </table>
+            <button type="button" class="btn btn-sm btn-outline-secondary mt-2"
+                    onclick="addRow('{{ blk }}')">+ 행 추가</button>
+        </div>
+        {% endfor %}
+
+        <div class="sec">
+            <div class="sec-h">지시사항 / 특이사항</div>
+            <label class="form-label mb-1" style="font-size:0.78rem;">지시사항</label>
+            <textarea class="form-control form-control-sm mb-3" name="instructions" rows="2">{{ log.instructions }}</textarea>
+            <label class="form-label mb-1" style="font-size:0.78rem;">특이사항 및 보고사항 (시설 및 기타)</label>
+            <textarea class="form-control form-control-sm" name="remarks" rows="5">{{ log.remarks }}</textarea>
+            {% if log.photos %}
+            <div class="mt-2 d-flex gap-2 align-items-center flex-wrap">
+                {% for p in log.photos %}
+                <img src="{{ p.url }}" style="width:80px;height:60px;object-fit:cover;border:1px solid #ddd;border-radius:4px;">
+                {% endfor %}
+                <span class="hint">첨부사진 {{ log.photos|length }}매 (앱에서만 추가·삭제)</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="sec">
+            <div class="sec-h">기타</div>
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <label class="form-label mb-1" style="font-size:0.78rem;">전화 수발</label>
+                    <input type="text" class="form-control form-control-sm" name="phone_memo" value="{{ log.phone_memo }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label mb-1" style="font-size:0.78rem;">최종 퇴근자</label>
+                    <input type="text" class="form-control form-control-sm" name="last_leaver" value="{{ log.last_leaver }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label mb-1" style="font-size:0.78rem;">야간 근무자</label>
+                    <input type="text" class="form-control form-control-sm" name="night_worker" value="{{ log.night_worker }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label mb-1" style="font-size:0.78rem;">
+                        상수도 사용현황 <span class="hint">(16:00 검침)</span>
+                    </label>
+                    <input type="text" class="form-control form-control-sm" name="water_meter"
+                           value="{{ log.water_meter }}" placeholder="예: 35547">
+                    <div class="hint">숫자를 넣으면 통합관제 수도검침에 자동 등록됩니다. 비우면 등록분이 삭제됩니다.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label mb-1" style="font-size:0.78rem;">폐기물 처리 요청</label>
+                    <input type="text" class="form-control form-control-sm" name="waste_request" value="{{ log.waste_request }}">
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 mb-5">
+            <button class="btn btn-primary">저장</button>
+            <a href="{{ '/guard' if is_new else '/guard/%d'|format(log.id) }}" class="btn btn-outline-secondary">취소</a>
+            {% if not is_new and is_admin %}
+            <button type="button" class="btn btn-outline-danger ms-auto" onclick="delLog()">일지 삭제</button>
+            {% endif %}
+        </div>
+    </form>
+
+    {% if not is_new and is_admin %}
+    <form method="post" action="/guard/{{ log.id }}/delete" id="delfrm"></form>
+    {% endif %}
+</div>
+
+<script>
+var counters = {visitor: {{ visitors|length }}, staff: {{ staff|length }}};
+function addRow(blk) {
+    var i = counters[blk]++;
+    var tbl = document.getElementById('tbl_' + blk);
+    var tr = tbl.insertRow(-1);
+    tr.className = 'vrow';
+    var isVisitor = (blk === 'visitor');
+    var cells = [
+        '<input type="hidden" name="' + blk + '_idx" value="' + i + '">' +
+        '<input type="text" name="' + blk + '_in_' + i + '" placeholder="20:40">',
+        '<input type="text" name="' + blk + '_out_' + i + '" placeholder="21:55">',
+    ];
+    if (isVisitor) cells.push('<input type="text" name="' + blk + '_company_' + i + '">');
+    cells.push('<input type="text" name="' + blk + '_name_' + i + '">');
+    cells.push('<input type="text" name="' + blk + '_purpose_' + i + '">');
+    cells.push('<input type="text" name="' + blk + (isVisitor ? '_car_' : '_note_') + i + '">');
+    cells.push('<button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" style="font-size:0.7rem;" onclick="this.closest(\'tr\').remove()">×</button>');
+    cells.forEach(function (html) { tr.insertCell(-1).innerHTML = html; });
+}
+function delLog() {
+    if (!confirm('이 일지를 삭제할까요?\n순찰기록·출입기록·첨부사진이 함께 지워지며 되돌릴 수 없습니다.')) return;
+    document.getElementById('delfrm').submit();
+}
+</script>
+</body>
+</html>

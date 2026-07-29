@@ -348,8 +348,12 @@ def _sync_water_meter(cur, d, raw, guard_name):
     try:
         reading = float(str(raw).strip())
     except (TypeError, ValueError):
-        return
-    if reading < 0:
+        reading = None
+    if reading is None or reading < 0:
+        # 값을 지웠거나 숫자가 아니면, 이 경로로 등록됐던 검침도 거둬들인다
+        # (관리자가 통합관제에서 직접 넣은 값은 건드리지 않는다)
+        cur.execute("DELETE FROM water_meter WHERE read_date=%s AND created_by LIKE %s",
+                    (d, WATER_SRC + "%"))
         return
     cur.execute("""
         INSERT INTO water_meter (read_date, reading, memo, created_by)
@@ -404,8 +408,32 @@ def _load_log(cur, log_id):
     return log
 
 
-def _save_snapshot(cur, payload, actor, force=False):
-    """일지 스냅샷 저장 (upsert). (log_id, conflict) 반환."""
+def _delete_log(cur, log_id):
+    """일지와 딸린 기록을 모두 지운다. 삭제된 사진 파일명 목록을 반환."""
+    cur.execute("SELECT filename FROM guard_photos WHERE log_id=%s", (log_id,))
+    files = [r[0] for r in cur.fetchall()]
+    cur.execute("SELECT log_date FROM guard_logs WHERE id=%s", (log_id,))
+    row = cur.fetchone()
+
+    for t in ("guard_patrol", "guard_visitors", "guard_photos"):
+        cur.execute("DELETE FROM `%s` WHERE log_id=%%s" % t, (log_id,))
+    cur.execute("DELETE FROM guard_logs WHERE id=%s", (log_id,))
+
+    # 그날 일지가 하나도 안 남으면, 이 경로로 등록됐던 수도검침도 거둬들인다
+    # (관리자가 통합관제에서 직접 넣은 값은 건드리지 않는다)
+    if row:
+        cur.execute("SELECT COUNT(*) FROM guard_logs WHERE log_date=%s", (row[0],))
+        if cur.fetchone()[0] == 0:
+            cur.execute("DELETE FROM water_meter WHERE read_date=%s AND created_by LIKE %s",
+                        (row[0], WATER_SRC + "%"))
+    return files
+
+
+def _save_snapshot(cur, payload, actor, force=False, allow_any=False):
+    """일지 스냅샷 저장 (upsert). (log_id, conflict) 반환.
+
+    allow_any=True 는 웹 관리 화면 전용 — 남의 일지도 수정할 수 있다.
+    """
     d = _parse_date(payload.get("log_date"))
     if not d:
         raise ValueError("log_date 형식이 올바르지 않습니다. (YYYY-MM-DD)")
@@ -415,8 +443,8 @@ def _save_snapshot(cur, payload, actor, force=False):
         raise ValueError("근무자 정보(guard_e_id)가 없습니다.")
     e_id = int(e_id)
 
-    # 본인 외 근무자 일지는 관리자만 작성/수정
-    if e_id != (actor.get("e_id") or -1) and actor.get("role") != "admin":
+    # 본인 외 근무자 일지는 관리자만 작성/수정 (웹 관리 화면은 allow_any 로 예외)
+    if not allow_any and e_id != (actor.get("e_id") or -1) and actor.get("role") != "admin":
         raise PermissionError("본인 일지만 작성할 수 있습니다.")
 
     guard_name = (payload.get("guard_name") or "").strip()
@@ -1083,6 +1111,144 @@ def guard_print(log_id):
                            rounds=GUARD_ROUNDS, visitors=visitors, staff=staff,
                            blank_rows=blank, prev_id=prev_id, next_id=next_id,
                            result_ng=RESULT_NG, result_ok=RESULT_OK)
+
+
+def _form_to_payload(form, points):
+    """수정 화면의 폼 데이터를 _save_snapshot 이 받는 모양으로 바꾼다."""
+    patrol = []
+    for p in points:
+        for rk in GUARD_ROUNDS:
+            res = form.get("res_%d_%s" % (p["id"], rk)) or RESULT_NONE
+            note = (form.get("note_%d_%s" % (p["id"], rk)) or "").strip()
+            patrol.append({"point_id": p["id"], "round_key": rk, "result": res, "note": note,
+                           "checked_at": form.get("at_%d_%s" % (p["id"], rk)) or None})
+
+    visitors = []
+    for blk in ("visitor", "staff"):
+        idxs = form.getlist("%s_idx" % blk)
+        for i in idxs:
+            name = (form.get("%s_name_%s" % (blk, i)) or "").strip()
+            company = (form.get("%s_company_%s" % (blk, i)) or "").strip()
+            purpose = (form.get("%s_purpose_%s" % (blk, i)) or "").strip()
+            car_no = (form.get("%s_car_%s" % (blk, i)) or "").strip()
+            in_t = (form.get("%s_in_%s" % (blk, i)) or "").strip()
+            out_t = (form.get("%s_out_%s" % (blk, i)) or "").strip()
+            note = (form.get("%s_note_%s" % (blk, i)) or "").strip()
+            if not any([name, company, purpose, car_no, in_t, out_t, note]):
+                continue          # 빈 줄은 저장하지 않는다
+            visitors.append({"block": blk, "in_time": in_t, "out_time": out_t,
+                             "company": company, "name": name, "purpose": purpose,
+                             "car_no": car_no, "note": note})
+
+    return {
+        "log_date": form.get("log_date"),
+        "guard_e_id": form.get("guard_e_id"),
+        "guard_name": form.get("guard_name"),
+        "instructions": form.get("instructions") or "",
+        "remarks": form.get("remarks") or "",
+        "phone_memo": form.get("phone_memo") or "",
+        "last_leaver": form.get("last_leaver") or "",
+        "night_worker": form.get("night_worker") or "",
+        "water_meter": form.get("water_meter") or "",
+        "waste_request": form.get("waste_request") or "",
+        "patrol": patrol,
+        "visitors": visitors,
+        "force": True,          # 웹에서 연 화면이 최신이므로 그대로 반영
+    }
+
+
+def _employee_options(cur):
+    cur.execute("""
+        SELECT id, name FROM tuser
+         WHERE name IS NOT NULL AND name <> ''
+         ORDER BY name
+    """)
+    return [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
+
+
+@guard_bp.route("/guard/new", methods=["GET", "POST"])
+@guard_bp.route("/guard/<int:log_id>/edit", methods=["GET", "POST"])
+@_guard_required
+def guard_edit(log_id=None):
+    conn = _conn(); cur = conn.cursor()
+    points = _load_points(cur)
+
+    if request.method == "POST":
+        payload = _form_to_payload(request.form, points)
+        actor = {"user_id": session.get("user_id"), "e_id": session.get("e_id"),
+                 "name": session.get("user_name"), "role": session.get("role")}
+        try:
+            new_id, _ = _save_snapshot(cur, payload, actor, force=True, allow_any=True)
+        except ValueError as e:
+            conn.rollback(); conn.close()
+            flash(str(e), "danger")
+            return redirect("/guard/%d/edit" % log_id if log_id else "/guard/new")
+        if request.form.get("status") == "submitted":
+            cur.execute("UPDATE guard_logs SET status='submitted', submitted_at=NOW() WHERE id=%s",
+                        (new_id,))
+        else:
+            cur.execute("UPDATE guard_logs SET status='draft', submitted_at=NULL WHERE id=%s",
+                        (new_id,))
+        conn.commit(); conn.close()
+        flash("저장했습니다.", "success")
+        return redirect("/guard/%d" % new_id)
+
+    if log_id:
+        log = _load_log(cur, log_id)
+        if not log:
+            conn.close()
+            flash("일지를 찾을 수 없습니다.", "danger")
+            return redirect("/guard")
+    else:
+        log = {"id": None, "log_date": date.today().strftime("%Y-%m-%d"),
+               "weekday": _weekday_kr(date.today()),
+               "guard_e_id": session.get("e_id"), "guard_name": session.get("user_name") or "",
+               "instructions": "", "remarks": "", "phone_memo": "", "last_leaver": "",
+               "night_worker": "", "water_meter": "", "waste_request": "",
+               "status": "draft", "patrol": [], "visitors": [], "photos": []}
+        ins = _instruction_for(cur, date.today())
+        if ins:
+            log["instructions"] = ins["content"]
+
+    grid = {}
+    for p in log["patrol"]:
+        grid.setdefault(p["point_id"], {})[p["round_key"]] = p
+    rows = [{"point": pt,
+             "cells": [grid.get(pt["id"], {}).get(rk, {"result": RESULT_NONE, "note": "",
+                                                       "checked_at": None})
+                       for rk in GUARD_ROUNDS]} for pt in points]
+
+    visitors = [v for v in log["visitors"] if v["block"] == "visitor"]
+    staff = [v for v in log["visitors"] if v["block"] == "staff"]
+    employees = _employee_options(cur)
+    conn.close()
+
+    return render_template("guard_edit.html", active_page="guard", log=log, rows=rows,
+                           rounds=GUARD_ROUNDS, visitors=visitors, staff=staff,
+                           employees=employees, results=VALID_RESULTS,
+                           is_new=(log_id is None),
+                           is_admin=(session.get("role") == "admin"))
+
+
+@guard_bp.route("/guard/<int:log_id>/delete", methods=["POST"])
+@_admin_required
+def guard_delete(log_id):
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT log_date, guard_name FROM guard_logs WHERE id=%s", (log_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        flash("일지를 찾을 수 없습니다.", "danger")
+        return redirect("/guard")
+    files = _delete_log(cur, log_id)
+    conn.commit(); conn.close()
+    for fn in files:
+        try:
+            os.remove(os.path.join(GUARD_UPLOAD_DIR, fn))
+        except OSError:
+            pass
+    flash("%s %s 일지를 삭제했습니다." % (row[0].strftime("%Y-%m-%d"), row[1]), "success")
+    return redirect("/guard")
 
 
 @guard_bp.route("/guard/instructions", methods=["GET", "POST"])

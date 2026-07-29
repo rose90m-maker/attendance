@@ -48,6 +48,7 @@
         <div class="ms-auto d-flex gap-2">
             {% if prev_id %}<a href="/guard/{{ prev_id }}" class="btn btn-sm btn-outline-secondary">&laquo; 이전</a>{% endif %}
             {% if next_id %}<a href="/guard/{{ next_id }}" class="btn btn-sm btn-outline-secondary">다음 &raquo;</a>{% endif %}
+            <a href="/guard/{{ log.id }}/edit" class="btn btn-sm btn-outline-secondary">✏️ 수정</a>
             {% if log.photos %}
             <label class="btn btn-sm btn-outline-secondary mb-0">
                 <input type="checkbox" id="chkPhoto" checked onchange="togglePhoto()"> 사진 포함
@@ -56,6 +57,11 @@
             <button class="btn btn-sm btn-primary" onclick="window.print()">🖨 인쇄 / PDF</button>
         </div>
     </div>
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in msgs %}
+    <div class="alert alert-{{ 'danger' if cat == 'danger' else 'success' }} py-2">{{ msg }}</div>
+    {% endfor %}
+    {% endwith %}
 </div>
 
 <div class="sheet">
