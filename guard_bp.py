@@ -335,6 +335,33 @@ def _instruction_for(cur, d):
     return {"content": r[0], "author": r[1] or "", "updated_at": _fmt_dt(r[2])}
 
 
+WATER_SRC = "경비일지"
+
+
+def _sync_water_meter(cur, d, raw, guard_name):
+    """경비일지의 상수도 지침을 통합관제 water_meter 테이블에 반영한다.
+
+    - 숫자로 읽히지 않으면 아무것도 하지 않는다 (앱은 숫자만 받지만 옛 일지는 자유 입력이었다)
+    - 관리자가 통합관제에서 직접 넣거나 고친 값은 덮어쓰지 않는다
+      (created_by 가 '경비일지…' 인 행, 즉 이 경로로 들어온 값만 갱신)
+    """
+    try:
+        reading = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return
+    if reading < 0:
+        return
+    cur.execute("""
+        INSERT INTO water_meter (read_date, reading, memo, created_by)
+        VALUES (%s,%s,'경비일지 자동등록',%s)
+        ON DUPLICATE KEY UPDATE
+            reading = IF(created_by LIKE %s, VALUES(reading), reading),
+            memo    = IF(created_by LIKE %s, VALUES(memo),    memo)
+    """, (d, reading,
+          ("%s %s" % (WATER_SRC, guard_name)).strip()[:30],  # created_by 는 VARCHAR(30), STRICT 모드라 초과 시 저장 전체가 실패한다
+          WATER_SRC + "%", WATER_SRC + "%"))
+
+
 def _load_log(cur, log_id):
     cur.execute("""
         SELECT id, log_date, weekday, guard_e_id, guard_name, instructions, remarks,
@@ -466,6 +493,9 @@ def _save_snapshot(cur, payload, actor, force=False):
                 ON DUPLICATE KEY UPDATE result=VALUES(result), note=VALUES(note),
                                         checked_at=VALUES(checked_at)
             """, (log_id, pid, rk, res, note, _parse_dt(p.get("checked_at"))))
+
+    # 상수도 검침 — 통합관제(water_meter)에 그대로 반영
+    _sync_water_meter(cur, d, fields["water_meter"], guard_name)
 
     # 출입기록 — 스냅샷 전체 교체 (멱등)
     if isinstance(payload.get("visitors"), list):
