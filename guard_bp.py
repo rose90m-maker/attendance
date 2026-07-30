@@ -661,6 +661,46 @@ def api_guard_instructions():
     return jsonify(ok=True, date=d.strftime("%Y-%m-%d"), instruction=ins)
 
 
+@guard_bp.route("/api/guard/water")
+@_api_auth
+def api_guard_water():
+    """앱 상수도 탭에 뿌릴 최근 검침.
+
+    검침량과 비고는 통합관제 표와 같다 — 검침량은 전날 지침과의 차이(전날이 없으면 없음),
+    비고는 water_meter.memo 를 그대로 쓴다.
+    """
+    try:
+        days = int(request.args.get("days", 7))
+    except ValueError:
+        days = 7
+    days = max(1, min(days, 31))
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""
+        SELECT a.read_date, a.reading, a.memo,
+               (SELECT b.reading FROM water_meter b
+                 WHERE b.read_date = a.read_date - INTERVAL 1 DAY)
+          FROM water_meter a
+         ORDER BY a.read_date DESC
+         LIMIT %s
+    """, (days,))
+    rows = cur.fetchall()
+    conn.close()
+
+    readings = []
+    for rd, rg, memo, prev in rows:
+        reading = float(rg or 0)
+        readings.append({
+            "date": rd.strftime("%Y-%m-%d"),
+            "md": rd.strftime("%m/%d"),
+            "weekday": _weekday_kr(rd),
+            "reading": reading,
+            "usage": round(reading - float(prev), 2) if prev is not None else None,
+            "memo": memo or "",
+        })
+    return jsonify(ok=True, readings=readings)
+
+
 @guard_bp.route("/api/guard/logs")
 @_api_auth
 def api_guard_logs():
