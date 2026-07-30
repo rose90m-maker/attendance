@@ -348,17 +348,21 @@ def _to_reading(raw):
 
 
 def _write_water_meter(cur, d, reading, guard_name):
-    """관리자가 통합관제에서 직접 넣거나 고친 값은 덮어쓰지 않는다
-    (created_by 가 '경비일지…' 인 행, 즉 이 경로로 들어온 값만 갱신)"""
+    """경비원이 현장에서 계량기를 보고 적은 값이므로 기존 값이 있어도 덮어쓴다.
+
+    비고(memo)는 건드리지 않는다 — 통합관제의 '정상 / 확인 필요 / 지침 확인' 판정이
+    거기 들어 있고, 그걸 지우면 통합관제와 앱의 검침 표에서 비고가 사라진다.
+    누가 마지막으로 적었는지는 created_by 로 남는다.
+    """
     cur.execute("""
         INSERT INTO water_meter (read_date, reading, memo, created_by)
-        VALUES (%s,%s,'경비일지 자동등록',%s)
+        VALUES (%s,%s,'',%s)
         ON DUPLICATE KEY UPDATE
-            reading = IF(created_by LIKE %s, VALUES(reading), reading),
-            memo    = IF(created_by LIKE %s, VALUES(memo),    memo)
+            reading    = VALUES(reading),
+            created_by = VALUES(created_by)
     """, (d, reading,
-          ("%s %s" % (WATER_SRC, guard_name)).strip()[:30],  # created_by 는 VARCHAR(30), STRICT 모드라 초과 시 저장 전체가 실패한다
-          WATER_SRC + "%", WATER_SRC + "%"))
+          # created_by 는 VARCHAR(30), STRICT 모드라 초과 시 저장 전체가 실패한다
+          ("%s %s" % (WATER_SRC, guard_name)).strip()[:30]))
 
 
 def _reclaim_water_meter(cur, d):
@@ -366,7 +370,9 @@ def _reclaim_water_meter(cur, d):
 
     하루에 근무자별로 여러 건이 있을 수 있다 (guard_logs 는 (log_date, guard_e_id) 유니크).
     한 사람이 상수도를 비운 채 저장했다고 해서 다른 근무자가 적어 둔 검침까지 지우면 안 된다.
-    숫자 지침이 하나도 없을 때만 이 경로로 등록됐던 검침을 거둬들인다.
+    숫자 지침이 하나도 없을 때만 검침을 거둬들이는데, 그때도 지우는 건
+    이 경로로 처음 만들어진 행(비고가 비어 있는 행)뿐이다.
+    일일관리대장에서 취합된 행은 비고에 판정('정상' 등)이 있어 그대로 남는다.
     """
     cur.execute("SELECT water_meter, guard_name FROM guard_logs WHERE log_date=%s ORDER BY id", (d,))
     for raw, name in cur.fetchall():
@@ -374,8 +380,10 @@ def _reclaim_water_meter(cur, d):
         if reading is not None:
             _write_water_meter(cur, d, reading, name or "")
             return
-    cur.execute("DELETE FROM water_meter WHERE read_date=%s AND created_by LIKE %s",
-                (d, WATER_SRC + "%"))
+    cur.execute("""
+        DELETE FROM water_meter
+         WHERE read_date=%s AND created_by LIKE %s AND (memo IS NULL OR memo='')
+    """, (d, WATER_SRC + "%"))
 
 
 def _sync_water_meter(cur, d, raw, guard_name):
