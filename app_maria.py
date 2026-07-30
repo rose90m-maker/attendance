@@ -436,8 +436,15 @@ def _wr_missing_scan(cur, now=None):
                 (now.date() - timedelta(days=WR_MISSING_LOOKBACK)).strftime("%Y%m%d"))
     end = (now.date() - timedelta(days=1)).strftime("%Y%m%d")   # 어제까지
 
-    cur.execute("SELECT id, group_name FROM wr_groups WHERE status='완료' ORDER BY id")
-    groups = cur.fetchall()
+    # alert_missing=0 인 그룹은 제외 (보고서를 쓰지 않는 그룹)
+    try:
+        cur.execute("""SELECT id, group_name FROM wr_groups
+                       WHERE status='완료' AND alert_missing=1 ORDER BY id""")
+        groups = cur.fetchall()
+    except Exception:
+        # 컬럼이 아직 없는 경우 (구버전 DB) — 전체 그룹 대상
+        cur.execute("SELECT id, group_name FROM wr_groups WHERE status='완료' ORDER BY id")
+        groups = cur.fetchall()
 
     per_writer, per_group, total = {}, [], 0
     for gid, gname in groups:
@@ -1062,6 +1069,18 @@ def _init_db():
         for k in ('sync_error', 'sync_check', 'leave', 'meal', 'notice',
                   'wr_overdue', 'wr_missing'):
             cur.execute("INSERT IGNORE INTO telegram_settings (`key`, `enabled`) VALUES (%s, 1)", (k,))
+
+        # 근무보고서 미작성 알림 대상 여부 (0이면 해당 그룹은 알림 제외)
+        # 보고서를 쓰지 않는 그룹(전기생기·전기품질 등)을 그룹 상태 변경 없이 제외하기 위함
+        try:
+            cur.execute("""SELECT COUNT(*) FROM information_schema.COLUMNS
+                           WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='wr_groups'
+                             AND COLUMN_NAME='alert_missing'""")
+            if not cur.fetchone()[0]:
+                cur.execute("ALTER TABLE wr_groups ADD COLUMN `alert_missing` "
+                            "TINYINT NOT NULL DEFAULT 1")
+        except Exception as _e:
+            print(f"[init] wr_groups.alert_missing 추가 실패 (무시): {_e}")
         # 사원명부 테이블
         cur.execute("""
             CREATE TABLE IF NOT EXISTS `employee_roster` (
@@ -9479,6 +9498,12 @@ def api_wr_missing_check():
     try:
         start, end, per_writer, per_group, total = _wr_missing_scan(cur)
         emails = _wr_missing_emails(cur, per_writer) if total else {}
+        try:
+            cur.execute("""SELECT group_name FROM wr_groups
+                           WHERE status='완료' AND alert_missing=0 ORDER BY id""")
+            excluded = [r[0] for r in cur.fetchall()]
+        except Exception:
+            excluded = []
     finally:
         conn.close()
 
@@ -9487,6 +9512,7 @@ def api_wr_missing_check():
         "ok": True,
         "period": {"start": start, "end": end},
         "total": total,
+        "excluded_groups": excluded,
         "groups": per_group,
         "writers": [{"name": w, "count": len(items),
                      "email": emails.get(w, ""), "items": items}
