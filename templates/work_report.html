@@ -342,6 +342,24 @@
     </script>
     {% endif %}
 
+    {# ═══════ 미작성 경고 배너 (출근기록은 있는데 보고서가 없는 날) ═══════ #}
+    <div id="missingBanner" class="alert alert-warning py-2 px-3 mb-3" style="display:none;">
+        <div class="d-flex align-items-start">
+            <span class="me-2" style="font-size:1.1rem;">⚠️</span>
+            <div class="flex-grow-1">
+                <div class="fw-bold" style="font-size:0.86rem;">
+                    작성되지 않은 근무보고서 <span id="missingCount">0</span>건
+                </div>
+                <div id="missingList" style="font-size:0.8rem; margin-top:4px;"></div>
+                <div class="text-muted" style="font-size:0.74rem; margin-top:3px;">
+                    날짜를 클릭하면 해당 날짜로 작성창이 열립니다. (출근 기록이 있는데 보고서가 없는 날)
+                </div>
+            </div>
+            <button type="button" class="btn-close" style="font-size:0.7rem;"
+                    onclick="document.getElementById('missingBanner').style.display='none';"></button>
+        </div>
+    </div>
+
     {# ═══════ 보고서 목록 ═══════ #}
     <div class="card mb-4">
         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
@@ -629,6 +647,7 @@ document.addEventListener('DOMContentLoaded', function() {
             loadGroupMembers();
         }
         checkHoliday();
+        loadMissingBanner();   // 미작성 경고 배너
     } catch(e) {
         console.error('DOMContentLoaded error:', e);
     }
@@ -801,6 +820,42 @@ function openWriteModal() {
     }
     renderTable();
     writeModal.show();
+}
+
+// ═══ 미작성 경고 배너 ═══
+// 출근 기록은 있는데 보고서가 없는 날을 안내. 작성을 막지는 않는다.
+function loadMissingBanner() {
+    fetch('/api/wr_my_missing').then(function(r){ return r.json(); }).then(function(d) {
+        if (!d.ok || !d.total) return;
+        document.getElementById('missingCount').textContent = d.total;
+        var html = '';
+        (d.groups || []).forEach(function(g) {
+            var links = g.dates.map(function(dt) {
+                return '<a href="#" onclick="openWriteModalFor(\'' + g.group + '\',\'' + dt
+                     + '\');return false;" class="badge bg-danger text-decoration-none me-1">'
+                     + dt.slice(5) + '</a>';
+            }).join('');
+            html += '<div style="margin-top:2px;"><span class="fw-bold me-1">' + g.group
+                  + '</span>' + links + '</div>';
+        });
+        document.getElementById('missingList').innerHTML = html;
+        document.getElementById('missingBanner').style.display = '';
+    }).catch(function(){ /* 배너는 부가 기능이라 실패해도 무시 */ });
+}
+
+// 특정 그룹·날짜로 작성창 열기 (배너에서 호출)
+function openWriteModalFor(groupName, dateStr) {
+    openWriteModal();
+    var gid = null;
+    for (var k in allGroupInfo) {
+        if (allGroupInfo[k].name === groupName) { gid = k; break; }
+    }
+    document.getElementById('wrDate').value = dateStr;
+    if (gid) {
+        document.getElementById('wrGroupId').value = gid;
+        loadGroupMembers();
+    }
+    checkHoliday();
 }
 
 function copyPrevReport() {

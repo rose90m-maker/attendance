@@ -7800,7 +7800,9 @@ def work_report():
         cur.execute("SELECT user_name FROM wr_group_members WHERE group_id=%s ORDER BY user_name", (g["id"],))
         mnames = [r[0] for r in cur.fetchall()]
         all_group_info[g["id"]] = {"revs": revs, "member_count": mcnt, "member_names": mnames,
-                                    "final_step": g["final_step"], "status": g.get("status", "설정중")}
+                                    "final_step": g["final_step"], "status": g.get("status", "설정중"),
+                                    # name: 미작성 경고 배너에서 그룹명으로 그룹을 찾기 위해 사용
+                                    "name": g.get("group_name", "")}
     # 로그인 사용자별 그룹-step (reviewer + member + writer) - e_id 사용
     cur.execute("SELECT group_id, step FROM wr_group_reviewers WHERE user_id=%s", (login_eid,))
     user_group_steps = {}
@@ -9519,6 +9521,28 @@ def api_wr_missing_check():
                     for w, items in per_writer.items()],
         "sent": sent,
     })
+
+
+@app.route("/api/wr_my_missing")
+@_login_required
+def api_wr_my_missing():
+    """로그인 사용자가 작성 담당인 그룹의 미작성일 (근무보고서 화면 경고 배너용).
+    관리자는 전체 알림대상 그룹을 본다."""
+    me = session.get("user_name", "")
+    is_admin = session.get("role") == "admin"
+    conn = _conn(); cur = conn.cursor()
+    try:
+        _s, _e, _pw, per_group, _t = _wr_missing_scan(cur)
+    finally:
+        conn.close()
+
+    out = []
+    for g in per_group:
+        if is_admin or me in (g.get("writers") or []):
+            out.append({"group": g["group"], "dates": g["dates"]})
+    return jsonify({"ok": True,
+                    "total": sum(len(g["dates"]) for g in out),
+                    "groups": out})
 
 
 @app.route("/api/cc_water_save", methods=["POST"])
