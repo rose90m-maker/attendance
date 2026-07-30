@@ -412,6 +412,141 @@ def _wr_overdue_checker():
             import time; time.sleep(60)
 
 
+# ── 근무보고서 '미작성일' 감지 ─────────────────────────────
+_wr_missing_alerted_date = None
+WR_MISSING_START = "20260701"   # 이 날짜 이후만 점검 (과거분 메일 폭탄 방지)
+WR_MISSING_LOOKBACK = 30        # 최근 N일 점검
+WR_MISSING_MAX_LINES = 12       # 메일에 나열할 최대 건수
+
+
+def _wr_missing_scan(cur, now=None):
+    """'보고서가 아예 작성되지 않은 날'을 찾는다.
+
+    기존 결재지연 알림(_wr_overdue_checker)은 '만들어진 보고서'의 지연만 잡으므로
+    보고서 자체가 없는 날은 감지되지 않았음 (2026-07 QA 7/9~7/12 누락 사례).
+
+    판정: 그룹 구성원 중 1명이라도 그날 출입기록(tenter)이 있는데 보고서가 없으면 미작성.
+          → 주말·공휴일·부서별 비근무일은 자동으로 제외된다.
+
+    반환: (start, end, per_writer, per_group, total)
+          per_writer = {작성자명: [(그룹, 'YYYY-MM-DD', 출근인원), ...]}
+    """
+    now = now or datetime.now()
+    start = max(WR_MISSING_START,
+                (now.date() - timedelta(days=WR_MISSING_LOOKBACK)).strftime("%Y%m%d"))
+    end = (now.date() - timedelta(days=1)).strftime("%Y%m%d")   # 어제까지
+
+    cur.execute("SELECT id, group_name FROM wr_groups WHERE status='완료' ORDER BY id")
+    groups = cur.fetchall()
+
+    per_writer, per_group, total = {}, [], 0
+    for gid, gname in groups:
+        cur.execute("""SELECT DISTINCT report_date FROM wr_reports
+                       WHERE group_id=%s AND report_date BETWEEN %s AND %s""",
+                    (gid, start, end))
+        have = {r[0] for r in cur.fetchall()}
+        # 구성원이 실제 출근한 날 + 출근 인원수
+        cur.execute("""SELECT t.e_date, COUNT(DISTINCT t.e_name)
+                       FROM tenter t
+                       WHERE t.e_date BETWEEN %s AND %s AND t.e_id >= 0
+                         AND t.e_name IN (SELECT user_name FROM wr_group_members
+                                          WHERE group_id=%s)
+                       GROUP BY t.e_date""", (start, end, gid))
+        missing = sorted((d, c) for d, c in cur.fetchall() if d not in have)
+        if not missing:
+            continue
+        # 그룹 작성자 (지정 없으면 최근 작성자로 대체)
+        cur.execute("SELECT user_name FROM wr_group_writers WHERE group_id=%s", (gid,))
+        writers = [r[0] for r in cur.fetchall()]
+        if not writers:
+            cur.execute("""SELECT created_by_name FROM wr_reports
+                           WHERE group_id=%s AND created_by_name IS NOT NULL
+                             AND created_by_name <> ''
+                           ORDER BY id DESC LIMIT 1""", (gid,))
+            r2 = cur.fetchone()
+            writers = [r2[0]] if r2 else []
+        per_group.append({"group": gname, "writers": writers,
+                          "dates": [f"{d[:4]}-{d[4:6]}-{d[6:8]}" for d, _ in missing]})
+        for d, c in missing:
+            total += 1
+            disp = f"{d[:4]}-{d[4:6]}-{d[6:8]}"
+            for w in (writers or ["(작성자 미지정)"]):
+                per_writer.setdefault(w, []).append((gname, disp, int(c or 0)))
+    return start, end, per_writer, per_group, total
+
+
+def _wr_missing_emails(cur, per_writer):
+    names = [w for w in per_writer if w != "(작성자 미지정)"]
+    if not names:
+        return {}
+    ph = ",".join(["%s"] * len(names))
+    cur.execute(f"""SELECT name, email FROM employee_roster
+                    WHERE name IN ({ph}) AND email IS NOT NULL AND email <> ''""", names)
+    return dict(cur.fetchall())
+
+
+def _wr_missing_send(per_writer, emails, start, end):
+    """작성자별 미작성 안내 메일 발송 → 발송한 이메일 목록"""
+    sent = []
+    for w, items in per_writer.items():
+        em = emails.get(w)
+        if not em:
+            continue
+        shown = items[:WR_MISSING_MAX_LINES]
+        rows_html = "".join(
+            f"<tr><td style='padding:4px 10px;border-bottom:1px solid #eee;'>{g}</td>"
+            f"<td style='padding:4px 10px;border-bottom:1px solid #eee;'>{d}</td>"
+            f"<td style='padding:4px 10px;border-bottom:1px solid #eee;text-align:right;'>{c}명</td></tr>"
+            for g, d, c in shown)
+        more = (f"<p style='color:#888;'>… 외 {len(items) - len(shown)}건</p>"
+                if len(items) > len(shown) else "")
+        body = (
+            f"<p><b>{w}</b>님, 근무보고서가 <b>작성되지 않은 날</b>이 있습니다.</p>"
+            f"<p style='color:#666;font-size:0.9em;'>해당 날짜에 출근 기록이 있는데 "
+            f"보고서가 없는 건입니다. (점검 기간 {start[:4]}-{start[4:6]}-{start[6:8]} ~ "
+            f"{end[:4]}-{end[4:6]}-{end[6:8]})</p>"
+            f"<table style='border-collapse:collapse;font-size:0.92em;'>"
+            f"<tr><th style='padding:4px 10px;text-align:left;border-bottom:2px solid #ddd;'>그룹</th>"
+            f"<th style='padding:4px 10px;text-align:left;border-bottom:2px solid #ddd;'>날짜</th>"
+            f"<th style='padding:4px 10px;text-align:right;border-bottom:2px solid #ddd;'>출근</th></tr>"
+            f"{rows_html}</table>{more}"
+            f"<p>근태관리시스템에서 소급 작성해 주세요.<br>"
+            f"<a href='https://app.taein.biz/work_report'>https://app.taein.biz/work_report</a></p>"
+        )
+        _send_email([em], f"[근태관리시스템] 근무보고서 미작성 {len(items)}건", body)
+        sent.append(em)
+    return sent
+
+
+def _wr_missing_checker():
+    """백그라운드: 매일 09시에 미작성일을 찾아 작성자에게 메일 발송"""
+    global _wr_missing_alerted_date
+    while True:
+        try:
+            import time; time.sleep(300)   # 5분마다 시각 확인
+            now = datetime.now()
+            today = now.strftime("%Y-%m-%d")
+            if now.hour != 9 or _wr_missing_alerted_date == today:
+                continue
+
+            conn = _conn(); cur = conn.cursor()
+            cur.execute("SELECT `enabled` FROM telegram_settings WHERE `key`='wr_missing'")
+            row = cur.fetchone()
+            if row and not row[0]:
+                _wr_missing_alerted_date = today
+                conn.close()
+                continue
+
+            start, end, per_writer, _pg, total = _wr_missing_scan(cur, now)
+            emails = _wr_missing_emails(cur, per_writer) if total else {}
+            conn.close()
+            _wr_missing_alerted_date = today
+            if total:
+                _wr_missing_send(per_writer, emails, start, end)
+        except Exception:
+            import time; time.sleep(60)
+
+
 # 출퇴근 싱크 알림 플래그 {날짜: {"morning_alerted": bool, "evening_alerted": bool}}
 _sync_check_alerts = {}
 
@@ -924,7 +1059,8 @@ def _init_db():
                 `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
-        for k in ('sync_error', 'sync_check', 'leave', 'meal', 'notice', 'wr_overdue'):
+        for k in ('sync_error', 'sync_check', 'leave', 'meal', 'notice',
+                  'wr_overdue', 'wr_missing'):
             cur.execute("INSERT IGNORE INTO telegram_settings (`key`, `enabled`) VALUES (%s, 1)", (k,))
         # 사원명부 테이블
         cur.execute("""
@@ -9330,6 +9466,35 @@ def api_cc_overview():
     return jsonify(out)
 
 
+@app.route("/api/wr_missing_check")
+@_login_required
+def api_wr_missing_check():
+    """근무보고서 미작성일 조회 (관리자).
+    기본은 조회만 하고, ?send=1 이면 작성자에게 메일 발송."""
+    if session.get("role") != "admin":
+        return jsonify({"ok": False, "error": "관리자만 가능합니다."}), 403
+    do_send = request.args.get("send") == "1"
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        start, end, per_writer, per_group, total = _wr_missing_scan(cur)
+        emails = _wr_missing_emails(cur, per_writer) if total else {}
+    finally:
+        conn.close()
+
+    sent = _wr_missing_send(per_writer, emails, start, end) if (do_send and total) else []
+    return jsonify({
+        "ok": True,
+        "period": {"start": start, "end": end},
+        "total": total,
+        "groups": per_group,
+        "writers": [{"name": w, "count": len(items),
+                     "email": emails.get(w, ""), "items": items}
+                    for w, items in per_writer.items()],
+        "sent": sent,
+    })
+
+
 @app.route("/api/cc_water_save", methods=["POST"])
 @_login_required
 def api_cc_water_save():
@@ -10613,5 +10778,7 @@ if __name__ == "__main__":
     t3.start()
     t4 = threading.Thread(target=_wr_overdue_checker, daemon=True)
     t4.start()
+    t5 = threading.Thread(target=_wr_missing_checker, daemon=True)
+    t5.start()
     app.config["TEMPLATES_AUTO_RELOAD"] = True
     app.run(debug=False, host="0.0.0.0", port=5050)
