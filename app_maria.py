@@ -9602,6 +9602,70 @@ def source_verify():
                            sel_month=datetime.now().strftime("%Y-%m"))
 
 
+@app.route("/api/source_verify_all")
+@_login_required
+def api_source_verify_all():
+    """3소스 검증 — 전원 요약. 인원별 기록일수·오류건수·일치율을 한 번에 반환."""
+    if not (session.get("role") == "admin" or _has_perm("schedule")):
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+
+    month = (request.args.get("month") or datetime.now().strftime("%Y-%m")).strip()
+    ym = month.replace("-", "")[:6]
+    grp_f = (request.args.get("group") or "").strip()
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        # 인원별 기록 일수 + 그룹
+        cur.execute("""SELECT emp_name, sheet_name, COUNT(DISTINCT work_date)
+                       FROM schedule_record WHERE work_date LIKE %s
+                       GROUP BY emp_name, sheet_name""", (ym + "%",))
+        base = {}
+        for nm, sh, cnt in cur.fetchall():
+            b = base.setdefault(nm, {"group": sh or "", "days": 0})
+            b["days"] += int(cnt or 0)
+            if not b["group"]:
+                b["group"] = sh or ""
+
+        # 인원별 미해소 오류 (유형별)
+        cur.execute("""SELECT emp_name, diff_type, COUNT(*) FROM schedule_diff
+                       WHERE ym=%s AND resolved=0 GROUP BY emp_name, diff_type""", (ym,))
+        errs = defaultdict(dict)
+        for nm, dt, c in cur.fetchall():
+            errs[nm][dt] = int(c or 0)
+
+        # 부서
+        cur.execute("""SELECT name, dept FROM employee_roster
+                       WHERE dept IS NOT NULL AND dept<>''""")
+        dept_of = dict(cur.fetchall())
+
+        # 출입기록 일수
+        cur.execute("""SELECT e_name, COUNT(DISTINCT e_date) FROM tenter
+                       WHERE e_date LIKE %s AND e_id>=0 GROUP BY e_name""", (ym + "%",))
+        tag_days = {r[0]: int(r[1] or 0) for r in cur.fetchall()}
+    finally:
+        conn.close()
+
+    rows = []
+    for nm, b in base.items():
+        if grp_f and b["group"] != grp_f:
+            continue
+        e = errs.get(nm, {})
+        bad = sum(e.values())
+        days = b["days"]
+        rows.append({
+            "name": nm, "dept": dept_of.get(nm, ""), "group": b["group"],
+            "days": days, "tag_days": tag_days.get(nm, 0),
+            "errors": bad, "by_type": e,
+            "rate": round((days - bad) / days * 100, 1) if days else 0,
+        })
+    rows.sort(key=lambda x: (-x["errors"], x["group"], x["name"]))
+    groups = sorted({r["group"] for r in rows if r["group"]})
+    return jsonify({"ok": True, "month": month, "rows": rows, "groups": groups,
+                    "total_people": len(rows),
+                    "total_errors": sum(r["errors"] for r in rows),
+                    "clean": sum(1 for r in rows if r["errors"] == 0)})
+
+
 @app.route("/api/source_verify")
 @_login_required
 def api_source_verify():

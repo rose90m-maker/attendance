@@ -20,16 +20,26 @@
 .sv-tbl tr.we td { background:#fcfcfd; }
 .sv-tbl tr.hol td.d { color:#dc3545; font-weight:600; }
 .sv-tbl tr.bad { background:#fff5f5; }
-.sv-tbl tr.bad td { border-bottom-color:#ffe3e3; }
 .sv-src { font-variant-numeric:tabular-nums; }
-.sv-x  { color:#0d6efd; font-weight:700; }   /* 근무표(정본) */
-.sv-r  { color:#495057; }                    /* 보고서 */
-.sv-m  { color:#0f5132; }                    /* 수정보고서 */
-.sv-t  { color:#6c757d; font-size:0.76rem; } /* 출입 */
+.sv-x  { color:#0d6efd; font-weight:700; }
+.sv-r  { color:#495057; }
+.sv-m  { color:#0f5132; }
+.sv-t  { color:#6c757d; font-size:0.76rem; }
 .badge-diff { font-size:0.68rem; }
 .sv-etc { font-size:0.7rem; color:#7048e8; }
-.sv-sum { font-size:0.82rem; }
-.sv-sum b { font-size:1.1rem; }
+/* 전원 목록 */
+.pp-tbl { font-size:0.82rem; width:100%; border-collapse:collapse; }
+.pp-tbl th { background:#f8f9fa; color:#555; font-weight:600; font-size:0.75rem;
+             padding:7px 10px; border-bottom:2px solid #dee2e6; position:sticky; top:0; z-index:2; }
+.pp-tbl td { padding:6px 10px; border-bottom:1px solid #f1f3f5; }
+.pp-tbl tbody tr { cursor:pointer; }
+.pp-tbl tbody tr:hover { background:#f1f8ff; }
+.pp-tbl tr.open { background:#e7f1ff; font-weight:600; }
+.pp-tbl tr.zero td { color:#8a8f96; }
+.pp-num { text-align:right; font-variant-numeric:tabular-nums; }
+.kpi { font-size:0.85rem; }
+.kpi b { font-size:1.25rem; }
+.detail-wrap { background:#fbfcfd; border-top:2px solid #dee2e6; }
 </style>
 </head>
 <body>
@@ -48,55 +58,62 @@
                 <div class="col-auto">
                     <label class="form-label mb-0" style="font-size:0.75rem;">월</label>
                     <input type="month" id="svMonth" class="form-control form-control-sm"
-                           style="width:150px;" value="{{ sel_month }}">
+                           style="width:150px;" value="{{ sel_month }}" onchange="ppLoad()">
+                </div>
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.75rem;">그룹</label>
+                    <select id="ppGroup" class="form-select form-select-sm" style="width:140px;"
+                            onchange="ppRender()">
+                        <option value="">전체</option>
+                    </select>
                 </div>
                 <div class="col-auto">
                     <label class="form-label mb-0" style="font-size:0.75rem;">이름</label>
-                    <input type="text" id="svName" class="form-control form-control-sm"
-                           style="width:150px;" placeholder="예: 이은성"
-                           onkeydown="if(event.key==='Enter')svLoad()">
+                    <input type="text" id="ppName" class="form-control form-control-sm"
+                           style="width:130px;" placeholder="이름 검색" oninput="ppRender()">
                 </div>
                 <div class="col-auto">
-                    <button class="btn btn-sm btn-primary" onclick="svLoad()">조회</button>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="svCsv()">CSV</button>
-                </div>
-                <div class="col-auto ms-2">
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="checkbox" id="svOnlyDiff" onchange="svRender()">
-                        <label class="form-check-label" style="font-size:0.78rem;" for="svOnlyDiff">
-                            차이 있는 날만
+                    <div class="form-check form-check-inline mt-3">
+                        <input class="form-check-input" type="checkbox" id="ppOnlyErr"
+                               checked onchange="ppRender()">
+                        <label class="form-check-label" style="font-size:0.78rem;" for="ppOnlyErr">
+                            오류 있는 인원만
                         </label>
                     </div>
                 </div>
+                <div class="col-auto">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="ppCsv()">CSV</button>
+                </div>
+                <div class="col ms-2 text-end kpi" id="ppKpi"></div>
             </div>
             <div class="sv-legend text-muted mt-2">
                 <span class="me-3"><span class="dot" style="background:#0d6efd;"></span>근무표 <b>(정본 · 이민영 사원 작성)</b></span>
                 <span class="me-3"><span class="dot" style="background:#495057;"></span>근무보고서 (담당자 작성)</span>
                 <span class="me-3"><span class="dot" style="background:#0f5132;"></span>수정보고서</span>
                 <span class="me-3"><span class="dot" style="background:#6c757d;"></span>근태기록 (출입 · 보조 검증)</span>
-                <span>숫자는 기본/연장/야간 시간</span>
+                <span>인원을 클릭하면 일자별 상세가 열립니다</span>
             </div>
         </div>
     </div>
 
-    <div id="svInfo" class="alert alert-light border py-2 sv-sum" style="display:none;"></div>
-
     <div class="card">
         <div class="card-body p-0">
-            <div style="max-height:640px; overflow-y:auto;">
-                <table class="sv-tbl">
+            <div style="max-height:720px; overflow-y:auto;">
+                <table class="pp-tbl">
                     <thead>
                         <tr>
-                            <th style="text-align:left;">일자</th>
-                            <th>근무표<br><span class="text-muted" style="font-weight:400;">정본</span></th>
-                            <th>근무보고서</th>
-                            <th>수정보고서</th>
-                            <th>출근~퇴근</th>
-                            <th>판정</th>
+                            <th style="text-align:left;">이름</th>
+                            <th style="text-align:left;">부서</th>
+                            <th style="text-align:left;">그룹</th>
+                            <th class="pp-num">기록</th>
+                            <th class="pp-num">출입</th>
+                            <th class="pp-num">오류</th>
+                            <th style="text-align:left;">오류 유형</th>
+                            <th class="pp-num">일치율</th>
                         </tr>
                     </thead>
-                    <tbody id="svRows">
-                        <tr><td colspan="6" class="text-muted py-4">이름을 입력하고 조회하세요.</td></tr>
+                    <tbody id="ppRows">
+                        <tr><td colspan="8" class="text-muted py-4 text-center">불러오는 중…</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -106,109 +123,198 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-var svData = null;
+var ppData = null, svCache = {}, openName = null;
 
 function hhmm(t) { return t ? t.slice(0,2) + ':' + t.slice(2,4) : ''; }
 
-function svLoad() {
-    var nm = document.getElementById('svName').value.trim();
-    if (!nm) { alert('이름을 입력하세요.'); return; }
-    var q = new URLSearchParams({month: document.getElementById('svMonth').value, name: nm});
-    fetch('/api/source_verify?' + q.toString())
+var TYPE_CLS = {
+    '연장과다': 'bg-danger', '연장누락': 'bg-danger',
+    '값불일치': 'bg-warning text-dark', '미작성': 'bg-secondary',
+    '근무표없음': 'bg-info text-dark'
+};
+
+// ═══ 전원 목록 ═══
+function ppLoad() {
+    openName = null; svCache = {};
+    var m = document.getElementById('svMonth').value;
+    fetch('/api/source_verify_all?month=' + encodeURIComponent(m))
       .then(function(r){ return r.json(); })
       .then(function(d) {
         if (!d.ok) {
-            document.getElementById('svRows').innerHTML =
-                '<tr><td colspan="6" class="text-danger py-3">' + (d.error || '오류') + '</td></tr>';
+            document.getElementById('ppRows').innerHTML =
+                '<tr><td colspan="8" class="text-danger py-3">' + (d.error || '오류') + '</td></tr>';
             return;
         }
-        svData = d;
-        svRender();
+        ppData = d;
+        var gs = document.getElementById('ppGroup');
+        var keep = gs.value;
+        gs.innerHTML = '<option value="">전체</option>'
+            + (d.groups || []).map(function(g){
+                return '<option value="' + g + '">' + g + '</option>'; }).join('');
+        gs.value = keep;
+        ppRender();
       })
       .catch(function(e) {
-        document.getElementById('svRows').innerHTML =
-            '<tr><td colspan="6" class="text-danger py-3">조회 실패: ' + e + '</td></tr>';
+        document.getElementById('ppRows').innerHTML =
+            '<tr><td colspan="8" class="text-danger py-3">조회 실패: ' + e + '</td></tr>';
       });
 }
 
+function ppFiltered() {
+    if (!ppData) return [];
+    var g = document.getElementById('ppGroup').value;
+    var nm = document.getElementById('ppName').value.trim();
+    var onlyErr = document.getElementById('ppOnlyErr').checked;
+    return ppData.rows.filter(function(r){
+        if (g && r.group !== g) return false;
+        if (nm && r.name.indexOf(nm) < 0) return false;
+        if (onlyErr && !r.errors) return false;
+        return true;
+    });
+}
+
+function ppRender() {
+    if (!ppData) return;
+    var rows = ppFiltered();
+    document.getElementById('ppKpi').innerHTML =
+        '대상 <b>' + ppData.total_people + '</b>명 · 오류 <b class="'
+        + (ppData.total_errors ? 'text-danger' : 'text-success') + '">'
+        + ppData.total_errors + '</b>건 · 이상없음 <b class="text-success">'
+        + ppData.clean + '</b>명';
+
+    document.getElementById('ppRows').innerHTML = rows.length
+      ? rows.map(function(r){
+          var types = Object.keys(r.by_type || {}).map(function(t){
+              return '<span class="badge badge-diff ' + (TYPE_CLS[t] || 'bg-secondary')
+                   + ' me-1">' + t + ' ' + r.by_type[t] + '</span>'; }).join('');
+          var tr = '<tr class="' + (r.errors ? '' : 'zero ') + (openName === r.name ? 'open' : '')
+                 + '" onclick="svToggle(\'' + r.name + '\')">'
+                 + '<td><b>' + r.name + '</b></td>'
+                 + '<td>' + (r.dept || '-') + '</td>'
+                 + '<td>' + (r.group || '-') + '</td>'
+                 + '<td class="pp-num">' + r.days + '</td>'
+                 + '<td class="pp-num">' + r.tag_days + '</td>'
+                 + '<td class="pp-num ' + (r.errors ? 'text-danger fw-bold' : '') + '">'
+                 +   r.errors + '</td>'
+                 + '<td>' + (types || '<span class="text-success">✅</span>') + '</td>'
+                 + '<td class="pp-num">' + r.rate.toFixed(1) + '%</td></tr>';
+          if (openName === r.name) {
+              tr += '<tr class="detail-wrap"><td colspan="8" class="p-0">'
+                  + '<div id="svDetail" class="p-2">불러오는 중…</div></td></tr>';
+          }
+          return tr;
+        }).join('')
+      : '<tr><td colspan="8" class="text-muted py-4 text-center">해당 조건의 인원이 없습니다.</td></tr>';
+
+    if (openName) svDetail(openName);
+}
+
+// ═══ 개인 상세 (일자별 3소스) ═══
+function svToggle(name) {
+    openName = (openName === name) ? null : name;
+    ppRender();
+}
+
+function svDetail(name) {
+    var box = document.getElementById('svDetail');
+    if (!box) return;
+    if (svCache[name]) { svPaint(box, svCache[name]); return; }
+    var m = document.getElementById('svMonth').value;
+    fetch('/api/source_verify?month=' + encodeURIComponent(m) + '&name=' + encodeURIComponent(name))
+      .then(function(r){ return r.json(); })
+      .then(function(d) {
+        if (!d.ok) { box.innerHTML = '<div class="text-danger">' + (d.error||'오류') + '</div>'; return; }
+        svCache[name] = d;
+        svPaint(box, d);
+      })
+      .catch(function(e){ box.innerHTML = '<div class="text-danger">상세 조회 실패: ' + e + '</div>'; });
+}
+
 function svVerdict(x) {
-    // 근무표(정본) 기준 판정
     if (x.diff && !x.diff.resolved) {
         var t = x.diff.type;
-        var cls = (t === '연장과다' || t === '연장누락') ? 'bg-danger'
-                : (t === '값불일치') ? 'bg-warning text-dark'
-                : (t === '미작성') ? 'bg-secondary' : 'bg-info text-dark';
-        return {bad: true, html: '<span class="badge badge-diff ' + cls + '">' + t + '</span>'
-                                 + (x.diff.note ? ' <span class="sv-t">' + x.diff.note + '</span>' : '')};
+        return {bad: true, html: '<span class="badge badge-diff ' + (TYPE_CLS[t] || 'bg-secondary')
+              + '">' + t + '</span>'
+              + (x.diff.note ? ' <span class="sv-t">' + x.diff.note + '</span>' : '')};
     }
     if (x.diff && x.diff.resolved)
         return {bad: false, html: '<span class="badge badge-diff bg-light text-muted border">해소됨</span>'};
-    if (!x.rep && !x.mod && !x.xl)
-        return {bad: false, html: '<span class="text-muted">-</span>'};
+    if (!x.rep && !x.mod && !x.xl) return {bad: false, html: '<span class="text-muted">-</span>'};
     return {bad: false, html: '<span class="text-success">✅</span>'};
 }
 
-function svRender() {
-    if (!svData) return;
-    var onlyDiff = document.getElementById('svOnlyDiff').checked;
-    var i = svData.info || {};
-    var days = svData.days || [];
-
+function svPaint(box, d) {
+    var days = d.days || [];
     var bad = days.filter(function(x){ return x.diff && !x.diff.resolved; }).length;
-    var cmp = days.filter(function(x){ return x.xl || x.rep || x.mod; }).length;
-    var acc = cmp ? ((cmp - bad) / cmp * 100).toFixed(1) : '-';
-    document.getElementById('svInfo').style.display = '';
-    document.getElementById('svInfo').innerHTML =
-        '<b>' + i.name + '</b> · ' + (i.dept || '-') + ' · 사번 ' + (i.emp_no || '-')
-        + ' · 보고서그룹 ' + (i.group || '-')
-        + ' &nbsp;|&nbsp; 기록 <b>' + cmp + '</b>일 · 오류 <b class="'
-        + (bad ? 'text-danger' : 'text-success') + '">' + bad + '</b>건 · 일치율 <b>' + acc + '%</b>';
-
-    var rows = days.filter(function(x){
-        return !onlyDiff || (x.diff && !x.diff.resolved);
-    });
-    document.getElementById('svRows').innerHTML = rows.length
-      ? rows.map(function(x){
+    function cell(v, etc, k) {
+        if (!v && !etc) return '<span class="text-muted">-</span>';
+        return '<span class="sv-src ' + k + '">' + (v||'') + '</span>'
+             + (etc ? ' <span class="sv-etc">' + etc + '</span>' : '');
+    }
+    box.innerHTML =
+        '<div class="d-flex justify-content-between align-items-center mb-1">'
+      +   '<span style="font-size:0.82rem;"><b>' + d.info.name + '</b> 일자별 3소스 — 오류 '
+      +     '<b class="' + (bad?'text-danger':'text-success') + '">' + bad + '</b>건</span>'
+      +   '<button class="btn btn-sm btn-outline-secondary py-0" style="font-size:0.72rem;"'
+      +     ' onclick="event.stopPropagation();svCsv(\'' + d.info.name + '\')">CSV</button>'
+      + '</div>'
+      + '<div style="max-height:420px;overflow-y:auto;"><table class="sv-tbl">'
+      + '<thead><tr><th style="text-align:left;">일자</th><th>근무표<br>'
+      +   '<span class="text-muted" style="font-weight:400;">정본</span></th>'
+      +   '<th>근무보고서</th><th>수정보고서</th><th>출근~퇴근</th><th>판정</th></tr></thead><tbody>'
+      + days.map(function(x){
           var v = svVerdict(x);
           var cls = [];
           if (x.weekend) cls.push('we');
           if (x.holiday) cls.push('hol');
           if (v.bad) cls.push('bad');
           var tg = x.tag ? (hhmm(x.tag.in) + '~' + hhmm(x.tag.out)
-                            + ' <span class="sv-t">(' + x.tag.cnt + ')</span>')
+                          + ' <span class="sv-t">(' + x.tag.cnt + ')</span>')
                          : '<span class="text-muted">-</span>';
-          function cell(val, etc, klass) {
-              if (!val && !etc) return '<span class="text-muted">-</span>';
-              return '<span class="sv-src ' + klass + '">' + (val || '') + '</span>'
-                   + (etc ? ' <span class="sv-etc">' + etc + '</span>' : '');
-          }
           return '<tr class="' + cls.join(' ') + '">'
                + '<td class="d">' + x.day + '일 (' + x.dow + ')</td>'
-               + '<td>' + cell(x.xl, '', 'sv-x') + '</td>'
-               + '<td>' + cell(x.rep, x.rep_etc, 'sv-r') + '</td>'
-               + '<td>' + cell(x.mod, x.mod_etc, 'sv-m') + '</td>'
+               + '<td>' + cell(x.xl,'','sv-x') + '</td>'
+               + '<td>' + cell(x.rep,x.rep_etc,'sv-r') + '</td>'
+               + '<td>' + cell(x.mod,x.mod_etc,'sv-m') + '</td>'
                + '<td class="sv-t">' + tg + '</td>'
                + '<td>' + v.html + '</td></tr>';
         }).join('')
-      : '<tr><td colspan="6" class="text-muted py-4">표시할 내용이 없습니다.</td></tr>';
+      + '</tbody></table></div>';
 }
 
-function svCsv() {
-    if (!svData) { alert('먼저 조회하세요.'); return; }
-    var head = ['일자','요일','근무표','근무보고서','수정보고서','출근','퇴근','판정'];
-    var lines = [head.join(',')].concat((svData.days || []).map(function(x){
-        var v = x.diff && !x.diff.resolved ? x.diff.type : (x.diff ? '해소됨' : '일치');
-        return [x.day, x.dow, x.xl, x.rep, x.mod,
-                x.tag ? hhmm(x.tag.in) : '', x.tag ? hhmm(x.tag.out) : '', v]
-               .map(function(c){ return '"' + String(c == null ? '' : c).replace(/"/g,'""') + '"'; })
-               .join(',');
-    }));
+// ═══ CSV ═══
+function dl(name, lines) {
     var blob = new Blob(["﻿" + lines.join("\n")], {type:'text/csv;charset=utf-8;'});
     var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = '3소스검증_' + svData.info.name + '_' + svData.month + '.csv';
-    a.click();
+    a.href = URL.createObjectURL(blob); a.download = name; a.click();
 }
+
+function ppCsv() {
+    var rows = ppFiltered();
+    if (!rows.length) { alert('내려받을 내용이 없습니다.'); return; }
+    var lines = [['이름','부서','그룹','기록일수','출입일수','오류','오류유형','일치율'].join(',')]
+      .concat(rows.map(function(r){
+        var t = Object.keys(r.by_type||{}).map(function(k){ return k+' '+r.by_type[k]; }).join(' ');
+        return [r.name,r.dept,r.group,r.days,r.tag_days,r.errors,t,r.rate+'%']
+               .map(function(c){ return '"'+String(c==null?'':c).replace(/"/g,'""')+'"'; }).join(',');
+      }));
+    dl('3소스검증_전원_' + document.getElementById('svMonth').value + '.csv', lines);
+}
+
+function svCsv(name) {
+    var d = svCache[name];
+    if (!d) { alert('먼저 상세를 여세요.'); return; }
+    var lines = [['일자','요일','근무표','근무보고서','수정보고서','출근','퇴근','판정'].join(',')]
+      .concat(d.days.map(function(x){
+        var v = x.diff && !x.diff.resolved ? x.diff.type : (x.diff ? '해소됨' : '일치');
+        return [x.day,x.dow,x.xl,x.rep,x.mod,
+                x.tag?hhmm(x.tag.in):'', x.tag?hhmm(x.tag.out):'', v]
+               .map(function(c){ return '"'+String(c==null?'':c).replace(/"/g,'""')+'"'; }).join(',');
+      }));
+    dl('3소스검증_' + name + '_' + d.month + '.csv', lines);
+}
+
+document.addEventListener('DOMContentLoaded', ppLoad);
 </script>
 </body>
 </html>
