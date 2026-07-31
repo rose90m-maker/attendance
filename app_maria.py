@@ -9615,10 +9615,14 @@ def api_source_verify_all():
 
     conn = _conn(); cur = conn.cursor()
     try:
+        # 당일분은 아직 작성 중이라 오류로 보지 않는다 (조회월이 당월일 때만 적용)
+        today_str = datetime.now().strftime("%Y%m%d")
+        cutoff = today_str if ym == today_str[:6] else ym + "99"
+
         # 인원별 기록 일수 + 그룹
         cur.execute("""SELECT emp_name, sheet_name, COUNT(DISTINCT work_date)
-                       FROM schedule_record WHERE work_date LIKE %s
-                       GROUP BY emp_name, sheet_name""", (ym + "%",))
+                       FROM schedule_record WHERE work_date LIKE %s AND work_date < %s
+                       GROUP BY emp_name, sheet_name""", (ym + "%", cutoff))
         base = {}
         for nm, sh, cnt in cur.fetchall():
             b = base.setdefault(nm, {"group": sh or "", "days": 0})
@@ -9626,9 +9630,11 @@ def api_source_verify_all():
             if not b["group"]:
                 b["group"] = sh or ""
 
-        # 인원별 미해소 오류 (유형별)
+        # 인원별 미해소 오류 (유형별) — 당일 제외
         cur.execute("""SELECT emp_name, diff_type, COUNT(*) FROM schedule_diff
-                       WHERE ym=%s AND resolved=0 GROUP BY emp_name, diff_type""", (ym,))
+                       WHERE ym=%s AND resolved=0
+                         AND DATE_FORMAT(work_date,'%%Y%%m%%d') < %s
+                       GROUP BY emp_name, diff_type""", (ym, cutoff))
         errs = defaultdict(dict)
         for nm, dt, c in cur.fetchall():
             errs[nm][dt] = int(c or 0)
@@ -9638,9 +9644,10 @@ def api_source_verify_all():
                        WHERE dept IS NOT NULL AND dept<>''""")
         dept_of = dict(cur.fetchall())
 
-        # 출입기록 일수
+        # 출입기록 일수 — 당일 제외
         cur.execute("""SELECT e_name, COUNT(DISTINCT e_date) FROM tenter
-                       WHERE e_date LIKE %s AND e_id>=0 GROUP BY e_name""", (ym + "%",))
+                       WHERE e_date LIKE %s AND e_date < %s AND e_id>=0
+                       GROUP BY e_name""", (ym + "%", cutoff))
         tag_days = {r[0]: int(r[1] or 0) for r in cur.fetchall()}
     finally:
         conn.close()
@@ -9729,9 +9736,12 @@ def api_source_verify():
     year, mon = int(ym[:4]), int(ym[4:6])
     dim = calendar.monthrange(year, mon)[1]
     DOWK = ["월", "화", "수", "목", "금", "토", "일"]
+    today = date.today()
     days = []
     for d in range(1, dim + 1):
         dt = date(year, mon, d)
+        # 당일은 아직 취합 전이라 판정에서 제외 (표시는 하되 '작성중'으로)
+        pending = (dt >= today)
         srcs = rep.get(d, {})
         cur_rep = srcs.get("수정근무보고서") or srcs.get("보고서")
         df = dif.get(d)
@@ -9750,7 +9760,8 @@ def api_source_verify():
             "mod": (srcs.get("수정근무보고서") or {}).get("v", ""),
             "mod_etc": (srcs.get("수정근무보고서") or {}).get("etc", ""),
             "tag": tag.get(d),
-            "diff": df,
+            "diff": None if pending else df,
+            "pending": pending,
         })
     return jsonify({"ok": True, "month": month, "info": info, "days": days})
 

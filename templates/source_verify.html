@@ -231,6 +231,9 @@ function svDetail(name) {
 }
 
 function svVerdict(x) {
+    // 당일·미래는 아직 취합 전이라 판정하지 않음
+    if (x.pending)
+        return {bad: false, html: '<span class="badge badge-diff bg-light text-muted border">작성중</span>'};
     if (x.diff && !x.diff.resolved) {
         var t = x.diff.type;
         return {bad: true, html: '<span class="badge badge-diff ' + (TYPE_CLS[t] || 'bg-secondary')
@@ -245,7 +248,7 @@ function svVerdict(x) {
 
 function svPaint(box, d) {
     var days = d.days || [];
-    var bad = days.filter(function(x){ return x.diff && !x.diff.resolved; }).length;
+    var bad = days.filter(function(x){ return !x.pending && x.diff && !x.diff.resolved; }).length;
     function cell(v, etc, k) {
         if (!v && !etc) return '<span class="text-muted">-</span>';
         return '<span class="sv-src ' + k + '">' + (v||'') + '</span>'

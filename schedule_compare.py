@@ -318,10 +318,18 @@ def process_month(cur, ym, args):
     # 값불일치: 양쪽에 있는데 기본/연장/야간이 다름
     # 미작성  : 엑셀에 근무·휴가 기록이 있는데 시스템에 행이 없음
     #           (엑셀도 0/0/0인 비근무일은 차이로 보지 않음)
+    # 당일(및 미래)은 아직 취합 전이라 대조 대상에서 제외
+    today = date.today()
+    def _pending(day):
+        try:
+            return date(year, month, day) >= today
+        except ValueError:
+            return True
+
     diffs = []
     for (nm, day), xv in xl.items():
-        if nm not in sys_names:
-            continue                      # 인원 자체가 시스템에 없으면 대조 제외
+        if nm not in sys_names or _pending(day):
+            continue                      # 인원 미등록·당일분은 대조 제외
         xb, xo, xn = num(xv.get("basic")), num(xv.get("ot")), num(xv.get("night"))
         etc = xv.get("etc")
         etc_txt = etc.strip() if isinstance(etc, str) and etc.strip() else ""
@@ -341,6 +349,8 @@ def process_month(cur, ym, args):
     # 2026-07 사례: 7/3 SMT 7명이 정시 퇴근인데 연장 2h 기록, 7/20 PQC·QA 6명은 20시
     # 퇴근인데 연장 0. 둘 다 근무표·출입기록이 일치했고 보고서만 틀렸다.
     for (nm, day), rec in sysd.items():
+        if _pending(day):
+            continue
         tg = tags.get((nm, day))
         if not tg or tg[2] < 2:          # 태그 2회 미만이면 판단 불가
             continue
@@ -366,7 +376,7 @@ def process_month(cur, ym, args):
     # 근무표는 나중에 채워지므로 7일 지난 날짜만 대상 (월말 미기입 오탐 방지)
     grace = date.today() - timedelta(days=7)
     for (nm, day), rec in sysd.items():
-        if (nm, day) in xl or nm not in dept_of:
+        if (nm, day) in xl or nm not in dept_of or _pending(day):
             continue
         wd = date(year, month, day)
         if wd > grace:
