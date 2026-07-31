@@ -3603,8 +3603,8 @@ def dashboard():
                     SELECT work_date, basic_h, ot_h, night_h, etc, source_type
                     FROM schedule_record
                     WHERE emp_name=%s AND work_date LIKE %s
-                      AND source_type IN ('보고서','수정')
-                    ORDER BY work_date, source_type
+                      AND source_type IN ('보고서','수정','수정근무보고서')
+                    ORDER BY work_date, FIELD(source_type,'보고서','수정','수정근무보고서')
                 """, (login_name, f"{month_str_my}%"))
                 def _sr_cat(bh, oh, nh, etc):
                     if etc == "스킵": return "스킵"
@@ -3986,15 +3986,15 @@ def api_my_schedule():
             SELECT work_date, basic_h, ot_h, night_h, etc, source_type
             FROM schedule_record
             WHERE emp_name=%s AND work_date LIKE %s
-              AND source_type IN ('보고서','수정')
-            ORDER BY work_date, source_type
+              AND source_type IN ('보고서','수정','수정근무보고서')
+            ORDER BY work_date, FIELD(source_type,'보고서','수정','수정근무보고서')
         """, (login_name, f"{month}%"))
     else:
         cur.execute("""
             SELECT work_date, basic_h, ot_h, night_h, etc, source_type
             FROM schedule_record
-            WHERE emp_name=%s AND source_type IN ('보고서','수정')
-            ORDER BY work_date, source_type
+            WHERE emp_name=%s AND source_type IN ('보고서','수정','수정근무보고서')
+            ORDER BY work_date, FIELD(source_type,'보고서','수정','수정근무보고서')
         """, (login_name,))
     from collections import OrderedDict
     date_records = OrderedDict()
@@ -4107,8 +4107,8 @@ def api_schedule_events():
             cur.execute("""
                 SELECT work_date, basic_h, ot_h, night_h, etc, sheet_name, source_type
                 FROM schedule_record
-                WHERE emp_name=%s AND work_date LIKE %s AND source_type IN ('보고서','수정')
-                ORDER BY work_date, source_type
+                WHERE emp_name=%s AND work_date LIKE %s AND source_type IN ('보고서','수정','수정근무보고서')
+                ORDER BY work_date, FIELD(source_type,'보고서','수정','수정근무보고서')
             """, (login_name, f"{month_str}%"))
             from collections import OrderedDict
             sr_by_date = OrderedDict()
@@ -5178,8 +5178,8 @@ def work_schedule():
         cur.execute("""
             SELECT emp_name, work_date, basic_h, ot_h, night_h, etc
             FROM schedule_record
-            WHERE work_date LIKE %s AND source_type IN ('보고서','수정')
-            ORDER BY source_type
+            WHERE work_date LIKE %s AND source_type IN ('보고서','수정','수정근무보고서')
+            ORDER BY FIELD(source_type,'보고서','수정','수정근무보고서')
         """, (f"{month_str_sr}%",))
         for sr_name, sr_date, sr_basic, sr_ot, sr_night, sr_etc in cur.fetchall():
             sr_name = (sr_name or "").strip()
