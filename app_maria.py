@@ -7750,7 +7750,15 @@ def work_report():
     recent_mode = "month" not in request.args
     sel_month = request.args.get("month", datetime.now().strftime("%Y-%m"))
     wr_page = max(1, int(request.args.get("wr_page", 1) or 1))
-    WR_PER_PAGE = 10
+    # 목록 필터: 그룹 / 작성자 / 페이지당 건수
+    filter_gid = (request.args.get("fgid") or "").strip()
+    filter_writer = (request.args.get("writer") or "").strip()
+    try:
+        WR_PER_PAGE = int(request.args.get("per_page", 20) or 20)
+    except ValueError:
+        WR_PER_PAGE = 20
+    if WR_PER_PAGE not in (10, 20, 50, 100):
+        WR_PER_PAGE = 20
     # ── 그룹 목록 ──
     cur.execute("SELECT id, group_name, final_step, IFNULL(status,'설정중') FROM wr_groups ORDER BY group_name")
     all_groups = [{"id": r[0], "name": r[1], "final_step": r[2], "status": r[3]} for r in cur.fetchall()]
@@ -7904,6 +7912,17 @@ def work_report():
         if status_filter and status_filter != "all":
             sql += " AND r.status = %s"
             params.append(status_filter)
+        # 그룹 필터
+        if filter_gid:
+            try:
+                sql += " AND r.group_id = %s"
+                params.append(int(filter_gid))
+            except ValueError:
+                pass
+        # 작성자 검색
+        if filter_writer:
+            sql += " AND r.created_by_name LIKE %s"
+            params.append(f"%{filter_writer}%")
         # ── 내 미결재만: 사용자가 결재자(reviewer)인 보고서 중, 사용자의 결재 이력이 없는 것 ──
         if mine_pending and user_reviewer_rows:
             # 사용자가 결재자인 그룹 ID
@@ -8017,6 +8036,8 @@ def work_report():
                            reports=reports_list, sel_month=sel_month,
                            recent_mode=recent_mode,
                            wr_page=wr_page, wr_total_pages=wr_total_pages, wr_total=wr_total,
+                           filter_gid=filter_gid, filter_writer=filter_writer,
+                           per_page=WR_PER_PAGE,
                            report_groups=list(report_groups.values()),
                            status_filter=status_filter,
                            mine_pending=mine_pending,
