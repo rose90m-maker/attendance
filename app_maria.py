@@ -9629,6 +9629,71 @@ def source_verify():
                            sel_month=datetime.now().strftime("%Y-%m"))
 
 
+@app.route("/api/wr_reports_of_day")
+@_login_required
+def api_wr_reports_of_day():
+    """특정 인원·날짜의 근무보고서 목록 (3소스 검증에서 일자 클릭 시 사용).
+    해당 인원이 속한 그룹의 그날 보고서를 작성순으로 반환하고,
+    각 보고서에서 그 사람이 어느 칸에 배정됐는지도 함께 준다."""
+    if not (session.get("role") == "admin" or _has_perm("schedule")):
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+
+    name = (request.args.get("name") or "").strip()
+    d = (request.args.get("date") or "").strip().replace("-", "")
+    if not name or len(d) != 8:
+        return jsonify({"ok": False, "error": "이름과 날짜가 필요합니다."})
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        # 해당 인원의 그룹 (근무보고서 그룹 기준, 없으면 schedule_record의 sheet_name)
+        cur.execute("""SELECT g.id, g.group_name FROM wr_group_members m
+                       JOIN wr_groups g ON m.group_id=g.id
+                       WHERE m.user_name=%s""", (name,))
+        gs = cur.fetchall()
+        if not gs:
+            cur.execute("""SELECT DISTINCT sheet_name FROM schedule_record
+                           WHERE emp_name=%s AND work_date=%s""", (name, d))
+            r = cur.fetchone()
+            if r:
+                cur.execute("SELECT id, group_name FROM wr_groups WHERE group_name=%s", (r[0],))
+                gs = cur.fetchall()
+        if not gs:
+            return jsonify({"ok": True, "reports": [], "msg": "소속 그룹을 찾을 수 없습니다."})
+
+        gids = [g[0] for g in gs]
+        ph = ",".join(["%s"] * len(gids))
+        cur.execute(f"""SELECT r.id, r.report_date, r.status, r.created_by_name,
+                               r.created_at, g.group_name, IFNULL(r.memo,'')
+                        FROM wr_reports r JOIN wr_groups g ON r.group_id=g.id
+                        WHERE r.group_id IN ({ph}) AND r.report_date=%s
+                        ORDER BY r.created_at, r.id""", (*gids, d))
+        reps = cur.fetchall()
+
+        out = []
+        for i, (rid, rd, st, by, ca, gname, memo) in enumerate(reps):
+            cur.execute("""SELECT category, deduction, etc_value, IFNULL(skipped,0)
+                           FROM wr_entries WHERE report_id=%s AND user_name=%s""", (rid, name))
+            mine = [{"category": c, "deduction": int(dd or 0),
+                     "etc": e or "", "skipped": int(sk)} for c, dd, e, sk in cur.fetchall()]
+            # 보고서 전체 배정 (칸별 인원)
+            cur.execute("""SELECT category, user_name FROM wr_entries
+                           WHERE report_id=%s ORDER BY category, user_name""", (rid,))
+            by_cat = {}
+            for c, u in cur.fetchall():
+                by_cat.setdefault(c, []).append(u)
+            out.append({
+                "id": rid, "label": "원본" if i == 0 else f"수정{i}",
+                "group": gname, "status": st, "writer": by or "",
+                "created": ca.strftime("%Y-%m-%d %H:%M") if ca else "",
+                "memo": memo, "mine": mine, "by_cat": by_cat,
+                "is_final": i == len(reps) - 1,
+            })
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "name": name,
+                    "date": f"{d[:4]}-{d[4:6]}-{d[6:8]}", "reports": out})
+
+
 @app.route("/api/source_verify_all")
 @_login_required
 def api_source_verify_all():
