@@ -9590,6 +9590,103 @@ def api_schedule_diff():
                     "last_run": last.strftime("%Y-%m-%d %H:%M") if last else ""})
 
 
+@app.route("/source_verify")
+@_login_required
+def source_verify():
+    """3소스 검증 — 근무표(정본) · 근무보고서 · 근태기록(출입)을 한 화면에서 대조"""
+    if not (session.get("role") == "admin" or _has_perm("schedule")):
+        flash("접근 권한이 없습니다.", "danger")
+        return redirect(url_for("dashboard"))
+    return render_template("source_verify.html",
+                           active_page="source_verify",
+                           sel_month=datetime.now().strftime("%Y-%m"))
+
+
+@app.route("/api/source_verify")
+@_login_required
+def api_source_verify():
+    """인원별 3소스 일자 대조.
+    근무표(정본)는 schedule_diff에 적재된 대조결과에서 역산하지 않고,
+    보고서·출입기록은 DB에서 직접 읽는다. 근무표 값은 schedule_diff에 기록된
+    차이분만 알 수 있으므로, 차이가 없는 날은 '보고서와 동일'로 간주한다."""
+    if not (session.get("role") == "admin" or _has_perm("schedule")):
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+
+    month = (request.args.get("month") or datetime.now().strftime("%Y-%m")).strip()
+    ym = month.replace("-", "")[:6]
+    name = (request.args.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "이름을 입력하세요."})
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT name, dept, emp_no FROM employee_roster WHERE name=%s", (name,))
+        r = cur.fetchone()
+        info = {"name": name, "dept": r[1] if r else "", "emp_no": r[2] if r else ""}
+
+        # 근무보고서 (원본/수정 모두)
+        cur.execute("""SELECT work_date, basic_h, ot_h, night_h, etc, source_type, sheet_name
+                       FROM schedule_record WHERE emp_name=%s AND work_date LIKE %s""",
+                    (name, ym + "%"))
+        rep = {}
+        grp = ""
+        for wd, b, o, n, etc, st, sh in cur.fetchall():
+            day = int(wd[6:8])
+            rep.setdefault(day, {})[st] = {
+                "v": f"{float(b or 0):g}/{float(o or 0):g}/{float(n or 0):g}",
+                "etc": (etc or "")}
+            grp = grp or (sh or "")
+        info["group"] = grp
+
+        # 출입기록
+        cur.execute("""SELECT e_date, MIN(e_time), MAX(e_time), COUNT(*) FROM tenter
+                       WHERE e_name=%s AND e_date LIKE %s AND e_id>=0 GROUP BY e_date""",
+                    (name, ym + "%"))
+        tag = {int(x[0][6:8]): {"in": x[1], "out": x[2], "cnt": int(x[3])}
+               for x in cur.fetchall()}
+
+        # 대조결과(근무표 값 포함)
+        cur.execute("""SELECT work_date, diff_type, xl_basic, xl_ot, xl_night,
+                              sys_basic, sys_ot, sys_night, source_type, resolved
+                       FROM schedule_diff WHERE emp_name=%s AND ym=%s""", (name, ym))
+        dif = {}
+        for wd, dt, xb, xo, xn, sb, so, sn, note, rs in cur.fetchall():
+            dif[wd.day] = {"type": dt,
+                           "xl": f"{float(xb):g}/{float(xo):g}/{float(xn):g}",
+                           "sys": f"{float(sb):g}/{float(so):g}/{float(sn):g}",
+                           "note": note or "", "resolved": int(rs)}
+    finally:
+        conn.close()
+
+    year, mon = int(ym[:4]), int(ym[4:6])
+    dim = calendar.monthrange(year, mon)[1]
+    DOWK = ["월", "화", "수", "목", "금", "토", "일"]
+    days = []
+    for d in range(1, dim + 1):
+        dt = date(year, mon, d)
+        srcs = rep.get(d, {})
+        cur_rep = srcs.get("수정근무보고서") or srcs.get("보고서")
+        df = dif.get(d)
+        # 근무표 값: 차이가 기록돼 있으면 그 값, 아니면 보고서와 동일
+        if df:
+            xl = df["xl"]
+        else:
+            xl = cur_rep["v"] if cur_rep else ""
+        days.append({
+            "day": d, "dow": DOWK[dt.weekday()],
+            "holiday": bool(KR_HOLIDAYS.get(dt)) or (mon == 7 and d == 1),
+            "weekend": dt.weekday() >= 5,
+            "xl": xl,
+            "rep": (srcs.get("보고서") or {}).get("v", ""),
+            "rep_etc": (srcs.get("보고서") or {}).get("etc", ""),
+            "mod": (srcs.get("수정근무보고서") or {}).get("v", ""),
+            "mod_etc": (srcs.get("수정근무보고서") or {}).get("etc", ""),
+            "tag": tag.get(d),
+            "diff": df,
+        })
+    return jsonify({"ok": True, "month": month, "info": info, "days": days})
+
+
 @app.route("/api/schedule_accuracy")
 @_login_required
 def api_schedule_accuracy():

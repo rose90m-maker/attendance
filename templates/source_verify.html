@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3소스 검증 — 태인관리시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="apple-touch-icon" href="/static/LOGO.GIF">
+<link rel="manifest" href="/static/manifest.json">
+<style>
+.sv-legend { font-size:0.76rem; }
+.sv-legend .dot { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; }
+.sv-tbl { font-size:0.8rem; width:100%; border-collapse:collapse; }
+.sv-tbl th { background:#f8f9fa; color:#555; font-weight:600; font-size:0.74rem;
+             padding:6px 8px; border-bottom:2px solid #dee2e6; text-align:center;
+             position:sticky; top:0; z-index:2; }
+.sv-tbl td { padding:5px 8px; border-bottom:1px solid #f1f3f5; text-align:center; }
+.sv-tbl td.d { text-align:left; white-space:nowrap; }
+.sv-tbl tr.we td { background:#fcfcfd; }
+.sv-tbl tr.hol td.d { color:#dc3545; font-weight:600; }
+.sv-tbl tr.bad { background:#fff5f5; }
+.sv-tbl tr.bad td { border-bottom-color:#ffe3e3; }
+.sv-src { font-variant-numeric:tabular-nums; }
+.sv-x  { color:#0d6efd; font-weight:700; }   /* 근무표(정본) */
+.sv-r  { color:#495057; }                    /* 보고서 */
+.sv-m  { color:#0f5132; }                    /* 수정보고서 */
+.sv-t  { color:#6c757d; font-size:0.76rem; } /* 출입 */
+.badge-diff { font-size:0.68rem; }
+.sv-etc { font-size:0.7rem; color:#7048e8; }
+.sv-sum { font-size:0.82rem; }
+.sv-sum b { font-size:1.1rem; }
+</style>
+</head>
+<body>
+{% set active_page = 'source_verify' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <div class="page-title mb-3">
+        <span class="title-icon">🔎</span>
+        <span>3소스 검증</span>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body py-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.75rem;">월</label>
+                    <input type="month" id="svMonth" class="form-control form-control-sm"
+                           style="width:150px;" value="{{ sel_month }}">
+                </div>
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.75rem;">이름</label>
+                    <input type="text" id="svName" class="form-control form-control-sm"
+                           style="width:150px;" placeholder="예: 이은성"
+                           onkeydown="if(event.key==='Enter')svLoad()">
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-sm btn-primary" onclick="svLoad()">조회</button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="svCsv()">CSV</button>
+                </div>
+                <div class="col-auto ms-2">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="svOnlyDiff" onchange="svRender()">
+                        <label class="form-check-label" style="font-size:0.78rem;" for="svOnlyDiff">
+                            차이 있는 날만
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="sv-legend text-muted mt-2">
+                <span class="me-3"><span class="dot" style="background:#0d6efd;"></span>근무표 <b>(정본 · 이민영 사원 작성)</b></span>
+                <span class="me-3"><span class="dot" style="background:#495057;"></span>근무보고서 (담당자 작성)</span>
+                <span class="me-3"><span class="dot" style="background:#0f5132;"></span>수정보고서</span>
+                <span class="me-3"><span class="dot" style="background:#6c757d;"></span>근태기록 (출입 · 보조 검증)</span>
+                <span>숫자는 기본/연장/야간 시간</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="svInfo" class="alert alert-light border py-2 sv-sum" style="display:none;"></div>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <div style="max-height:640px; overflow-y:auto;">
+                <table class="sv-tbl">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;">일자</th>
+                            <th>근무표<br><span class="text-muted" style="font-weight:400;">정본</span></th>
+                            <th>근무보고서</th>
+                            <th>수정보고서</th>
+                            <th>출근~퇴근</th>
+                            <th>판정</th>
+                        </tr>
+                    </thead>
+                    <tbody id="svRows">
+                        <tr><td colspan="6" class="text-muted py-4">이름을 입력하고 조회하세요.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+var svData = null;
+
+function hhmm(t) { return t ? t.slice(0,2) + ':' + t.slice(2,4) : ''; }
+
+function svLoad() {
+    var nm = document.getElementById('svName').value.trim();
+    if (!nm) { alert('이름을 입력하세요.'); return; }
+    var q = new URLSearchParams({month: document.getElementById('svMonth').value, name: nm});
+    fetch('/api/source_verify?' + q.toString())
+      .then(function(r){ return r.json(); })
+      .then(function(d) {
+        if (!d.ok) {
+            document.getElementById('svRows').innerHTML =
+                '<tr><td colspan="6" class="text-danger py-3">' + (d.error || '오류') + '</td></tr>';
+            return;
+        }
+        svData = d;
+        svRender();
+      })
+      .catch(function(e) {
+        document.getElementById('svRows').innerHTML =
+            '<tr><td colspan="6" class="text-danger py-3">조회 실패: ' + e + '</td></tr>';
+      });
+}
+
+function svVerdict(x) {
+    // 근무표(정본) 기준 판정
+    if (x.diff && !x.diff.resolved) {
+        var t = x.diff.type;
+        var cls = (t === '연장과다' || t === '연장누락') ? 'bg-danger'
+                : (t === '값불일치') ? 'bg-warning text-dark'
+                : (t === '미작성') ? 'bg-secondary' : 'bg-info text-dark';
+        return {bad: true, html: '<span class="badge badge-diff ' + cls + '">' + t + '</span>'
+                                 + (x.diff.note ? ' <span class="sv-t">' + x.diff.note + '</span>' : '')};
+    }
+    if (x.diff && x.diff.resolved)
+        return {bad: false, html: '<span class="badge badge-diff bg-light text-muted border">해소됨</span>'};
+    if (!x.rep && !x.mod && !x.xl)
+        return {bad: false, html: '<span class="text-muted">-</span>'};
+    return {bad: false, html: '<span class="text-success">✅</span>'};
+}
+
+function svRender() {
+    if (!svData) return;
+    var onlyDiff = document.getElementById('svOnlyDiff').checked;
+    var i = svData.info || {};
+    var days = svData.days || [];
+
+    var bad = days.filter(function(x){ return x.diff && !x.diff.resolved; }).length;
+    var cmp = days.filter(function(x){ return x.xl || x.rep || x.mod; }).length;
+    var acc = cmp ? ((cmp - bad) / cmp * 100).toFixed(1) : '-';
+    document.getElementById('svInfo').style.display = '';
+    document.getElementById('svInfo').innerHTML =
+        '<b>' + i.name + '</b> · ' + (i.dept || '-') + ' · 사번 ' + (i.emp_no || '-')
+        + ' · 보고서그룹 ' + (i.group || '-')
+        + ' &nbsp;|&nbsp; 기록 <b>' + cmp + '</b>일 · 오류 <b class="'
+        + (bad ? 'text-danger' : 'text-success') + '">' + bad + '</b>건 · 일치율 <b>' + acc + '%</b>';
+
+    var rows = days.filter(function(x){
+        return !onlyDiff || (x.diff && !x.diff.resolved);
+    });
+    document.getElementById('svRows').innerHTML = rows.length
+      ? rows.map(function(x){
+          var v = svVerdict(x);
+          var cls = [];
+          if (x.weekend) cls.push('we');
+          if (x.holiday) cls.push('hol');
+          if (v.bad) cls.push('bad');
+          var tg = x.tag ? (hhmm(x.tag.in) + '~' + hhmm(x.tag.out)
+                            + ' <span class="sv-t">(' + x.tag.cnt + ')</span>')
+                         : '<span class="text-muted">-</span>';
+          function cell(val, etc, klass) {
+              if (!val && !etc) return '<span class="text-muted">-</span>';
+              return '<span class="sv-src ' + klass + '">' + (val || '') + '</span>'
+                   + (etc ? ' <span class="sv-etc">' + etc + '</span>' : '');
+          }
+          return '<tr class="' + cls.join(' ') + '">'
+               + '<td class="d">' + x.day + '일 (' + x.dow + ')</td>'
+               + '<td>' + cell(x.xl, '', 'sv-x') + '</td>'
+               + '<td>' + cell(x.rep, x.rep_etc, 'sv-r') + '</td>'
+               + '<td>' + cell(x.mod, x.mod_etc, 'sv-m') + '</td>'
+               + '<td class="sv-t">' + tg + '</td>'
+               + '<td>' + v.html + '</td></tr>';
+        }).join('')
+      : '<tr><td colspan="6" class="text-muted py-4">표시할 내용이 없습니다.</td></tr>';
+}
+
+function svCsv() {
+    if (!svData) { alert('먼저 조회하세요.'); return; }
+    var head = ['일자','요일','근무표','근무보고서','수정보고서','출근','퇴근','판정'];
+    var lines = [head.join(',')].concat((svData.days || []).map(function(x){
+        var v = x.diff && !x.diff.resolved ? x.diff.type : (x.diff ? '해소됨' : '일치');
+        return [x.day, x.dow, x.xl, x.rep, x.mod,
+                x.tag ? hhmm(x.tag.in) : '', x.tag ? hhmm(x.tag.out) : '', v]
+               .map(function(c){ return '"' + String(c == null ? '' : c).replace(/"/g,'""') + '"'; })
+               .join(',');
+    }));
+    var blob = new Blob(["﻿" + lines.join("\n")], {type:'text/csv;charset=utf-8;'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '3소스검증_' + svData.info.name + '_' + svData.month + '.csv';
+    a.click();
+}
+</script>
+</body>
+</html>

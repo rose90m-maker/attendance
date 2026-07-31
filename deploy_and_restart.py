@@ -156,6 +156,7 @@ files = [
     ("templates/_survey_q_render.html", "templates/_survey_q_render.html"),
     ("templates/roster.html", "templates/roster.html"),
     ("templates/schedule_record.html", "templates/schedule_record.html"),
+    ("templates/source_verify.html", "templates/source_verify.html"),
     ("templates/dashboard.html", "templates/dashboard.html"),
     ("templates/control_center.html", "templates/control_center.html"),
     ("templates/document_management.html", "templates/document_management.html"),

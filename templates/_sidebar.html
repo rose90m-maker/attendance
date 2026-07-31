@@ -114,6 +114,7 @@
         <a href="/work_schedule" class="side-link{% if active_page == 'work_schedule' %} active{% endif %}"><span class="sl-icon">📊</span>근무표</a>
         {% if is_admin or 'schedule' in session.get('permissions','') %}
         <a href="/schedule_record" class="side-link{% if active_page == 'schedule_record' %} active{% endif %}"><span class="sl-icon">📑</span>근무표기록관리</a>
+        <a href="/source_verify" class="side-link{% if active_page == 'source_verify' %} active{% endif %}"><span class="sl-icon">🔎</span>3소스 검증</a>
         {% endif %}
     </div>
 
