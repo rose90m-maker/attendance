@@ -8563,9 +8563,16 @@ def process_wr_request():
                 (report_id, log_step, actual_status, approver_name))
     # 최종 결재 시 schedule_record에 자동 반영
     if actual_status == "결재":
-        # 수정근무보고서 여부: 같은 그룹+날짜에 이미 결재된 보고서가 있으면 수정근무보고서
-        cur.execute("SELECT COUNT(*) FROM wr_reports WHERE group_id=%s AND report_date=%s AND status='결재' AND id!=%s",
-                    (group_id, report_date, report_id))
+        # 수정근무보고서 여부 판정 — '작성 시각' 기준.
+        # (예전에는 '이미 결재된 보고서가 있으면 수정본'으로 봤는데, 결재자가 원본보다
+        #  수정본을 먼저 결재하면 라벨이 뒤바뀌었다. 2026-07-03 SMT / 07-17 QA 실제 사고)
+        # 같은 그룹+날짜에서 나보다 먼저 작성된 보고서가 있으면 내가 수정본이다.
+        cur.execute("""SELECT COUNT(*) FROM wr_reports
+                       WHERE group_id=%s AND report_date=%s AND id<>%s
+                         AND (created_at < (SELECT created_at FROM wr_reports WHERE id=%s)
+                              OR (created_at = (SELECT created_at FROM wr_reports WHERE id=%s)
+                                  AND id < %s))""",
+                    (group_id, report_date, report_id, report_id, report_id, report_id))
         is_revision = cur.fetchone()[0] > 0
         src_type = '수정근무보고서' if is_revision else '보고서'
         # 휴일(토/일/공휴일) 여부 — 휴일이면 조퇴/외출 N을 기본근무에서 차감(8-N)
