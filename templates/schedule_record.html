@@ -54,6 +54,76 @@
     {% endif %}
     {% endwith %}
 
+    {# ═══════ 근무표 대조 결과 (schedule_compare.py 매일 08시 적재) ═══════ #}
+    <div class="card mb-3" id="sdCard">
+        <div class="card-header d-flex justify-content-between align-items-center py-2"
+             style="background:#f8f9fa;cursor:pointer;" onclick="sdToggle()">
+            <span class="fw-bold" style="font-size:0.9rem;">
+                🔍 근무표 대조 <span id="sdBadge" class="badge bg-secondary ms-1">-</span>
+                <span class="text-muted ms-2" style="font-size:0.74rem;" id="sdLastRun"></span>
+            </span>
+            <span id="sdArrow" style="font-size:0.8rem;color:#888;">▼ 펼치기</span>
+        </div>
+        <div class="card-body" id="sdBody" style="display:none;">
+            <div class="row g-2 align-items-end mb-2">
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.75rem;">월</label>
+                    <input type="month" id="sdMonth" class="form-control form-control-sm" style="width:150px;">
+                </div>
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.75rem;">유형</label>
+                    <select id="sdType" class="form-select form-select-sm" style="width:130px;">
+                        <option value="">전체</option>
+                        <option value="연장과다">연장과다</option>
+                        <option value="연장누락">연장누락</option>
+                        <option value="값불일치">값불일치</option>
+                        <option value="미작성">미작성</option>
+                        <option value="근무표없음">근무표없음</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.75rem;">부서</label>
+                    <select id="sdDept" class="form-select form-select-sm" style="width:150px;">
+                        <option value="">전체</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.75rem;">이름</label>
+                    <input type="text" id="sdName" class="form-control form-control-sm"
+                           style="width:120px;" placeholder="이름">
+                </div>
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.75rem;">상태</label>
+                    <select id="sdResolved" class="form-select form-select-sm" style="width:110px;">
+                        <option value="0">미해소</option>
+                        <option value="1">해소됨</option>
+                        <option value="all">전체</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-sm btn-primary" onclick="sdLoad()">조회</button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="sdCsv()">CSV</button>
+                </div>
+            </div>
+            <div id="sdSummary" class="mb-2" style="font-size:0.8rem;"></div>
+            <div class="table-responsive" style="max-height:460px;overflow-y:auto;">
+                <table class="table table-sm table-hover" style="font-size:0.8rem;">
+                    <thead style="position:sticky;top:0;background:#fff;box-shadow:0 1px 0 #dee2e6;">
+                        <tr>
+                            <th>일자</th><th>이름</th><th>부서</th><th>유형</th>
+                            <th class="text-end">근무표</th><th class="text-end">보고서</th>
+                            <th>비고</th><th>최초감지</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sdRows"></tbody>
+                </table>
+            </div>
+            <div class="text-muted mt-1" style="font-size:0.72rem;">
+                숫자는 기본/연장/야간 시간입니다. 매일 08시에 자동 대조되며, 차이가 없어지면 '해소됨'으로 넘어갑니다.
+            </div>
+        </div>
+    </div>
+
     <div class="filter-bar">
         <div class="row g-3 align-items-end">
             {% if can_edit %}
@@ -537,6 +607,107 @@ function applyBulkEtc() {
     })
     .catch(function(e){ alert('요청 실패: ' + e); });
 }
+
+// ═══ 근무표 대조 결과 조회 ═══
+var sdRowsCache = [];
+
+function sdToggle() {
+    var b = document.getElementById('sdBody');
+    var open = b.style.display === 'none';
+    b.style.display = open ? '' : 'none';
+    document.getElementById('sdArrow').textContent = open ? '▲ 접기' : '▼ 펼치기';
+    if (open && !sdRowsCache.length) sdLoad();
+}
+
+var SD_COLOR = {
+    '연장과다': 'bg-danger', '연장누락': 'bg-danger',
+    '값불일치': 'bg-warning text-dark', '미작성': 'bg-secondary',
+    '근무표없음': 'bg-info text-dark'
+};
+
+function sdLoad() {
+    var q = new URLSearchParams({
+        month:    document.getElementById('sdMonth').value,
+        type:     document.getElementById('sdType').value,
+        dept:     document.getElementById('sdDept').value,
+        name:     document.getElementById('sdName').value,
+        resolved: document.getElementById('sdResolved').value
+    });
+    fetch('/api/schedule_diff?' + q.toString())
+      .then(function(r){ return r.json(); })
+      .then(function(d) {
+        if (!d.ok) {
+            document.getElementById('sdRows').innerHTML =
+                '<tr><td colspan="8" class="text-danger">' + (d.error || '오류') + '</td></tr>';
+            return;
+        }
+        sdRowsCache = d.rows || [];
+        // 부서 목록 (최초 1회만 채움)
+        var ds = document.getElementById('sdDept');
+        if (ds.options.length <= 1 && (d.depts || []).length) {
+            d.depts.forEach(function(x){
+                var o = document.createElement('option'); o.value = x; o.textContent = x;
+                ds.appendChild(o);
+            });
+        }
+        // 요약
+        var sum = d.summary || {};
+        var total = Object.keys(sum).reduce(function(a, k){ return a + sum[k]; }, 0);
+        document.getElementById('sdBadge').textContent = '미해소 ' + total + '건';
+        document.getElementById('sdBadge').className =
+            'badge ms-1 ' + (total ? 'bg-danger' : 'bg-success');
+        document.getElementById('sdLastRun').textContent =
+            d.last_run ? ('최근 대조 ' + d.last_run) : '';
+        document.getElementById('sdSummary').innerHTML =
+            Object.keys(sum).length
+              ? Object.keys(sum).map(function(k){
+                  return '<span class="badge ' + (SD_COLOR[k] || 'bg-secondary')
+                       + ' me-1">' + k + ' ' + sum[k] + '</span>';
+                }).join('')
+              : '<span class="text-success">차이 없음</span>';
+        // 표
+        document.getElementById('sdRows').innerHTML = sdRowsCache.length
+          ? sdRowsCache.map(function(r){
+              return '<tr' + (r.resolved ? ' class="text-muted"' : '') + '>'
+                   + '<td>' + r.date + '</td><td>' + r.name + '</td><td>' + r.dept + '</td>'
+                   + '<td><span class="badge ' + (SD_COLOR[r.type] || 'bg-secondary') + '">'
+                   + r.type + '</span></td>'
+                   + '<td class="text-end">' + r.xl + '</td>'
+                   + '<td class="text-end">' + r.sys + '</td>'
+                   + '<td>' + (r.note || '') + '</td>'
+                   + '<td>' + (r.first_seen || '') + '</td></tr>';
+            }).join('')
+          : '<tr><td colspan="8" class="text-center text-muted py-3">해당 조건의 차이가 없습니다.</td></tr>';
+      })
+      .catch(function(e){
+        document.getElementById('sdRows').innerHTML =
+            '<tr><td colspan="8" class="text-danger">조회 실패: ' + e + '</td></tr>';
+      });
+}
+
+function sdCsv() {
+    if (!sdRowsCache.length) { alert('먼저 조회하세요.'); return; }
+    var head = ['일자','이름','부서','유형','근무표(기본/연장/야간)','보고서(기본/연장/야간)','비고','최초감지'];
+    var lines = [head.join(',')].concat(sdRowsCache.map(function(r){
+        return [r.date, r.name, r.dept, r.type, r.xl, r.sys, r.note, r.first_seen]
+               .map(function(v){ return '"' + String(v == null ? '' : v).replace(/"/g,'""') + '"'; })
+               .join(',');
+    }));
+    var blob = new Blob(["﻿" + lines.join("\n")], {type:'text/csv;charset=utf-8;'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '근무표대조_' + document.getElementById('sdMonth').value + '.csv';
+    a.click();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var el = document.getElementById('sdMonth');
+    if (el) {
+        el.value = '{{ sel_month }}';
+        // 배지 숫자는 접힌 상태에서도 보이도록 먼저 한 번 조회
+        sdLoad();
+    }
+});
 </script>
 </body>
 </html>

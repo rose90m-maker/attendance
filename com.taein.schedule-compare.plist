@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.taein.schedule-compare</string>
+  <!-- 근무표(엑셀) ↔ 근무보고서 매일 대조. 신규 차이만 태인 알림방으로 통보 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/changkooji/attendance/.venv/bin/python</string>
+    <string>/Users/changkooji/attendance/schedule_compare.py</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/changkooji/attendance</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>8</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+  <!-- Mac이 8시에 꺼져 있었다면 켜진 직후 한 번 실행 -->
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>/tmp/taein-schedule-compare.log</string>
+  <key>StandardErrorPath</key><string>/tmp/taein-schedule-compare.log</string>
+</dict>
+</plist>

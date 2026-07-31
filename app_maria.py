@@ -9523,6 +9523,73 @@ def api_wr_missing_check():
     })
 
 
+@app.route("/api/schedule_diff")
+@_login_required
+def api_schedule_diff():
+    """근무표 ↔ 근무보고서 대조 결과 조회 (schedule_compare.py가 매일 08시 적재).
+    month=YYYY-MM, type=유형, dept=부서, name=이름, resolved=0|1|all"""
+    if not (session.get("role") == "admin" or _has_perm("schedule")):
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+
+    month = (request.args.get("month") or datetime.now().strftime("%Y-%m")).strip()
+    ym = month.replace("-", "")[:6]
+    dtype = (request.args.get("type") or "").strip()
+    dept = (request.args.get("dept") or "").strip()
+    name = (request.args.get("name") or "").strip()
+    resolved = (request.args.get("resolved") or "0").strip()
+
+    where = ["ym=%s"]
+    args = [ym]
+    if resolved in ("0", "1"):
+        where.append("resolved=%s"); args.append(int(resolved))
+    if dtype:
+        where.append("diff_type=%s"); args.append(dtype)
+    if dept:
+        where.append("dept=%s"); args.append(dept)
+    if name:
+        where.append("emp_name LIKE %s"); args.append(f"%{name}%")
+    wsql = " AND ".join(where)
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("SHOW TABLES LIKE 'schedule_diff'")
+        if not cur.fetchone():
+            return jsonify({"ok": True, "rows": [], "summary": {}, "depts": [],
+                            "msg": "대조 데이터가 아직 없습니다."})
+        cur.execute(f"""SELECT work_date, emp_name, dept, diff_type,
+                               xl_basic, xl_ot, xl_night,
+                               sys_basic, sys_ot, sys_night,
+                               source_type, first_seen, resolved
+                        FROM schedule_diff WHERE {wsql}
+                        ORDER BY work_date, dept, emp_name LIMIT 1000""", args)
+        rows = [{
+            "date": r[0].strftime("%Y-%m-%d"),
+            "name": r[1], "dept": r[2] or "", "type": r[3],
+            "xl": f"{float(r[4]):g}/{float(r[5]):g}/{float(r[6]):g}",
+            "sys": f"{float(r[7]):g}/{float(r[8]):g}/{float(r[9]):g}",
+            "note": r[10] or "",
+            "first_seen": r[11].strftime("%m-%d %H:%M") if r[11] else "",
+            "resolved": int(r[12]),
+        } for r in cur.fetchall()]
+
+        # 유형별 요약 (미해소 기준)
+        cur.execute("""SELECT diff_type, COUNT(*) FROM schedule_diff
+                       WHERE ym=%s AND resolved=0 GROUP BY diff_type""", (ym,))
+        summary = {k: int(v) for k, v in cur.fetchall()}
+        cur.execute("""SELECT DISTINCT dept FROM schedule_diff
+                       WHERE ym=%s AND dept<>'' ORDER BY dept""", (ym,))
+        depts = [r[0] for r in cur.fetchall()]
+        cur.execute("""SELECT COUNT(*), MAX(last_seen) FROM schedule_diff WHERE ym=%s""", (ym,))
+        tot, last = cur.fetchone()
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "month": month, "rows": rows,
+                    "summary": summary, "depts": depts,
+                    "total_all": int(tot or 0),
+                    "last_run": last.strftime("%Y-%m-%d %H:%M") if last else ""})
+
+
 @app.route("/api/wr_my_missing")
 @_login_required
 def api_wr_my_missing():
