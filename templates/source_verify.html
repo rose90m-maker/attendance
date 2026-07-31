@@ -105,7 +105,7 @@
                             <th style="text-align:left;">이름</th>
                             <th style="text-align:left;">부서</th>
                             <th style="text-align:left;">그룹</th>
-                            <th class="pp-num">기록</th>
+                            <th class="pp-num">점검</th>
                             <th class="pp-num">출입</th>
                             <th class="pp-num">오류</th>
                             <th style="text-align:left;">오류 유형</th>
@@ -192,7 +192,7 @@ function ppRender() {
                  + '<td><b>' + r.name + '</b></td>'
                  + '<td>' + (r.dept || '-') + '</td>'
                  + '<td>' + (r.group || '-') + '</td>'
-                 + '<td class="pp-num">' + r.days + '</td>'
+                 + '<td class="pp-num">' + (r.checked != null ? r.checked : r.days) + '</td>'
                  + '<td class="pp-num">' + r.tag_days + '</td>'
                  + '<td class="pp-num ' + (r.errors ? 'text-danger fw-bold' : '') + '">'
                  +   r.errors + '</td>'
@@ -292,10 +292,10 @@ function dl(name, lines) {
 function ppCsv() {
     var rows = ppFiltered();
     if (!rows.length) { alert('내려받을 내용이 없습니다.'); return; }
-    var lines = [['이름','부서','그룹','기록일수','출입일수','오류','오류유형','일치율'].join(',')]
+    var lines = [['이름','부서','그룹','점검일수','출입일수','오류','오류유형','일치율'].join(',')]
       .concat(rows.map(function(r){
         var t = Object.keys(r.by_type||{}).map(function(k){ return k+' '+r.by_type[k]; }).join(' ');
-        return [r.name,r.dept,r.group,r.days,r.tag_days,r.errors,t,r.rate+'%']
+        return [r.name,r.dept,r.group,(r.checked!=null?r.checked:r.days),r.tag_days,r.errors,t,r.rate+'%']
                .map(function(c){ return '"'+String(c==null?'':c).replace(/"/g,'""')+'"'; }).join(',');
       }));
     dl('3소스검증_전원_' + document.getElementById('svMonth').value + '.csv', lines);

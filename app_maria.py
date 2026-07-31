@@ -9652,11 +9652,15 @@ def api_source_verify_all():
         e = errs.get(nm, {})
         bad = sum(e.values())
         days = b["days"]
+        # 미작성일은 schedule_record에 행이 없어 days에 안 잡히므로 분모에 더해준다.
+        # (안 그러면 오류수 > 기록일수가 되어 일치율이 음수로 나옴 — 박승규 사례)
+        denom = days + e.get("미작성", 0) + e.get("근무표없음", 0)
         rows.append({
             "name": nm, "dept": dept_of.get(nm, ""), "group": b["group"],
             "days": days, "tag_days": tag_days.get(nm, 0),
             "errors": bad, "by_type": e,
-            "rate": round((days - bad) / days * 100, 1) if days else 0,
+            "checked": denom,
+            "rate": round(max(0, denom - bad) / denom * 100, 1) if denom else 0,
         })
     rows.sort(key=lambda x: (-x["errors"], x["group"], x["name"]))
     groups = sorted({r["group"] for r in rows if r["group"]})
