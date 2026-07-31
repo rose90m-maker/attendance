@@ -368,7 +368,10 @@ def process_month(cur, ym, args):
         if so > 0 and out < 18 * 60:
             diffs.append((wd, nm, dept_of.get(nm, ""), "연장과다",
                           xb, xo, xn, sb, so, sn, f"퇴근 {tg[1][:2]}:{tg[1][2:4]}"))
-        elif so == 0 and out >= 20 * 60:
+        # 연장누락 기준 19:30 — 20:00으로 두면 19:59 퇴근 같은 경계 사례를 놓친다.
+        # (2026-07-20 QA 김현숙·이은경이 19:59 퇴근으로 누락됐던 사례)
+        # 검증: 19:30 기준 14건 전부 근무표에도 연장이 기록돼 있어 오탐 0건.
+        elif so == 0 and out >= 19 * 60 + 30:
             diffs.append((wd, nm, dept_of.get(nm, ""), "연장누락",
                           xb, xo, xn, sb, so, sn, f"퇴근 {tg[1][:2]}:{tg[1][2:4]}"))
 

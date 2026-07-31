@@ -8623,12 +8623,32 @@ def process_wr_request():
                         a["etc"] = etc_val
                 else:
                     a["etc"] = etc_val
+        # ── 수정보고서는 그날의 '확정본' ──
+        # 수정본에서 제외된 인원 = 근무 취소. 예전에는 수정본에 있는 사람만 갱신해서
+        # 취소된 인원의 원본 값이 그대로 남았다(2026-07-19 신민규 등 344건).
+        # → 수정본이면 그 그룹·날짜의 기존 수정 레코드를 모두 지우고 새로 쓴다.
+        if is_revision:
+            cur.execute("""DELETE FROM schedule_record
+                           WHERE work_date=%s AND sheet_name=%s
+                             AND source_type='수정근무보고서'""",
+                        (report_date, sheet_name))
+            # 원본에만 있고 수정본에서 빠진 인원 → 근무 없음(0/0/0)으로 확정
+            cur.execute("""SELECT DISTINCT emp_name FROM schedule_record
+                           WHERE work_date=%s AND sheet_name=%s AND source_type='보고서'""",
+                        (report_date, sheet_name))
+            for (drop_nm,) in cur.fetchall():
+                if drop_nm in agg:
+                    continue
+                cur.execute("""INSERT INTO schedule_record
+                        (emp_name, work_date, basic_h, ot_h, night_h, etc,
+                         source_type, sheet_name, uploaded_by)
+                    VALUES (%s,%s,0,0,0,NULL,'수정근무보고서',%s,%s)""",
+                            (drop_nm, report_date, sheet_name,
+                             session.get("user_name", "")))
+
         for uname, a in agg.items():
-            # 기존 레코드 삭제: 수정근무보고서면 수정근무보고서만, 원본이면 둘 다 삭제
-            if is_revision:
-                cur.execute("DELETE FROM schedule_record WHERE emp_name=%s AND work_date=%s AND sheet_name=%s AND source_type='수정근무보고서'",
-                            (uname, report_date, sheet_name))
-            else:
+            # 원본이면 기존 레코드(원본+수정) 모두 삭제. 수정본은 위에서 이미 정리됨.
+            if not is_revision:
                 cur.execute("DELETE FROM schedule_record WHERE emp_name=%s AND work_date=%s AND sheet_name=%s AND source_type IN ('보고서','수정근무보고서')",
                             (uname, report_date, sheet_name))
             if a["skipped"]:
