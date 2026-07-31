@@ -9590,6 +9590,56 @@ def api_schedule_diff():
                     "last_run": last.strftime("%Y-%m-%d %H:%M") if last else ""})
 
 
+@app.route("/api/schedule_accuracy")
+@_login_required
+def api_schedule_accuracy():
+    """근무보고서 정확도(근무표 재현율) — 그룹별 + 월별 추이.
+    근무표가 정본이므로 이 수치가 '보고서 자동화 전환 준비도'가 된다."""
+    if not (session.get("role") == "admin" or _has_perm("schedule")):
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    month = (request.args.get("month") or datetime.now().strftime("%Y-%m")).strip()
+    ym = month.replace("-", "")[:6]
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("SHOW TABLES LIKE 'schedule_accuracy'")
+        if not cur.fetchone():
+            return jsonify({"ok": True, "groups": [], "trend": [],
+                            "msg": "정확도 데이터가 아직 없습니다."})
+        cur.execute("""SELECT grp, writers, cmp_cnt, ok_cnt, mismatch_cnt, missing_cnt,
+                              accuracy, calc_day, updated_at
+                       FROM schedule_accuracy WHERE ym=%s
+                       ORDER BY accuracy DESC, grp""", (ym,))
+        groups = []
+        for g, w, c, o, mm, ms, a, cd, up in cur.fetchall():
+            a = float(a or 0)
+            groups.append({
+                "group": g, "writers": w or "", "cmp": int(c or 0), "ok": int(o or 0),
+                "mismatch": int(mm or 0), "missing": int(ms or 0),
+                "accuracy": a, "calc_day": int(cd or 0),
+                "level": ("ready" if a >= 99 else "near" if a >= 95
+                          else "improve" if a >= 85 else "low"),
+                "updated": up.strftime("%m-%d %H:%M") if up else "",
+            })
+        # 전체
+        cur.execute("""SELECT SUM(cmp_cnt), SUM(ok_cnt), SUM(mismatch_cnt), SUM(missing_cnt)
+                       FROM schedule_accuracy WHERE ym=%s""", (ym,))
+        tc, to, tm, tms = cur.fetchone()
+        tc, to = int(tc or 0), int(to or 0)
+        total = {"cmp": tc, "ok": to, "mismatch": int(tm or 0), "missing": int(tms or 0),
+                 "accuracy": round(to / tc * 100, 1) if tc else 0}
+        # 월별 추이 (최근 12개월)
+        cur.execute("""SELECT ym, SUM(cmp_cnt), SUM(ok_cnt) FROM schedule_accuracy
+                       GROUP BY ym ORDER BY ym DESC LIMIT 12""")
+        trend = [{"ym": f"{r[0][:4]}-{r[0][4:6]}",
+                  "accuracy": round(int(r[2] or 0) / int(r[1]) * 100, 1) if r[1] else 0}
+                 for r in cur.fetchall()][::-1]
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "month": month, "groups": groups,
+                    "total": total, "trend": trend})
+
+
 @app.route("/api/wr_my_missing")
 @_login_required
 def api_wr_my_missing():

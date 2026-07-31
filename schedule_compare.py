@@ -188,18 +188,20 @@ def _mins(t):
 
 
 def load_system(cur, ym):
-    """→ {(이름, 일): (basic, ot, night, source_type)}"""
-    cur.execute("""SELECT emp_name, work_date, basic_h, ot_h, night_h, source_type
+    """→ ({(이름, 일): (basic, ot, night, source_type)}, {이름: 그룹(sheet_name)})"""
+    cur.execute("""SELECT emp_name, work_date, basic_h, ot_h, night_h, source_type, sheet_name
                    FROM schedule_record WHERE work_date LIKE %s""", (ym + "%",))
     tmp = defaultdict(dict)
-    for nm, wd, b, o, n, st in cur.fetchall():
+    sheet_of = {}
+    for nm, wd, b, o, n, st, sh in cur.fetchall():
         tmp[(nm, int(wd[6:8]))][st] = (float(b or 0), float(o or 0), float(n or 0))
+        sheet_of.setdefault(nm, sh)
     out = {}
     for key, srcs in tmp.items():
         st = "수정근무보고서" if "수정근무보고서" in srcs else next(iter(srcs))
         b, o, n = srcs[st]
         out[key] = (b, o, n, st)
-    return out
+    return out, sheet_of
 
 
 def ensure_table(cur):
@@ -221,6 +223,75 @@ def ensure_table(cur):
             KEY `idx_ym` (`ym`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
+    # 그룹(작성자)별 보고서 정확도 = 근무표 재현율. 자동화 전환 준비도 지표.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS `schedule_accuracy` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `ym` VARCHAR(6) NOT NULL,
+            `grp` VARCHAR(30) NOT NULL,
+            `writers` VARCHAR(100) DEFAULT '',
+            `cmp_cnt` INT DEFAULT 0,
+            `ok_cnt` INT DEFAULT 0,
+            `mismatch_cnt` INT DEFAULT 0,
+            `missing_cnt` INT DEFAULT 0,
+            `accuracy` DOUBLE DEFAULT 0,
+            `calc_day` TINYINT DEFAULT 0,
+            `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY `uq_acc` (`ym`, `grp`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+
+
+def save_accuracy(cur, ym, xl, sysd, sheet_of, cutoff_day):
+    """그룹(작성자)별 보고서 정확도 = 근무표 재현율.
+    근무표가 정본이므로 '보고서가 근무표를 얼마나 재현하는가'가 자동화 준비도 지표가 된다.
+    (근무표 미기입이 흔한 월말은 cutoff_day로 잘라 계산)"""
+    year, month = int(ym[:4]), int(ym[4:6])
+    sys_names = {nm for nm, _ in sysd}
+    stat = defaultdict(lambda: {"cmp": 0, "ok": 0, "mismatch": 0, "miss": 0})
+
+    for (nm, day), xv in xl.items():
+        if nm not in sys_names or day > cutoff_day:
+            continue
+        grp = sheet_of.get(nm, "?")
+        xb, xo, xn = num(xv.get("basic")), num(xv.get("ot")), num(xv.get("night"))
+        e = xv.get("etc")
+        etc_t = e.strip() if isinstance(e, str) and e.strip() else ""
+        rec = sysd.get((nm, day))
+        s = stat[grp]
+        if rec is None:
+            if xb + xo + xn > 0 or etc_t:
+                s["cmp"] += 1; s["miss"] += 1
+            continue
+        s["cmp"] += 1
+        if (abs(xb - rec[0]) < .01 and abs(xo - rec[1]) < .01 and abs(xn - rec[2]) < .01):
+            s["ok"] += 1
+        else:
+            s["mismatch"] += 1
+
+    # 그룹별 작성자
+    cur.execute("SELECT id, group_name FROM wr_groups")
+    gname = {r[0]: r[1] for r in cur.fetchall()}
+    cur.execute("SELECT group_id, user_name FROM wr_group_writers")
+    wmap = defaultdict(list)
+    for gid, u in cur.fetchall():
+        wmap[gname.get(gid, "")].append(u)
+
+    out = []
+    for grp, s in stat.items():
+        acc = round(s["ok"] / s["cmp"] * 100, 1) if s["cmp"] else 0.0
+        cur.execute("""INSERT INTO schedule_accuracy
+              (ym, grp, writers, cmp_cnt, ok_cnt, mismatch_cnt, missing_cnt, accuracy, calc_day)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON DUPLICATE KEY UPDATE
+              writers=VALUES(writers), cmp_cnt=VALUES(cmp_cnt), ok_cnt=VALUES(ok_cnt),
+              mismatch_cnt=VALUES(mismatch_cnt), missing_cnt=VALUES(missing_cnt),
+              accuracy=VALUES(accuracy), calc_day=VALUES(calc_day)""",
+                    (ym, grp, ", ".join(wmap.get(grp, [])), s["cmp"], s["ok"],
+                     s["mismatch"], s["miss"], acc, cutoff_day))
+        out.append((grp, acc, s))
+    cur.connection.commit()
+    return sorted(out, key=lambda x: -x[1])
 
 
 def process_month(cur, ym, args):
@@ -235,7 +306,7 @@ def process_month(cur, ym, args):
     print(f"📄 {year}-{month:02d} 근무표: {nfc(os.path.basename(path))}")
 
     xl, xl_dept = parse_excel(path, year, month)
-    sysd = load_system(cur, ym)
+    sysd, sheet_of = load_system(cur, ym)
     tags = load_tags(cur, ym)
     roster_dept = load_roster_dept(cur)
     # 명부 부서명 우선, 없으면 근무표 엑셀의 부서 칸
@@ -310,6 +381,18 @@ def process_month(cur, ym, args):
     print(f"   차이 {len(diffs)}건 (" +
           " · ".join(f"{k} {v}" for k, v in kinds.most_common()) + ")")
 
+    # ── 그룹별 정확도 (근무표 재현율) ──
+    # 근무표는 며칠 뒤에야 채워지므로 최근 2일은 계산에서 제외
+    today = date.today()
+    if (today.year, today.month) == (year, month):
+        cutoff = max(1, today.day - 2)
+    else:
+        cutoff = 31
+    if not args.dry_run:
+        acc = save_accuracy(cur, ym, xl, sysd, sheet_of, cutoff)
+        print(f"   정확도(1~{cutoff}일): " +
+              " · ".join(f"{g} {a:g}%" for g, a, _s in acc))
+
     if args.dry_run:
         for d in sorted(diffs)[:40]:
             print(f"     {d[0]} {d[1]}[{d[2]}] {d[3]} 엑셀 {d[4]:g}/{d[5]:g}/{d[6]:g}"
@@ -368,6 +451,19 @@ def main():
         r = process_month(cur, ym, args)
         if r:
             results.append((ym, *r))
+
+    # 알림에 실을 전체 정확도 (가장 최근 대상 월 기준)
+    acc_line = ""
+    if results and not args.dry_run:
+        last_ym = results[-1][0]
+        try:
+            cur.execute("""SELECT SUM(cmp_cnt), SUM(ok_cnt) FROM schedule_accuracy
+                           WHERE ym=%s""", (last_ym,))
+            c, o = cur.fetchone()
+            if c:
+                acc_line = f"{int(o)/int(c)*100:.1f}% ({int(o)}/{int(c)})"
+        except Exception:
+            pass
     conn.close()
 
     if not results:
@@ -390,7 +486,9 @@ def main():
         print("  ℹ️  신규 차이 없음 — 알림 생략")
         return 0
 
-    lines = [f"📋 근무표 대조 — 신규 차이 {total_new}건", ""]
+    # 근무표(이민영 사원 작성)가 정본 → 표현도 '보고서 오류' 방향으로 통일
+    lines = [f"📋 근무보고서 점검 — 신규 오류 {total_new}건",
+             "(기준: 근무표)", ""]
     shown = 0
     for ym, new_keys, diffs, open_cnt, resolved_cnt in results:
         if not new_keys:
@@ -413,8 +511,8 @@ def main():
                              f"보고서 연장 {d[8]:g}h / {d[10]} "
                              f"(근무표 {d[4]:g}/{d[5]:g}/{d[6]:g})")
             else:
-                lines.append(f"· {d[0]} {d[1]} [{d[2]}] 근무표 {d[4]:g}/{d[5]:g}/{d[6]:g}"
-                             f" ↔ 보고서 {d[7]:g}/{d[8]:g}/{d[9]:g}")
+                lines.append(f"· {d[0]} {d[1]} [{d[2]}] 보고서 {d[7]:g}/{d[8]:g}/{d[9]:g}"
+                             f" → 근무표 {d[4]:g}/{d[5]:g}/{d[6]:g} 로 정정 필요")
             shown += 1
         lines.append("")
     if total_new > shown:
@@ -422,8 +520,10 @@ def main():
     summary = " · ".join(
         f"{int(ym[4:6])}월 미해소 {open_cnt}" + (f"/해소 {rc}" if rc else "")
         for ym, _nk, _df, open_cnt, rc in results)
-    lines += ["(기본/연장/야간 시간)", summary,
-              "👉 https://app.taein.biz/schedule_record"]
+    lines += ["(기본/연장/야간 시간)", summary]
+    if acc_line:
+        lines.append(f"📊 보고서 정확도 {acc_line}")
+    lines.append("👉 https://app.taein.biz/schedule_record")
     send_telegram("\n".join(lines))
     return 0
 
