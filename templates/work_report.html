@@ -402,8 +402,15 @@
                 </div>
                 <div class="col-auto">
                     <label class="form-label mb-0" style="font-size:0.78rem;">작성자</label>
-                    <input type="text" name="writer" class="form-control form-control-sm"
-                           style="width:110px;" value="{{ filter_writer }}" placeholder="이름">
+                    <select name="writer" class="form-select form-select-sm" style="min-width:120px;"
+                            onchange="this.form.submit()">
+                        <option value="">전체</option>
+                        {% for w in writer_list %}
+                        <option value="{{ w.name }}" {{ 'selected' if filter_writer == w.name }}>
+                            {{ w.name }} ({{ w.cnt }})
+                        </option>
+                        {% endfor %}
+                    </select>
                 </div>
                 <div class="col-auto">
                     <label class="form-label mb-0" style="font-size:0.78rem;">표시</label>

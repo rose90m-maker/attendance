@@ -7759,6 +7759,11 @@ def work_report():
         WR_PER_PAGE = 20
     if WR_PER_PAGE not in (10, 20, 50, 100):
         WR_PER_PAGE = 20
+    # ── 작성자 목록 (필터 드롭다운용) ──
+    cur.execute("""SELECT created_by_name, COUNT(*) FROM wr_reports
+                   WHERE created_by_name IS NOT NULL AND created_by_name <> ''
+                   GROUP BY created_by_name ORDER BY COUNT(*) DESC""")
+    writer_list = [{"name": r[0], "cnt": int(r[1])} for r in cur.fetchall()]
     # ── 그룹 목록 ──
     cur.execute("SELECT id, group_name, final_step, IFNULL(status,'설정중') FROM wr_groups ORDER BY group_name")
     all_groups = [{"id": r[0], "name": r[1], "final_step": r[2], "status": r[3]} for r in cur.fetchall()]
@@ -7919,10 +7924,10 @@ def work_report():
                 params.append(int(filter_gid))
             except ValueError:
                 pass
-        # 작성자 검색
+        # 작성자 필터 (드롭다운에서 선택 → 정확히 일치)
         if filter_writer:
-            sql += " AND r.created_by_name LIKE %s"
-            params.append(f"%{filter_writer}%")
+            sql += " AND r.created_by_name = %s"
+            params.append(filter_writer)
         # ── 내 미결재만: 사용자가 결재자(reviewer)인 보고서 중, 사용자의 결재 이력이 없는 것 ──
         if mine_pending and user_reviewer_rows:
             # 사용자가 결재자인 그룹 ID
@@ -8037,7 +8042,7 @@ def work_report():
                            recent_mode=recent_mode,
                            wr_page=wr_page, wr_total_pages=wr_total_pages, wr_total=wr_total,
                            filter_gid=filter_gid, filter_writer=filter_writer,
-                           per_page=WR_PER_PAGE,
+                           per_page=WR_PER_PAGE, writer_list=writer_list,
                            report_groups=list(report_groups.values()),
                            status_filter=status_filter,
                            mine_pending=mine_pending,
