@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 ACCESS_ID     = os.environ["TUYA_ACCESS_ID"]
 ACCESS_SECRET = os.environ["TUYA_ACCESS_SECRET"]
 REGION        = "us"
-POLL_INTERVAL = 60  # 초 (Tuya API 쿼터 절약 — 감지기 자체 경보음은 즉시 울림)
+POLL_INTERVAL = int(os.environ.get("TUYA_POLL_INTERVAL", "300"))  # 초 (Tuya API 쿼터 절약 — 감지기 자체 경보음은 즉시 울림)
 NAS_URL       = "http://192.168.100.11:5050"
 
 DEVICES = [

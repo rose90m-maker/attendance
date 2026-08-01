@@ -187,6 +187,26 @@ def _mins(t):
     return int(t[:2]) * 60 + int(t[2:4]) if t and len(t) >= 4 else None
 
 
+def load_next_out(cur, ym):
+    """야간조 퇴근 판정용 → {(이름, 일): 익일 오전 첫 태그(분)}
+
+    야간근무는 익일 새벽에 퇴근하므로 당일 태그만으로는 연장 여부를 알 수 없다.
+    월말 근무는 익일이 다음 달이므로 다음 달 태그도 함께 읽는다."""
+    y, m = int(ym[:4]), int(ym[4:6])
+    nxt_ym = (date(y, m, 28) + timedelta(days=7)).strftime("%Y%m")
+    cur.execute("""SELECT e_name, e_date, MIN(e_time)
+                   FROM tenter
+                   WHERE (e_date LIKE %s OR e_date LIKE %s)
+                     AND e_id>=0 AND e_time < '120000'
+                   GROUP BY e_name, e_date""", (ym + "%", nxt_ym + "%"))
+    out = {}
+    for nm, d, t in cur.fetchall():
+        prev = date(int(d[:4]), int(d[4:6]), int(d[6:8])) - timedelta(days=1)
+        if prev.strftime("%Y%m") == ym:
+            out[(nm, prev.day)] = _mins(t)
+    return out
+
+
 def load_system(cur, ym):
     """→ ({(이름, 일): (basic, ot, night, source_type)}, {이름: 그룹(sheet_name)})"""
     cur.execute("""SELECT emp_name, work_date, basic_h, ot_h, night_h, source_type, sheet_name
@@ -308,6 +328,7 @@ def process_month(cur, ym, args):
     xl, xl_dept = parse_excel(path, year, month)
     sysd, sheet_of = load_system(cur, ym)
     tags = load_tags(cur, ym)
+    next_out = load_next_out(cur, ym)     # 야간조 익일 퇴근 판정용
     roster_dept = load_roster_dept(cur)
     # 명부 부서명 우선, 없으면 근무표 엑셀의 부서 칸
     dept_of = {nm: roster_dept.get(nm) or xl_dept.get(nm, "") for nm in xl_dept}
@@ -345,26 +366,45 @@ def process_month(cur, ym, args):
             diffs.append((wd, nm, dept_of.get(nm, ""), "값불일치",
                           xb, xo, xn, sb, so, sn, st))
 
-    # ── 출입기록 기반 연장근무 검증 (주간조만) ──
+    # ── 출입기록 기반 연장근무 검증 ──
     # 2026-07 사례: 7/3 SMT 7명이 정시 퇴근인데 연장 2h 기록, 7/20 PQC·QA 6명은 20시
     # 퇴근인데 연장 0. 둘 다 근무표·출입기록이 일치했고 보고서만 틀렸다.
     for (nm, day), rec in sysd.items():
         if _pending(day):
             continue
-        tg = tags.get((nm, day))
-        if not tg or tg[2] < 2:          # 태그 2회 미만이면 판단 불가
-            continue
         sb, so, sn, _st = rec
-        if sn > 0 or sb <= 0:            # 야간조·비근무일 제외
-            continue
-        out = _mins(tg[1])
-        if out is None:
+        if sb <= 0:                      # 비근무일 제외
             continue
         wd = date(year, month, day)
         xv = xl.get((nm, day))
         xb = num(xv.get("basic")) if xv else 0.0
         xo = num(xv.get("ot")) if xv else 0.0
         xn = num(xv.get("night")) if xv else 0.0
+
+        # ── 야간조: 퇴근이 익일이라 당일 태그로는 판단할 수 없다 ──
+        # 2026-07 확정본 682건 검증(원본/수정본 중복을 걷어낸 수치):
+        #   야간기본 482건 → 익일 퇴근 04~05시에 446건 집중
+        #   야간연장 200건 → 익일 퇴근 07~08시에 192건 집중
+        # 06:00 을 경계로 두면 야간연장 195/200 을 잡고 야간기본 오검출은 8건뿐.
+        # (이 검증이 없어 7/6 전혜경·7/15 QA 6명의 야간연장 누락 7건을 놓쳤다)
+        if sn > 0:
+            if so > 0:                   # 이미 연장이 기록돼 있으면 통과
+                continue
+            nout = next_out.get((nm, day))
+            if nout is None or nout < 6 * 60:
+                continue
+            diffs.append((wd, nm, dept_of.get(nm, ""), "연장누락",
+                          xb, xo, xn, sb, so, sn,
+                          f"익일퇴근 {nout // 60:02d}:{nout % 60:02d}"))
+            continue
+
+        # ── 주간조: 당일 퇴근 태그로 판단 ──
+        tg = tags.get((nm, day))
+        if not tg or tg[2] < 2:          # 태그 2회 미만이면 판단 불가
+            continue
+        out = _mins(tg[1])
+        if out is None:
+            continue
         if so > 0 and out < 18 * 60:
             diffs.append((wd, nm, dept_of.get(nm, ""), "연장과다",
                           xb, xo, xn, sb, so, sn, f"퇴근 {tg[1][:2]}:{tg[1][2:4]}"))

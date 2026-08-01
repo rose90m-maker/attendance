@@ -8363,6 +8363,27 @@ def save_wr_report():
                        and not str(e.get("etc_value", "")).strip()]
         if etc_missing:
             return jsonify(ok=False, msg="기타 항목의 사유가 선택되지 않았습니다: " + ", ".join(etc_missing))
+        # 연차/무급 + 근무 동시배정 차단
+        # 적재 시 휴가가 다른 값을 모두 덮어쓰므로(아래 a["leave"] 보정) 한 사람이
+        # 주간기본과 기타/무급에 함께 들어가면 근무시간이 통째로 0 이 된다.
+        # (2026-07-30 윤경진 8/2/0 → 0/0/0 으로 사라졌고 화면에도 표시되지 않았다)
+        _work_cats = ("주간기본", "주간연장", "야간기본", "야간연장")
+        _by_user = {}
+        for e in entries:
+            if int(e.get("skipped", 0)):
+                continue
+            u = _by_user.setdefault(str(e.get("user_name", "")), {"leave": "", "work": []})
+            _cat = str(e.get("category", ""))
+            _ev = str(e.get("etc_value", "")).strip()
+            if _cat == "기타" and _ev in ("연차", "무급"):
+                u["leave"] = _ev
+            elif _cat in _work_cats:
+                u["work"].append(_cat)
+        both = [f"{nm}({u['leave']}+{'·'.join(u['work'])})"
+                for nm, u in _by_user.items() if u["leave"] and u["work"]]
+        if both:
+            return jsonify(ok=False, msg="연차/무급과 근무가 함께 배정된 인원이 있습니다. "
+                                         "한쪽을 빼주세요: " + ", ".join(both))
         conn = _conn(); cur = conn.cursor()
         # 연차 체크
         if not skip_leave_check:
