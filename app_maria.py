@@ -6058,7 +6058,7 @@ def hr_employee(emp_seq):
     conn = _conn(); cur = conn.cursor()
 
     cur.execute("""SELECT emp_seq, empid, name, dept_name, ent_date, retire_date,
-                          birth_date, sex, t_uid, is_active
+                          birth_date, sex, t_uid, is_active, car_no
                      FROM hr_employees WHERE emp_seq=%s""", (emp_seq,))
     row = cur.fetchone()
     if not row or not row[9]:
@@ -6084,7 +6084,7 @@ def hr_employee(emp_seq):
     emp = {
         "seq": row[0], "empid": row[1], "name": row[2] or "",
         "dept": row[3] or "미지정", "ent": row[4] or "", "birth": row[6] or "",
-        "sex": row[7] or "", "t_uid": row[8],
+        "sex": row[7] or "", "t_uid": row[8], "car": row[10] or "",
         "years": yrs(row[4]), "age": yrs(row[6]),
         "svc": ("%d년 %d개월" % (m // 12, m % 12)) if m is not None else "",
     }

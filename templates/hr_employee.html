@@ -166,7 +166,8 @@
                     <dt>이메일</dt>
                     <dd class="{% if not roster.email %}empty{% endif %}">{{ roster.email or '명부관리에 없음' }}</dd>
                     <dt>차량번호</dt>
-                    <dd class="{% if not roster.car %}empty{% endif %}">{{ roster.car or '명부관리에 없음' }}</dd>
+                    {% set car = emp.car or roster.car %}
+                    <dd class="{% if not car %}empty{% endif %}">{{ car or 'ERP에 등록 없음' }}</dd>
                     <dt>주소</dt>
                     <dd class="{% if not roster.addr %}empty{% endif %}">{{ roster.addr or '명부관리에 없음' }}</dd>
                 </dl>

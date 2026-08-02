@@ -3,6 +3,7 @@
 ERP 가 원본이다. 태인 시스템은 조회·집계만 한다. 연차(erp_leave_sync.py)와 같은 방식이다.
 
   사원      _TDAEmp + _TDAEmpIn + _TDADept  → hr_employees
+            + _TDAEmpUserDefine(차량번호)
   발령      _THRAdmOrdEmp                   → hr_orders
   부서이동  _THRAdmMoveDeptHist             → hr_dept_moves
   휴직      _THRAdmEmpRest                  → hr_rests
@@ -12,7 +13,10 @@ ERP 가 원본이다. 태인 시스템은 조회·집계만 한다. 연차(erp_l
   · 주민번호(_TDAEmp.ResidID)·전화번호는 영림원이 앱 레벨에서 암호화해 저장한다.
     복호화할 방법이 없으므로 아예 가져오지 않는다.
     생년월일은 _TDAEmpIn.BirthDate 에 평문으로 따로 있어 이것만 쓴다 (재직 161명 중 160명).
-  · 직급(PosSeq)은 전원 0 이라 쓰지 않는다. 부서만 쓴다.
+  · 직급(PosSeq)은 전원 0 이라 쓰지 않는다. 부서만 쓴다 (직급은 명부관리에 있다).
+  · 차량번호는 _TDAEmpUserDefine 의 사용자 정의 항목에 있다.
+    항목 이름표는 _TCOMUserDefine 에 TableName='_TDAEmp', TitleSerl=1000001, Title='차량번호'.
+    값에 '없음'·'서울' 처럼 차량번호가 아닌 것이 섞여 있어 형태를 보고 거른다.
   · 사번(Empid)이 없는 사람은 가져오지 않는다. 우리 직원이 아니다 —
     2026-08-02 급여명세서로 확인했다. ERP 재직 161명 중 급여를 받는 사람은 160명이고,
     나머지 한 명(박상선)은 사번도 없고 명부관리에도 없는 업체 개발자다.
@@ -25,6 +29,7 @@ ERP 가 원본이다. 태인 시스템은 조회·집계만 한다. 연차(erp_l
 import argparse
 import datetime
 import os
+import re
 
 import pymssql
 import pymysql
@@ -35,6 +40,8 @@ load_dotenv(os.path.join(BASE, ".env"))
 
 ACTIVE = "99991231"          # 재직자의 RetireDate
 SEX = {"1010001": "남", "1010002": "여"}   # _TDAEmpIn.SMSexSeq
+CAR_SERL = 1000001                        # _TDAEmpUserDefine 의 '차량번호' 항목
+CAR_RE = re.compile(r"^\s*\d{2,3}\s*[가-힣]\s*\d{4}\s*$")   # 12가3456 / 123 가 4567
 
 
 def erp_conn():
@@ -66,6 +73,7 @@ DDL = [
         retire_date CHAR(8),
         birth_date  CHAR(8),
         sex         VARCHAR(4),          -- 남 / 여 (ERP 코드 1010001/1010002 를 옮긴 값)
+        car_no      VARCHAR(20),         -- ERP 사용자 정의 항목 '차량번호' (형태가 맞는 것만)
         is_active   TINYINT NOT NULL DEFAULT 0,
         t_uid       INT NULL,
         updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -124,16 +132,18 @@ def fetch_erp():
 
     cur.execute("""
         SELECT e.EmpSeq, e.Empid, e.EmpName, e.DeptSeq, d.DeptName,
-               e.EntDate, e.RetireDate, i.BirthDate, i.SMSexSeq
+               e.EntDate, e.RetireDate, i.BirthDate, i.SMSexSeq, u.ValText
           FROM _TDAEmp e
           LEFT JOIN _TDADept  d ON d.DeptSeq = e.DeptSeq
           LEFT JOIN _TDAEmpIn i ON i.EmpSeq  = e.EmpSeq
-    """)
+          LEFT JOIN _TDAEmpUserDefine u ON u.EmpSeq = e.EmpSeq AND u.Serl = %d
+    """ % CAR_SERL)
     # 사번이 없는 사람은 우리 직원이 아니다 (ERP 에 등록만 되어 있는 외부 인력).
     # 급여명세서로 확인 — 2026-07 급여 받은 160명은 전원 사번이 있고,
     # 사번 없는 사람은 급여도 없고 명부관리에도 없다 (2026-08-02 사용자 결정).
     emps = [(int(r[0]), s(r[1]), s(r[2]), int(r[3] or 0), s(r[4]),
-             s(r[5]), s(r[6]), s(r[7]), SEX.get(s(r[8]), ""))
+             s(r[5]), s(r[6]), s(r[7]), SEX.get(s(r[8]), ""),
+             (" ".join(s(r[9]).split()) if CAR_RE.match(s(r[9])) else ""))
             for r in cur.fetchall() if s(r[1])]
 
     cur.execute("""
@@ -205,6 +215,8 @@ def main():
              len([e for e in emps if e[6] != ACTIVE and e[6][:4] == this_year])))
     rest_now = [r for r in rests if r[1] <= today.strftime("%Y%m%d") <= (r[2] or "99991231")]
     print("  · 휴직 중 %d명" % len(rest_now))
+    print("  · 차량번호 있는 재직자 %d명 (형태가 아닌 값은 버린다)"
+          % len([e for e in active if e[9]]))
 
     if not args.apply:
         print("\n  검증 모드입니다. 반영하려면 --apply 를 붙여 다시 실행하세요.")
@@ -216,9 +228,9 @@ def main():
     cur.executemany(
         """INSERT INTO hr_employees
            (emp_seq, empid, name, dept_seq, dept_name, ent_date, retire_date,
-            birth_date, sex, is_active, t_uid)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-        [(e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], e[8],
+            birth_date, sex, car_no, is_active, t_uid)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        [(e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], e[8], e[9],
           1 if e[6] == ACTIVE else 0, uid_of.get(e[1])) for e in emps])
 
     for tbl, rows, sql in (
