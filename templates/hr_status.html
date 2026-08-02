@@ -99,6 +99,10 @@
             white-space:nowrap;
         }
         .pill b { color:var(--brand-dk); font-weight:700; margin-left:3px; }
+        a.pill { text-decoration:none; transition:background .12s; }
+        a.pill:hover { background:#e2e8f0; }
+        .name-link { color:var(--brand-dk); text-decoration:none; font-weight:600; }
+        .name-link:hover { text-decoration:underline; }
         .pill i { font-style:normal; color:var(--faint); margin-left:3px; }
         .hint { display:block; margin-top:6px; font-size:.74rem; color:var(--faint); }
 
@@ -245,7 +249,7 @@
                 <div class="t">🏅 근속 도래자</div>
                 <div class="n">{{ miles[0].people|length }}<small>명 ({{ miles[0].year }}년)</small></div>
                 <div class="d">
-                    {% for p in miles[0].people[:8] %}<span class="pill">{{ p.name }}<b>{{ p.n }}년</b></span>{% endfor %}
+                    {% for p in miles[0].people[:8] %}<a class="pill" href="/hr_employee/{{ p.seq }}">{{ p.name }}<b>{{ p.n }}년</b></a>{% endfor %}
                     {% if not miles[0].people %}없음{% endif %}
                     {% if miles[1].people %}
                     <span class="hint">{{ miles[1].year }}년: {% for p in miles[1].people[:6] %}{{ p.name }} {{ p.n }}년{% if not loop.last %} · {% endif %}{% endfor %}{% if miles[1].people|length > 6 %} 외 {{ miles[1].people|length - 6 }}명{% endif %}</span>
@@ -258,7 +262,7 @@
                 <div class="t">🎓 정년(만 {{ retire_age }}세) 도래</div>
                 <div class="n">{{ retires[0].people|length }}<small>명 ({{ retires[0].year }}년)</small></div>
                 <div class="d">
-                    {% for p in retires[0].people[:8] %}<span class="pill">{{ p.name }}<i>{{ p.birth[:4] }}년생</i></span>{% endfor %}
+                    {% for p in retires[0].people[:8] %}<a class="pill" href="/hr_employee/{{ p.seq }}">{{ p.name }}<i>{{ p.birth[:4] }}년생</i></a>{% endfor %}
                     {% if not retires[0].people %}없음{% endif %}
                     <span class="hint">
                         {% for r in retires[1:] %}{{ r.year }}년 {{ r.people|length }}명{% if not loop.last %} · {% endif %}{% endfor %}
@@ -271,7 +275,7 @@
                 <div class="t">🛌 휴직 중 · 복직 예정</div>
                 <div class="n">{{ rests|length }}<small>명</small></div>
                 <div class="d">
-                    {% for r in rests[:6] %}<span class="pill">{{ r.name }}<i>~{{ r.end[4:6] }}/{{ r.end[6:] }}</i></span>{% endfor %}
+                    {% for r in rests[:6] %}{% if r.seq %}<a class="pill" href="/hr_employee/{{ r.seq }}">{{ r.name }}<i>{% if r.end and r.end != '99991231' %}~{{ r.end[4:6] }}/{{ r.end[6:] }}{% else %}복직 미정{% endif %}</i></a>{% else %}<span class="pill">{{ r.name }}</span>{% endif %}{% endfor %}
                     {% if not rests %}없음{% else %}<span class="hint">복직일이 가까운 순입니다</span>{% endif %}
                 </div>
             </div>
@@ -310,7 +314,7 @@
                         {% for o in orders %}
                             <tr>
                                 <td class="text-muted">{{ o.date[:4] }}-{{ o.date[4:6] }}-{{ o.date[6:] }}</td>
-                                <td class="fw-semibold">{{ o.name }}</td>
+                                <td class="fw-semibold">{% if o.seq %}<a class="name-link" href="/hr_employee/{{ o.seq }}">{{ o.name }}</a>{% else %}{{ o.name }}{% endif %}</td>
                                 <td><span class="dept-tag">{{ o.dept }}</span></td>
                                 <td class="text-muted">{{ o.note }}</td>
                             </tr>
@@ -333,7 +337,7 @@
                 {% for c in certs %}
                     <tr>
                         <td class="text-muted">{{ c.date[:4] }}-{{ c.date[4:6] }}-{{ c.date[6:] }}</td>
-                        <td class="fw-semibold">{{ c.name }}</td>
+                        <td class="fw-semibold">{% if c.seq %}<a class="name-link" href="/hr_employee/{{ c.seq }}">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}</td>
                         <td>{{ c.use }}</td>
                         <td class="text-muted">{{ c.to }}</td>
                         <td class="text-muted">{{ c.no }}</td>

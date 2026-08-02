@@ -5947,7 +5947,7 @@ def hr_status():
                 continue
             n = y - int(e["ent"][:4])
             if n in MILE:
-                people.append({"name": e["name"], "dept": e["dept"],
+                people.append({"name": e["name"], "dept": e["dept"], "seq": e["seq"],
                                "n": n, "date": e["ent"]})
         people.sort(key=lambda p: (-p["n"], p["date"]))
         miles.append({"year": y, "people": people})
@@ -5959,27 +5959,27 @@ def hr_status():
         people = []
         for e in act_emps:
             if e["birth"] and int(e["birth"][:4]) + RETIRE_AGE == y:
-                people.append({"name": e["name"], "dept": e["dept"],
+                people.append({"name": e["name"], "dept": e["dept"], "seq": e["seq"],
                                "birth": e["birth"], "age": e["age"]})
         people.sort(key=lambda p: p["birth"])
         retires.append({"year": y, "people": people})
 
     # 휴직 중 / 복직 예정
-    cur.execute("""SELECT r.emp_seq, e.name, e.dept_name, r.beg_date, r.end_date
+    cur.execute("""SELECT r.emp_seq, e.name, e.dept_name, r.beg_date, r.end_date, e.is_active
                      FROM hr_rests r LEFT JOIN hr_employees e ON e.emp_seq = r.emp_seq
                     WHERE r.beg_date <= %s AND (r.end_date = '' OR r.end_date >= %s)
                     ORDER BY r.end_date""", (ymd, ymd))
-    rests = [{"name": r[1] or "", "dept": r[2] or "", "beg": r[3], "end": r[4]}
-             for r in cur.fetchall()]
+    rests = [{"name": r[1] or "", "dept": r[2] or "", "beg": r[3], "end": r[4],
+              "seq": r[0] if r[5] else None} for r in cur.fetchall()]
 
     # 최근 발령
     cur.execute("SELECT COUNT(*) FROM hr_orders WHERE LEFT(ord_date,4)=%s", (str(year),))
     order_cnt = cur.fetchone()[0]
-    cur.execute("""SELECT o.ord_date, e.name, o.dept_name, o.contents
+    cur.execute("""SELECT o.ord_date, e.name, o.dept_name, o.contents, o.emp_seq, e.is_active
                      FROM hr_orders o LEFT JOIN hr_employees e ON e.emp_seq = o.emp_seq
                     ORDER BY o.ord_date DESC LIMIT 12""")
-    orders = [{"date": r[0], "name": r[1] or "", "dept": r[2] or "", "note": r[3] or ""}
-              for r in cur.fetchall()]
+    orders = [{"date": r[0], "name": r[1] or "", "dept": r[2] or "", "note": r[3] or "",
+               "seq": r[4] if r[5] else None} for r in cur.fetchall()]
 
     # 연도별 입·퇴사 추이 (최근 6년)
     trend = []
@@ -5995,11 +5995,13 @@ def hr_status():
     cur.execute("""SELECT COUNT(*) FROM hr_certificates WHERE LEFT(issue_date,4)=%s""",
                 (str(year),))
     cert_cnt = cur.fetchone()[0]
-    cur.execute("""SELECT c.issue_date, e.name, c.usage_txt, c.submit_to, c.issue_no
+    cur.execute("""SELECT c.issue_date, e.name, c.usage_txt, c.submit_to, c.issue_no,
+                          c.emp_seq, e.is_active
                      FROM hr_certificates c LEFT JOIN hr_employees e ON e.emp_seq=c.emp_seq
                     ORDER BY c.issue_date DESC LIMIT 10""")
     certs = [{"date": r[0], "name": r[1] or "", "use": r[2] or "",
-              "to": r[3] or "", "no": r[4] or ""} for r in cur.fetchall()]
+              "to": r[3] or "", "no": r[4] or "",
+              "seq": r[5] if r[6] else None} for r in cur.fetchall()]
 
     cur.execute("SELECT DATE_FORMAT(MAX(updated_at), '%Y-%m-%d %H:%i') FROM hr_employees")
     last_sync = cur.fetchone()[0]
@@ -6012,6 +6014,124 @@ def hr_status():
                            orders=orders, order_cnt=order_cnt,
                            trend=trend, trend_max=trend_max,
                            cert_cnt=cert_cnt, certs=certs, last_sync=last_sync,
+                           active_page="hr_status")
+
+
+@app.route("/hr_employee/<int:emp_seq>")
+@_admin_required
+def hr_employee(emp_seq):
+    """개인 인사카드 — 한 사람의 이력을 한 장으로 본다.
+
+    세 곳을 합친다.
+      · ERP(hr_*)          부서·입사일·생년월일·발령·부서이동·휴직·증명서
+      · 명부관리(roster)   직급·연락처·주소 — ERP 의 PosSeq 는 전원 0 이라 쓸 수 없다
+      · 태인(annual_leave) 연차 현황·사용 날짜
+
+    재직자만 본다 (2026-08-02 사용자 결정). 관리자 전용.
+    """
+    today = datetime.now().date()
+    ymd = today.strftime("%Y%m%d")
+    year = today.year
+    conn = _conn(); cur = conn.cursor()
+
+    cur.execute("""SELECT emp_seq, empid, name, dept_name, ent_date, retire_date,
+                          birth_date, sex, t_uid, is_active
+                     FROM hr_employees WHERE emp_seq=%s""", (emp_seq,))
+    row = cur.fetchone()
+    if not row or not row[9]:
+        conn.close()
+        flash("재직자만 조회할 수 있습니다.", "warning")
+        return redirect(url_for("hr_status"))
+
+    def yrs(d8, base=ymd):
+        if not d8 or len(d8) != 8:
+            return None
+        y = int(base[:4]) - int(d8[:4])
+        if base[4:8] < d8[4:8]:
+            y -= 1
+        return y
+
+    def months_between(d8, base=ymd):
+        if not d8 or len(d8) != 8:
+            return None
+        return ((int(base[:4]) - int(d8[:4])) * 12 + int(base[4:6]) - int(d8[4:6])
+                - (1 if base[6:8] < d8[6:8] else 0))
+
+    m = months_between(row[4])
+    emp = {
+        "seq": row[0], "empid": row[1], "name": row[2] or "",
+        "dept": row[3] or "미지정", "ent": row[4] or "", "birth": row[6] or "",
+        "sex": row[7] or "", "t_uid": row[8],
+        "years": yrs(row[4]), "age": yrs(row[6]),
+        "svc": ("%d년 %d개월" % (m // 12, m % 12)) if m is not None else "",
+    }
+
+    # 명부관리 — ERP 에 없는 직급·연락처 (사번으로 맞춘다)
+    cur.execute("""SELECT position, phone, email, address, gender, dept
+                     FROM employee_roster WHERE emp_no=%s LIMIT 1""", (emp["empid"],))
+    r = cur.fetchone()
+    roster = ({"pos": r[0] or "", "phone": r[1] or "", "email": r[2] or "",
+               "addr": r[3] or "", "gender": r[4] or "", "dept": r[5] or ""}
+              if r else {})
+
+    # 이력 — 입사·부서이동·발령·휴직을 한 줄로 모은다
+    events = []
+    if emp["ent"]:
+        events.append({"date": emp["ent"], "kind": "입사", "title": "입사",
+                       "note": emp["dept"], "tone": "in"})
+    cur.execute("""SELECT beg_date, end_date, dept_name FROM hr_dept_moves
+                    WHERE emp_seq=%s ORDER BY beg_date""", (emp_seq,))
+    for beg, end, dept in cur.fetchall():
+        events.append({"date": beg, "kind": "부서", "title": dept or "부서 이동",
+                       "note": ("~ %s" % end if end and end != "99991231" else "현재"),
+                       "tone": "dept"})
+    cur.execute("""SELECT ord_date, dept_name, contents, remark FROM hr_orders
+                    WHERE emp_seq=%s ORDER BY ord_date""", (emp_seq,))
+    orders = []
+    for d, dept, ct, rm in cur.fetchall():
+        orders.append({"date": d, "dept": dept or "", "note": (ct or "").strip(),
+                       "remark": (rm or "").strip()})
+        events.append({"date": d, "kind": "발령", "title": dept or "발령",
+                       "note": (ct or "").strip()[:80], "tone": "ord"})
+    cur.execute("""SELECT beg_date, end_date, is_ret, remark FROM hr_rests
+                    WHERE emp_seq=%s ORDER BY beg_date""", (emp_seq,))
+    rests = []
+    for beg, end, isret, rm in cur.fetchall():
+        on_now = beg <= ymd <= (end or "99991231")
+        rests.append({"beg": beg, "end": end or "", "now": on_now, "remark": rm or ""})
+        events.append({"date": beg, "kind": "휴직", "title": "휴직 시작", "tone": "rest",
+                       "note": ("복직 예정 %s" % end
+                                if end and end != "99991231" else "복직일 미정")})
+    events.sort(key=lambda e: e["date"], reverse=True)
+
+    cur.execute("""SELECT issue_date, issue_no, usage_txt, submit_to
+                     FROM hr_certificates WHERE emp_seq=%s ORDER BY issue_date DESC""",
+                (emp_seq,))
+    certs = [{"date": c[0], "no": c[1] or "", "use": c[2] or "", "to": c[3] or ""}
+             for c in cur.fetchall()]
+
+    # 연차 — 태인 시스템 값 (ERP 동기화 결과)
+    leave, leave_days = None, []
+    if emp["t_uid"]:
+        cur.execute("""SELECT generated, total, used, deduct_prev, IFNULL(memo,'')
+                         FROM annual_leave WHERE e_id=%s AND year=%s""",
+                    (emp["t_uid"], year))
+        lv = cur.fetchone()
+        if lv:
+            leave = {"generated": float(lv[0] or 0), "total": float(lv[1] or 0),
+                     "used": float(lv[2] or 0), "prev": float(lv[3] or 0),
+                     "rest": float(lv[1] or 0) - float(lv[2] or 0), "memo": lv[4]}
+            leave["rate"] = (leave["used"] / leave["total"] * 100) if leave["total"] else 0
+        cur.execute("""SELECT leave_date, leave_type FROM leave_records
+                        WHERE e_id=%s AND LEFT(leave_date,4)=%s AND status='승인'
+                        ORDER BY leave_date""", (emp["t_uid"], str(year)))
+        leave_days = [{"date": d, "type": t} for d, t in cur.fetchall()]
+
+    conn.close()
+    return render_template("hr_employee.html",
+                           year=year, emp=emp, roster=roster, events=events,
+                           orders=orders, rests=rests, certs=certs,
+                           leave=leave, leave_days=leave_days,
                            active_page="hr_status")
 
 

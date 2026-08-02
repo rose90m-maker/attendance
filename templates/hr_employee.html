@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ emp.name }} · 인사카드</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        :root {
+            --ink:#0f172a; --sub:#64748b; --faint:#94a3b8;
+            --line:#e8edf4; --brand:#2563eb; --brand-dk:#1e40af;
+            --ok:#16a34a; --warn:#f59e0b; --bad:#dc2626;
+        }
+        .hc-wrap { max-width:1200px; }
+        .hc-top { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+        .back-link { color:var(--sub); text-decoration:none; font-size:.85rem; font-weight:600; }
+        .back-link:hover { color:var(--brand-dk); }
+
+        .panel {
+            background:#fff; border:1px solid var(--line); border-radius:16px;
+            padding:18px 20px; height:100%;
+            box-shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px -18px rgba(15,23,42,.35);
+        }
+        .panel h6 {
+            font-weight:700; color:var(--ink); font-size:.92rem;
+            margin:0 0 14px; display:flex; align-items:center; gap:7px;
+        }
+        .panel h6 .tag { font-size:.72rem; font-weight:600; color:var(--faint); margin-left:auto; }
+
+        /* 명함 */
+        .card-hero {
+            border-radius:16px; padding:22px 24px; color:#fff;
+            background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 62%,#3b82f6 100%);
+            box-shadow:0 10px 30px -14px rgba(30,64,175,.6);
+            display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+        }
+        .avatar {
+            width:72px; height:72px; border-radius:20px; flex:none;
+            background:rgba(255,255,255,.18); display:flex; align-items:center;
+            justify-content:center; font-size:1.7rem; font-weight:800; letter-spacing:-.02em;
+        }
+        .card-hero .nm { font-size:1.5rem; font-weight:800; letter-spacing:-.02em; line-height:1.15; }
+        .card-hero .sub { font-size:.82rem; opacity:.88; margin-top:3px; }
+        .chip {
+            display:inline-block; background:rgba(255,255,255,.16); border-radius:999px;
+            padding:4px 12px; font-size:.76rem; margin:9px 5px 0 0; white-space:nowrap;
+        }
+
+        /* 기본정보 */
+        .kv { display:grid; grid-template-columns:86px 1fr; gap:6px 10px; font-size:.85rem; }
+        .kv dt { color:var(--sub); font-weight:600; }
+        .kv dd { margin:0; color:var(--ink); word-break:break-all; }
+        .kv dd.empty { color:var(--faint); }
+
+        /* 타임라인 */
+        .tl { position:relative; padding-left:22px; }
+        .tl::before { content:""; position:absolute; left:6px; top:4px; bottom:4px; width:2px; background:#eef2f7; }
+        .tl-item { position:relative; padding:0 0 16px 4px; }
+        .tl-item::before {
+            content:""; position:absolute; left:-20px; top:5px;
+            width:10px; height:10px; border-radius:50%; background:#cbd5e1;
+            box-shadow:0 0 0 3px #fff;
+        }
+        .tl-item.in::before   { background:var(--ok); }
+        .tl-item.dept::before { background:var(--brand); }
+        .tl-item.ord::before  { background:#8b5cf6; }
+        .tl-item.rest::before { background:var(--warn); }
+        .tl-d { font-size:.74rem; color:var(--faint); font-variant-numeric:tabular-nums; }
+        .tl-t { font-size:.88rem; font-weight:600; color:var(--ink); margin-top:1px; }
+        .tl-n { font-size:.78rem; color:var(--sub); margin-top:2px; white-space:pre-line; }
+        .kind {
+            display:inline-block; font-size:.68rem; font-weight:700; border-radius:5px;
+            padding:1px 6px; margin-left:6px; vertical-align:2px;
+        }
+        .kind.in   { background:#dcfce7; color:#15803d; }
+        .kind.dept { background:#dbeafe; color:#1d4ed8; }
+        .kind.ord  { background:#ede9fe; color:#6d28d9; }
+        .kind.rest { background:#fef3c7; color:#b45309; }
+
+        /* 연차 */
+        .lv-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
+        .lv-box { background:#f8fafc; border:1px solid var(--line); border-radius:11px; padding:9px 11px; text-align:center; }
+        .lv-box .l { font-size:.72rem; color:var(--sub); }
+        .lv-box .v { font-size:1.15rem; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums; }
+        .lv-box.hi { background:linear-gradient(135deg,#1e40af,#2563eb); border-color:#1e40af; }
+        .lv-box.hi .l, .lv-box.hi .v { color:#fff; }
+        .track { background:#f1f5f9; border-radius:999px; height:9px; overflow:hidden; }
+        .track > i { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#4ade80,#16a34a); }
+        .day-pill {
+            display:inline-block; background:#eef2ff; color:#3730a3; border-radius:8px;
+            padding:3px 9px; margin:0 5px 5px 0; font-size:.76rem; font-variant-numeric:tabular-nums;
+        }
+        .day-pill.half { background:#fef3c7; color:#b45309; }
+
+        .hc-table { width:100%; border-collapse:separate; border-spacing:0; font-size:.84rem; }
+        .hc-table th {
+            background:#f8fafc; color:var(--sub); font-weight:600; font-size:.74rem;
+            padding:9px 11px; border-bottom:1px solid var(--line); white-space:nowrap;
+        }
+        .hc-table td { padding:9px 11px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+        .hc-table tbody tr:hover td { background:#f8fbff; }
+        .badge-now { background:#fef3c7; color:#b45309; border-radius:6px; padding:2px 7px; font-size:.72rem; font-weight:700; }
+
+        .note { font-size:.78rem; color:var(--faint); padding:10px 2px; }
+
+        @media print {
+            .sidebar, .hc-top, .no-print { display:none !important; }
+            body { background:#fff; }
+            .panel, .card-hero { box-shadow:none; break-inside:avoid; }
+            .card-hero { background:#1e40af !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        }
+    </style>
+</head>
+<body>
+
+{% include '_sidebar.html' %}
+
+<div class="container-fluid px-3 mt-4 hc-wrap">
+
+    <div class="hc-top">
+        <a href="/hr_status" class="back-link">← 인사현황</a>
+        <button class="btn btn-sm btn-outline-secondary ms-auto no-print" onclick="window.print()">🖨 인쇄</button>
+    </div>
+
+    <!-- 명함 -->
+    <div class="card-hero mb-3">
+        <div class="avatar">{{ emp.name[:1] }}</div>
+        <div>
+            <div class="nm">{{ emp.name }}
+                {% if roster.pos %}<span style="font-size:1rem;font-weight:600;opacity:.9">{{ roster.pos }}</span>{% endif %}
+            </div>
+            <div class="sub">{{ emp.dept }} · 사번 {{ emp.empid }}</div>
+            <div>
+                <span class="chip">근속 {{ emp.svc }}</span>
+                {% if emp.age is not none %}<span class="chip">만 {{ emp.age }}세</span>{% endif %}
+                {% if emp.sex %}<span class="chip">{{ emp.sex }}</span>{% endif %}
+                {% if leave %}<span class="chip">남은 연차 {{ '%.1f'|format(leave.rest) }}일</span>{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <!-- 기본정보 -->
+        <div class="col-12 col-lg-4">
+            <div class="panel">
+                <h6>📇 기본 정보 <span class="tag">ERP · 명부관리</span></h6>
+                <dl class="kv">
+                    <dt>사번</dt><dd>{{ emp.empid }}</dd>
+                    <dt>부서</dt><dd>{{ emp.dept }}</dd>
+                    <dt>직급</dt>
+                    <dd class="{% if not roster.pos %}empty{% endif %}">{{ roster.pos or '명부관리에 없음' }}</dd>
+                    <dt>입사일</dt>
+                    <dd>{% if emp.ent %}{{ emp.ent[:4] }}-{{ emp.ent[4:6] }}-{{ emp.ent[6:] }}
+                        <span class="text-muted">({{ emp.svc }})</span>{% else %}—{% endif %}</dd>
+                    <dt>생년월일</dt>
+                    <dd class="{% if not emp.birth %}empty{% endif %}">
+                        {% if emp.birth %}{{ emp.birth[:4] }}-{{ emp.birth[4:6] }}-{{ emp.birth[6:] }}
+                        <span class="text-muted">(만 {{ emp.age }}세)</span>{% else %}ERP에 없음{% endif %}</dd>
+                    <dt>연락처</dt>
+                    <dd class="{% if not roster.phone %}empty{% endif %}">{{ roster.phone or '명부관리에 없음' }}</dd>
+                    <dt>이메일</dt>
+                    <dd class="{% if not roster.email %}empty{% endif %}">{{ roster.email or '명부관리에 없음' }}</dd>
+                    <dt>주소</dt>
+                    <dd class="{% if not roster.addr %}empty{% endif %}">{{ roster.addr or '명부관리에 없음' }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <!-- 연차 -->
+        <div class="col-12 col-lg-8">
+            <div class="panel">
+                <h6>🌴 {{ year }}년 연차 <span class="tag">
+                    {% if leave and leave.memo %}{{ leave.memo }}{% else %}ERP 입력 기준{% endif %}</span></h6>
+                {% if leave %}
+                <div class="lv-grid">
+                    <div class="lv-box"><div class="l">발생연차</div><div class="v">{{ '%.0f'|format(leave.generated) }}</div></div>
+                    <div class="lv-box"><div class="l">쓸 수 있는 연차</div><div class="v">{{ '%.0f'|format(leave.total) }}</div></div>
+                    <div class="lv-box"><div class="l">쓴 연차</div><div class="v">{{ '%.1f'|format(leave.used) }}</div></div>
+                    <div class="lv-box hi"><div class="l">남은 연차</div><div class="v">{{ '%.1f'|format(leave.rest) }}</div></div>
+                </div>
+                <div class="track mb-2"><i style="width:{{ leave.rate if leave.rate <= 100 else 100 }}%"></i></div>
+                <div class="small text-muted mb-3">사용률 {{ '%.0f'|format(leave.rate) }}%
+                    {% if leave.prev %} · 전년도 차감 {{ '%.1f'|format(leave.prev) }}일{% endif %}</div>
+
+                {% if leave_days %}
+                <div style="font-size:.8rem;color:var(--sub);margin-bottom:6px">쓴 날짜 {{ leave_days|length }}건</div>
+                <div>
+                    {% for d in leave_days %}
+                    <span class="day-pill {% if d.type == '반차' %}half{% endif %}">{{ d.date[4:6] }}/{{ d.date[6:] }}{% if d.type != '연차' %} {{ d.type }}{% endif %}</span>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-muted small">올해 쓴 날짜 기록이 없습니다.</div>
+                {% endif %}
+                {% else %}
+                <div class="text-muted small">연차 자료가 연결되지 않았습니다 (사번 매칭 실패).</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <!-- 이력 -->
+        <div class="col-12 col-lg-6">
+            <div class="panel">
+                <h6>🕘 이력 <span class="tag">최근 순 {{ events|length }}건</span></h6>
+                <div class="tl" style="max-height:460px;overflow-y:auto">
+                    {% for e in events %}
+                    <div class="tl-item {{ e.tone }}">
+                        <div class="tl-d">{{ e.date[:4] }}-{{ e.date[4:6] }}-{{ e.date[6:] }}</div>
+                        <div class="tl-t">{{ e.title }}<span class="kind {{ e.tone }}">{{ e.kind }}</span></div>
+                        {% if e.note %}<div class="tl-n">{{ e.note }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+                    {% if not events %}<div class="text-muted small">이력이 없습니다.</div>{% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 휴직 · 증명서 -->
+        <div class="col-12 col-lg-6">
+            <div class="panel mb-3">
+                <h6>🛌 휴직 <span class="tag">{{ rests|length }}건</span></h6>
+                <table class="hc-table">
+                    <thead><tr><th>시작</th><th>종료</th><th>상태</th><th>비고</th></tr></thead>
+                    <tbody>
+                    {% for r in rests %}
+                        <tr>
+                            <td>{{ r.beg[:4] }}-{{ r.beg[4:6] }}-{{ r.beg[6:] }}</td>
+                            <td>{% if r.end and r.end != '99991231' %}{{ r.end[:4] }}-{{ r.end[4:6] }}-{{ r.end[6:] }}{% else %}<span class="text-muted">미정</span>{% endif %}</td>
+                            <td>{% if r.now %}<span class="badge-now">휴직 중</span>{% else %}<span class="text-muted">종료</span>{% endif %}</td>
+                            <td class="text-muted">{{ r.remark }}</td>
+                        </tr>
+                    {% endfor %}
+                    {% if not rests %}<tr><td colspan="4" class="text-center text-muted py-3">없음</td></tr>{% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="panel">
+                <h6>📄 증명서 발급 <span class="tag">{{ certs|length }}건</span></h6>
+                <div style="max-height:230px;overflow-y:auto">
+                <table class="hc-table">
+                    <thead><tr><th>발급일</th><th>용도</th><th>제출처</th><th>발급번호</th></tr></thead>
+                    <tbody>
+                    {% for c in certs %}
+                        <tr>
+                            <td>{{ c.date[:4] }}-{{ c.date[4:6] }}-{{ c.date[6:] }}</td>
+                            <td>{{ c.use }}</td>
+                            <td class="text-muted">{{ c.to }}</td>
+                            <td class="text-muted">{{ c.no }}</td>
+                        </tr>
+                    {% endfor %}
+                    {% if not certs %}<tr><td colspan="4" class="text-center text-muted py-3">없음</td></tr>{% endif %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="note mb-4">
+        ERP · 명부관리 · 연차관리를 합쳐 보여줍니다. 관리자만 볼 수 있고, 재직자만 조회됩니다.
+    </div>
+
+</div>
+</body>
+</html>
