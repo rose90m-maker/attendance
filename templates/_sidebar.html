@@ -84,8 +84,34 @@
     transition:max-height .3s ease;
     background:rgba(0,0,0,0.15);
 }
-.sidebar .nav-group-items.open { max-height:600px; }
+.sidebar .nav-group-items.open { max-height:900px; }   /* 3차 그룹이 들어가 길어져서 올림 */
 .sidebar .nav-group-items .side-link { padding-left:48px; font-size:0.8rem; }
+
+/* ── 3차 하위 그룹 (통합관제 > 배차관리 > …) ──
+   2차용 .nav-group-* 과 섞이면 부모까지 같이 접히므로 클래스를 따로 둔다 */
+.sidebar .nav-sub-toggle {
+    display:flex; align-items:center; width:100%;
+    background:transparent; border:none; text-align:left;
+    padding:8px 18px 8px 44px; margin:0;
+    font-size:0.8rem; font-weight:600; color:rgba(255,255,255,0.62);
+    cursor:pointer; transition:background .15s, color .15s;
+}
+.sidebar .nav-sub-toggle:hover { background:rgba(255,255,255,0.05); color:#fff; }
+.sidebar .nav-sub-toggle .sl-icon { width:18px; text-align:center; margin-right:8px; flex-shrink:0; }
+.sidebar .nav-sub-toggle .ns-label { flex:1; }
+.sidebar .nav-sub-toggle .ns-arrow {
+    font-size:0.6rem; color:rgba(255,255,255,0.35);
+    transition:transform .25s; display:inline-block; width:12px; text-align:center;
+}
+.sidebar .nav-sub-toggle.open .ns-arrow { transform:rotate(90deg); color:rgba(255,255,255,0.6); }
+.sidebar .nav-sub-toggle.has-active { color:#fff; }
+.sidebar .nav-sub-toggle.has-active .ns-arrow { color:#58a6ff; }
+.sidebar .nav-sub-items {
+    overflow:hidden; max-height:0; transition:max-height .25s ease;
+    background:rgba(0,0,0,0.18);
+}
+.sidebar .nav-sub-items.open { max-height:400px; }
+.sidebar .nav-sub-items .side-link { padding-left:68px; font-size:0.78rem; }
 
 .sidebar .side-group-divider { height:4px; }
 </style>
@@ -104,9 +130,14 @@
         <a href="/meal_management" class="side-link{% if active_page == 'meal_management' %} active{% endif %}"><span class="sl-icon">🍽️</span>식수관리</a>
         {% endif %}
         {% if is_admin or 'bus' in session.get('permissions','') %}
-        <a href="/bus_members" class="side-link{% if active_page == 'bus_members' %} active{% endif %}"><span class="sl-icon">🚌</span>탑승자 명단</a>
-        <a href="/bus_dispatch" class="side-link{% if active_page == 'bus_dispatch' %} active{% endif %}"><span class="sl-icon">📋</span>배차조회</a>
-        <a href="/bus_sms_log" class="side-link{% if active_page == 'bus_sms_log' %} active{% endif %}"><span class="sl-icon">💬</span>발송이력</a>
+        <button class="nav-sub-toggle" data-sub="sub-bus">
+            <span class="sl-icon">🚌</span><span class="ns-label">배차관리</span><span class="ns-arrow">▸</span>
+        </button>
+        <div class="nav-sub-items" data-sub="sub-bus">
+            <a href="/bus_members" class="side-link{% if active_page == 'bus_members' %} active{% endif %}"><span class="sl-icon">🚌</span>탑승자 명단</a>
+            <a href="/bus_dispatch" class="side-link{% if active_page == 'bus_dispatch' %} active{% endif %}"><span class="sl-icon">📋</span>배차조회</a>
+            <a href="/bus_sms_log" class="side-link{% if active_page == 'bus_sms_log' %} active{% endif %}"><span class="sl-icon">💬</span>발송이력</a>
+        </div>
         {% endif %}
         {% if is_admin or 'guard' in session.get('permissions','') %}
         <a href="/guard" class="side-link{% if active_page == 'guard' %} active{% endif %}"><span class="sl-icon">🌙</span>경비일지</a>
@@ -412,6 +443,35 @@ setInterval(checkNotiCount, 30000);
             // 클릭 시 즉시 열림 (모바일·데스크탑 공통)
             btn.addEventListener('click', openGroup);
         }
+    });
+
+    // 3차 하위 그룹 — 클릭으로만 여닫는다.
+    // hover 로 열면 지나갈 때마다 펄럭이고, 부모(2차) 로직과도 부딪힌다.
+    document.querySelectorAll('.sidebar .nav-sub-toggle').forEach(function(sub){
+        var key = sub.dataset.sub;
+        var box = document.querySelector('.sidebar .nav-sub-items[data-sub="'+key+'"]');
+        if (!box) return;
+
+        // 지금 보고 있는 화면이 이 안에 있으면 3차·2차·1차를 모두 펼쳐 둔다
+        if (box.querySelector('.side-link.active')) {
+            sub.classList.add('has-active', 'open');
+            box.classList.add('open');
+            var parentItems = sub.closest('.nav-group-items');
+            if (parentItems) {
+                parentItems.classList.add('open');
+                var g = parentItems.dataset.group;
+                var parentBtn = document.querySelector(
+                    '.sidebar .nav-group-toggle[data-group="'+g+'"]');
+                if (parentBtn) parentBtn.classList.add('has-active', 'open');
+            }
+        }
+
+        sub.addEventListener('click', function(e){
+            e.stopPropagation();          // 부모 그룹이 같이 접히지 않게
+            var willOpen = !box.classList.contains('open');
+            sub.classList.toggle('open', willOpen);
+            box.classList.toggle('open', willOpen);
+        });
     });
 })();
 
