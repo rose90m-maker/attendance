@@ -1508,6 +1508,10 @@ def _has_perm(perm):
 MENU_STRUCTURE = [
     ("dashboard", None, "대시보드", ["view"]),
 
+    # 통합관제는 사이드바 맨 위 그룹이다. 식수관리를 여기로 옮겼다 (2026-08-02).
+    ("cat_control", None, "통합관제", []),
+    ("meal_mgmt", "cat_control", "식수관리", ["view", "create", "update", "delete"]),
+
     ("cat_attendance", None, "근태관리", []),
     ("attendance_record", "cat_attendance", "근태기록", ["view"]),
     ("weekly52", "cat_attendance", "주52시간", ["view"]),
@@ -1523,7 +1527,6 @@ MENU_STRUCTURE = [
     ("hr_status", "cat_hr", "인사현황", ["view"]),
     ("hr_vehicle", "cat_hr", "차량현황", ["view"]),
     ("welfare", "cat_hr", "복지혜택", ["view"]),
-    ("meal_mgmt", "cat_hr", "식수관리", ["view", "create", "update", "delete"]),
     ("work_report", "cat_hr", "근무보고서", ["view", "create", "update", "delete"]),
     ("document_mgmt", "cat_hr", "공문서관리", ["view", "create", "update", "delete"]),
 
