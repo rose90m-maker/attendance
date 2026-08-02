@@ -13,6 +13,9 @@ ERP 가 원본이다. 태인 시스템은 조회·집계만 한다. 연차(erp_l
     복호화할 방법이 없으므로 아예 가져오지 않는다.
     생년월일은 _TDAEmpIn.BirthDate 에 평문으로 따로 있어 이것만 쓴다 (재직 161명 중 160명).
   · 직급(PosSeq)은 전원 0 이라 쓰지 않는다. 부서만 쓴다.
+  · 사번(Empid)이 없는 사람은 가져오지 않는다. 우리 직원이 아니다 —
+    2026-08-02 급여명세서로 확인했다. ERP 재직 161명 중 급여를 받는 사람은 160명이고,
+    나머지 한 명(박상선)은 사번도 없고 명부관리에도 없는 업체 개발자다.
   · 표 전체를 매번 갈아끼운다. 자료가 8천 행 남짓이라 증분이 필요 없다.
 
 사용
@@ -126,8 +129,12 @@ def fetch_erp():
           LEFT JOIN _TDADept  d ON d.DeptSeq = e.DeptSeq
           LEFT JOIN _TDAEmpIn i ON i.EmpSeq  = e.EmpSeq
     """)
+    # 사번이 없는 사람은 우리 직원이 아니다 (ERP 에 등록만 되어 있는 외부 인력).
+    # 급여명세서로 확인 — 2026-07 급여 받은 160명은 전원 사번이 있고,
+    # 사번 없는 사람은 급여도 없고 명부관리에도 없다 (2026-08-02 사용자 결정).
     emps = [(int(r[0]), s(r[1]), s(r[2]), int(r[3] or 0), s(r[4]),
-             s(r[5]), s(r[6]), s(r[7]), SEX.get(s(r[8]), "")) for r in cur.fetchall()]
+             s(r[5]), s(r[6]), s(r[7]), SEX.get(s(r[8]), ""))
+            for r in cur.fetchall() if s(r[1])]
 
     cur.execute("""
         SELECT o.EmpSeq, o.IntSeq, o.OrdSeq, o.OrdDate, d.DeptName, o.Contents, o.Remark

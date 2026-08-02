@@ -6003,11 +6003,34 @@ def hr_status():
               "to": r[3] or "", "no": r[4] or "",
               "seq": r[5] if r[6] else None} for r in cur.fetchall()]
 
+    # 전체 재직자 명단 — 이름을 누르면 인사카드로 간다.
+    # 직급은 ERP 에 없어(PosSeq 전원 0) 명부관리에서, 연차는 태인에서 가져온다.
+    cur.execute("""SELECT h.emp_seq, h.empid, h.name, h.dept_name, h.ent_date,
+                          h.birth_date, h.sex, r.position, a.total, a.used
+                     FROM hr_employees h
+                     LEFT JOIN employee_roster r ON r.emp_no = h.empid
+                     LEFT JOIN annual_leave a ON a.e_id = h.t_uid AND a.year = %s
+                    WHERE h.is_active = 1
+                    ORDER BY h.dept_name, h.ent_date""", (year,))
+    roster = []
+    for r in cur.fetchall():
+        tot, used = float(r[8] or 0), float(r[9] or 0)
+        roster.append({
+            "seq": r[0], "empid": r[1] or "", "name": r[2] or "",
+            "dept": r[3] or "미지정", "ent": r[4] or "",
+            "pos": r[7] or "", "sex": r[6] or "",
+            "years": years_between(r[4]) if r[4] else None,
+            "age": years_between(r[5]) if r[5] else None,
+            "rest": (tot - used) if tot else None,
+        })
+    roster_depts = sorted({p["dept"] for p in roster})
+
     cur.execute("SELECT DATE_FORMAT(MAX(updated_at), '%Y-%m-%d %H:%i') FROM hr_employees")
     last_sync = cur.fetchone()[0]
     conn.close()
 
     return render_template("hr_status.html",
+                           roster=roster, roster_depts=roster_depts,
                            year=year, s=s, bands=bands, band_max=band_max,
                            depts=depts, dept_max=dept_max, miles=miles,
                            retires=retires, retire_age=RETIRE_AGE, rests=rests,
