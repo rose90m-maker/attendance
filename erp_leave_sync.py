@@ -33,9 +33,12 @@ from dotenv import load_dotenv
 BASE = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE, ".env"))
 
-VAC_ITEMS = (1001, 1009)          # 연차 · 반차 — 연차 사용량으로 집계
-DTL_ITEMS = (1001, 1009, 1011)    # + 경조 — 날짜별 기록에는 남긴다
-ITEM_NAME = {1001: "연차", 1009: "반차", 1011: "경조"}
+# 연차에서 차감되는 항목. AppDay 가 연차 1.0 / 반차 0.5 / 반반차 0.25 로 들어온다.
+# 반반차(1010)는 아직 쓰인 적이 없지만, 나중에 쓰면 조용히 빠지므로 미리 넣어 둔다.
+VAC_ITEMS = (1001, 1009, 1010)
+# + 경조 — 연차에서 차감하지는 않고 달력에만 표시한다
+DTL_ITEMS = (1001, 1009, 1010, 1011)
+ITEM_NAME = {1001: "연차", 1009: "반차", 1010: "반반차", 1011: "경조"}
 GRANT_TYPE = 5043001              # SMYyType — 같은 연도에 다른 유형 행이 또 있다
 
 # 연차를 관리하지 않는 부서 (tuser.company 코드) — 동기화 대상에서 뺀다
@@ -81,7 +84,7 @@ def fetch_erp(year):
         SELECT e.Empid, d.VacDate, d.WkItemSeq, d.AppDay
           FROM _TXPRWkVactionAppDtl d JOIN _TDAEmp e ON e.EmpSeq = d.EmpSeq
          WHERE ISNULL(d.IsCancel,'0') <> '1' AND LEFT(d.VacDate,4) = %s
-           AND d.WkItemSeq IN (1001, 1009, 1011)
+           AND d.WkItemSeq IN (""" + ",".join(str(i) for i in DTL_ITEMS) + """)
          ORDER BY e.Empid, d.VacDate
     """, (yy,))
     detail = [(str(r[0]).strip(), str(r[1]).strip(), int(r[2]), float(r[3] or 0))
