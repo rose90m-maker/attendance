@@ -5967,9 +5967,11 @@ def hr_status():
         retires.append({"year": y, "people": people})
 
     # 휴직 중 / 복직 예정
+    # 복직이 ERP 에 입력 안 된 사람이 있어, 출근기록으로 추정한 ret_guess 가 있으면 뺀다
     cur.execute("""SELECT r.emp_seq, e.name, e.dept_name, r.beg_date, r.end_date, e.is_active
                      FROM hr_rests r LEFT JOIN hr_employees e ON e.emp_seq = r.emp_seq
                     WHERE r.beg_date <= %s AND (r.end_date = '' OR r.end_date >= %s)
+                      AND IFNULL(r.ret_guess,'') = ''
                     ORDER BY r.end_date""", (ymd, ymd))
     rests = [{"name": r[1] or "", "dept": r[2] or "", "beg": r[3], "end": r[4],
               "seq": r[0] if r[5] else None} for r in cur.fetchall()]
@@ -6179,15 +6181,19 @@ def hr_employee(emp_seq):
                        "remark": (rm or "").strip()})
         events.append({"date": d, "kind": "발령", "title": dept or "발령",
                        "note": (ct or "").strip()[:80], "tone": "ord"})
-    cur.execute("""SELECT beg_date, end_date, is_ret, remark FROM hr_rests
-                    WHERE emp_seq=%s ORDER BY beg_date""", (emp_seq,))
+    cur.execute("""SELECT beg_date, end_date, is_ret, remark, ret_guess, ret_days
+                     FROM hr_rests WHERE emp_seq=%s ORDER BY beg_date""", (emp_seq,))
     rests = []
-    for beg, end, isret, rm in cur.fetchall():
-        on_now = beg <= ymd <= (end or "99991231")
-        rests.append({"beg": beg, "end": end or "", "now": on_now, "remark": rm or ""})
+    for beg, end, isret, rm, guess, gdays in cur.fetchall():
+        on_now = (beg <= ymd <= (end or "99991231")) and not guess
+        rests.append({"beg": beg, "end": end or "", "now": on_now, "remark": rm or "",
+                      "guess": guess or "", "gdays": gdays or 0})
         events.append({"date": beg, "kind": "휴직", "title": "휴직 시작", "tone": "rest",
                        "note": ("복직 예정 %s" % end
                                 if end and end != "99991231" else "복직일 미정")})
+        if guess:
+            events.append({"date": guess, "kind": "복직", "title": "복직 (출근기록 기준)",
+                           "tone": "in", "note": "ERP 에는 복직 처리가 안 되어 있습니다"})
     events.sort(key=lambda e: e["date"], reverse=True)
 
     cur.execute("""SELECT issue_date, issue_no, usage_txt, submit_to

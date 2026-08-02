@@ -235,9 +235,11 @@
                     {% for r in rests %}
                         <tr>
                             <td>{{ r.beg[:4] }}-{{ r.beg[4:6] }}-{{ r.beg[6:] }}</td>
-                            <td>{% if r.end and r.end != '99991231' %}{{ r.end[:4] }}-{{ r.end[4:6] }}-{{ r.end[6:] }}{% else %}<span class="text-muted">미정</span>{% endif %}</td>
+                            <td>{% if r.end and r.end != '99991231' %}{{ r.end[:4] }}-{{ r.end[4:6] }}-{{ r.end[6:] }}
+                                {% elif r.guess %}{{ r.guess[:4] }}-{{ r.guess[4:6] }}-{{ r.guess[6:] }}<span class="text-muted" style="font-size:.72rem"> 추정</span>
+                                {% else %}<span class="text-muted">미정</span>{% endif %}</td>
                             <td>{% if r.now %}<span class="badge-now">휴직 중</span>{% else %}<span class="text-muted">종료</span>{% endif %}</td>
-                            <td class="text-muted">{{ r.remark }}</td>
+                            <td class="text-muted">{% if r.guess %}출근기록 {{ r.gdays }}일 — ERP 미처리{% else %}{{ r.remark }}{% endif %}</td>
                         </tr>
                     {% endfor %}
                     {% if not rests %}<tr><td colspan="4" class="text-center text-muted py-3">없음</td></tr>{% endif %}

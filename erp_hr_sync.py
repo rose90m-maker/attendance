@@ -21,6 +21,12 @@ ERP 가 원본이다. 태인 시스템은 조회·집계만 한다. 연차(erp_l
     2026-08-02 급여명세서로 확인했다. ERP 재직 161명 중 급여를 받는 사람은 160명이고,
     나머지 한 명(박상선)은 사번도 없고 명부관리에도 없는 업체 개발자다.
   · 표 전체를 매번 갈아끼운다. 자료가 8천 행 남짓이라 증분이 필요 없다.
+  · 휴직 복직 처리가 ERP 에서 안 되는 일이 잦다 (김응진 님은 2023-03 복직인데
+    2026-08 까지 '휴직 중'으로 남아 있었다). 그래서 출퇴근 기록(tenter)을 보고
+    복직을 추정해 hr_rests.ret_guess 에 따로 적는다. ERP 값(is_ret/end_date)은
+    건드리지 않는다 — 나중에 ERP 에 제대로 입력돼도 부딪히지 않는다.
+    판정: 휴직 시작일 이후 출근한 날이 RET_MIN_DAYS 일 이상이면 복직으로 보고,
+          그 구간의 첫 출근일을 복직일로 본다.
 
 사용
   python erp_hr_sync.py            # 검증 모드 — 아무것도 쓰지 않고 결과만 출력
@@ -41,6 +47,7 @@ load_dotenv(os.path.join(BASE, ".env"))
 ACTIVE = "99991231"          # 재직자의 RetireDate
 SEX = {"1010001": "남", "1010002": "여"}   # _TDAEmpIn.SMSexSeq
 CAR_SERL = 1000001                        # _TDAEmpUserDefine 의 '차량번호' 항목
+RET_MIN_DAYS = 5                          # 휴직 후 이만큼 출근했으면 복직으로 본다
 CAR_RE = re.compile(r"^\s*\d{2,3}\s*[가-힣]\s*\d{4}\s*$")   # 12가3456 / 123 가 4567
 
 
@@ -105,7 +112,9 @@ DDL = [
         emp_seq  INT NOT NULL,
         beg_date CHAR(8) NOT NULL,
         end_date CHAR(8),
-        is_ret   TINYINT DEFAULT 0,
+        is_ret   TINYINT DEFAULT 0,          -- ERP 값 그대로
+        ret_guess CHAR(8),                   -- 출근기록으로 추정한 복직일 (ERP 와 별개)
+        ret_days  INT,                       -- 휴직 시작 이후 출근한 날수 (근거)
         remark   VARCHAR(200),
         PRIMARY KEY (emp_seq, beg_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
@@ -233,6 +242,29 @@ def main():
         [(e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], e[8], e[9],
           1 if e[6] == ACTIVE else 0, uid_of.get(e[1])) for e in emps])
 
+    # ── 출근기록으로 복직 추정 ──────────────────────────────────
+    # 종료일이 미정인 휴직만 본다. 사번(tenter.e_idno)으로 맞추고, 없으면 이름으로.
+    empid_of = {e[0]: e[1] for e in emps}
+    name_of = {e[0]: e[2] for e in emps}
+    rests2 = []
+    for es, beg, end, isret, rm in rests:
+        guess, days = None, 0
+        if (not end or end == "99991231") and not isret:
+            eid, nm = empid_of.get(es), name_of.get(es)
+            if eid:
+                cur.execute("""SELECT COUNT(DISTINCT e_date), MIN(e_date) FROM tenter
+                                WHERE e_idno=%s AND e_date > %s""", (eid, beg))
+                days, first = cur.fetchone()
+                if not days and nm:      # 사번으로 안 붙으면 이름으로 한 번 더
+                    cur.execute("""SELECT COUNT(DISTINCT e_date), MIN(e_date) FROM tenter
+                                    WHERE e_name=%s AND e_date > %s""", (nm, beg))
+                    days, first = cur.fetchone()
+                if days and days >= RET_MIN_DAYS:
+                    guess = first
+        rests2.append((es, beg, end, isret, guess, days or 0, rm))
+    rests = rests2
+    guessed = [r for r in rests if r[4]]
+
     for tbl, rows, sql in (
         ("hr_orders", orders,
          "INSERT INTO hr_orders (emp_seq,int_seq,ord_seq,ord_date,dept_name,contents,remark) "
@@ -240,7 +272,8 @@ def main():
         ("hr_dept_moves", moves,
          "INSERT INTO hr_dept_moves (emp_seq,beg_date,end_date,dept_name) VALUES (%s,%s,%s,%s)"),
         ("hr_rests", rests,
-         "INSERT INTO hr_rests (emp_seq,beg_date,end_date,is_ret,remark) VALUES (%s,%s,%s,%s,%s)"),
+         "INSERT INTO hr_rests (emp_seq,beg_date,end_date,is_ret,ret_guess,ret_days,remark) "
+         "VALUES (%s,%s,%s,%s,%s,%s,%s)"),
         ("hr_certificates", certs,
          "INSERT INTO hr_certificates (emp_seq,certi_seq,issue_date,issue_no,usage_txt,submit_to) "
          "VALUES (%s,%s,%s,%s,%s,%s)"),
@@ -249,6 +282,12 @@ def main():
         if rows:
             cur.executemany(sql, rows)
     conn.commit()
+
+    if guessed:
+        print("\n  · 출근기록으로 복직 추정 %d건 (ERP 에 복직 처리가 안 된 사람)" % len(guessed))
+        for es, beg, _e, _i, g, d, _r in guessed:
+            print("      %-8s 휴직 %s → 복직 %s (이후 출근 %d일)"
+                  % (name_of.get(es, "?"), beg, g, d))
 
     print("\n  반영 완료")
     for tbl in ("hr_employees", "hr_orders", "hr_dept_moves", "hr_rests", "hr_certificates"):
