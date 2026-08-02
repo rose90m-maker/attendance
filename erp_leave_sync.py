@@ -83,8 +83,13 @@ def fetch_erp(year):
     """, (yy,))
     detail = [(str(r[0]).strip(), str(r[1]).strip(), int(r[2]), float(r[3] or 0))
               for r in cur.fetchall()]
+
+    # 아직 연차를 안 쓴 신규 입사자도 화면에 나와야 한다
+    cur.execute("SELECT Empid, EmpName FROM _TDAEmp WHERE RetireDate = '99991231'")
+    active = {str(r[0]).strip(): (r[1] or "").strip() for r in cur.fetchall()}
+
     c.close()
-    return grant, detail
+    return grant, detail, active
 
 
 def load_map(cur):
@@ -116,7 +121,7 @@ def main():
     args = ap.parse_args()
     year = args.year
 
-    grant, detail = fetch_erp(year)
+    grant, detail, active = fetch_erp(year)
     conn = att_conn()
     cur = conn.cursor()
     id_of, ambiguous = load_map(cur)
@@ -130,7 +135,9 @@ def main():
             months.setdefault(empid, [0.0] * 12)[mm - 1] += day
         rows.setdefault(empid, []).append((vacdate, ITEM_NAME[item]))
 
-    targets = sorted(set(grant) | set(used))
+    # 부여·사용이 있는 사람 + 재직자 전원. 재직자를 넣어야 신규 입사자도 화면에 나온다.
+    with_data = set(grant) | set(used)
+    targets = sorted(with_data | set(active))
     mapped = {e: id_of[e] for e in targets if e in id_of}
     unmapped = [e for e in targets if e not in id_of]
 
@@ -146,8 +153,8 @@ def main():
 
     print("=" * 78)
     print("■ %d년 ERP 연차 동기화 %s" % (year, "" if args.apply else "(검증 모드 — 쓰지 않음)"))
-    print("  ERP 대상 %d명 → 매핑 %d명 / 미매핑 %d명 / 사번중복 %d건"
-          % (len(targets), len(mapped), len(unmapped), len(ambiguous)))
+    print("  대상 %d명 (부여·사용 있음 %d명 + 재직자 %d명) → 매핑 %d명 / 미매핑 %d명 / 사번중복 %d건"
+          % (len(targets), len(with_data), len(active), len(mapped), len(unmapped), len(ambiguous)))
     print("  발생 합계 %.1f일 / 사용 합계 %.1f일 / 날짜별 기록 %d건"
           % (sum(g[0] for g in grant.values()), sum(used.values()), len(detail)))
     print("  annual_leave 현재 %d명 → 갱신 %d명, 신규 %d명"
@@ -191,10 +198,19 @@ def main():
     made = backup(cur, year, stamp)
     print("\n  백업 생성:", ", ".join("%s(%d행)" % b for b in made))
 
+    skipped = 0
     for empid, (tid, nm) in mapped.items():
         g, pile = grant.get(empid, (0.0, 0.0))
         u = used.get(empid, 0.0)
         mo = months.get(empid, [0.0] * 12)
+
+        # ERP 에 부여도 사용도 없는 사람은 이미 있는 행을 덮어쓰지 않는다.
+        # 재직자인데 ERP 등록이 안 된 경우가 있어서, 0 으로 밀면 화면에서 연차가 사라진다.
+        # 행 자체가 없을 때만 만들어 준다 (신규 입사자가 목록에 보이게).
+        if empid not in with_data and tid in before:
+            skipped += 1
+            continue
+
         cur.execute("""
             INSERT INTO annual_leave
                    (e_id, e_name, year, total, used, deduct_prev, generated,
@@ -226,6 +242,7 @@ def main():
     r = cur.fetchone()
     print("  반영 완료 — annual_leave %d명 / 발생 %.1f / 사용 %.1f / 차감 %.1f / 사용가능 %.1f"
           % (r[0], float(r[1] or 0), float(r[2] or 0), float(r[3] or 0), float(r[4] or 0)))
+    print("  ERP 자료가 없어 기존 값을 그대로 둔 사람: %d명" % skipped)
     print("  leave_records %d년 %d건 기록" % (year, ins))
     print("\n  되돌리려면:")
     for bak, _n in made:
