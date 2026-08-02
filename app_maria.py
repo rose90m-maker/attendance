@@ -6090,11 +6090,12 @@ def hr_employee(emp_seq):
     }
 
     # 명부관리 — ERP 에 없는 직급·연락처 (사번으로 맞춘다)
-    cur.execute("""SELECT position, phone, email, address, gender, dept
+    cur.execute("""SELECT position, phone, email, address, gender, dept, car_number
                      FROM employee_roster WHERE emp_no=%s LIMIT 1""", (emp["empid"],))
     r = cur.fetchone()
     roster = ({"pos": r[0] or "", "phone": r[1] or "", "email": r[2] or "",
-               "addr": r[3] or "", "gender": r[4] or "", "dept": r[5] or ""}
+               "addr": r[3] or "", "gender": r[4] or "", "dept": r[5] or "",
+               "car": r[6] or ""}
               if r else {})
 
     # 이력 — 입사·부서이동·발령·휴직을 한 줄로 모은다
