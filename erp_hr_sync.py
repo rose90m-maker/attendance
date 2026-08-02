@@ -12,7 +12,9 @@ ERP 가 원본이다. 태인 시스템은 조회·집계만 한다. 연차(erp_l
 주의
   · 주민번호(_TDAEmp.ResidID)·전화번호는 영림원이 앱 레벨에서 암호화해 저장한다.
     복호화할 방법이 없으므로 아예 가져오지 않는다.
-    생년월일은 _TDAEmpIn.BirthDate 에 평문으로 따로 있어 이것만 쓴다 (재직 161명 중 160명).
+    생년월일은 _TDAEmpIn.BirthDate 에 평문으로 따로 있어 이것만 쓴다 (재직 160명 전원).
+    이메일(_TDAEmpIn.Email)도 평문이라 가져온다 (158명). 전화번호는 암호문이라 못 쓴다 —
+    평문 전화번호는 태인 명부관리(employee_roster.phone)에만 있다.
   · 직급(PosSeq)은 전원 0 이라 쓰지 않는다. 부서만 쓴다 (직급은 명부관리에 있다).
   · 차량번호는 _TDAEmpUserDefine 의 사용자 정의 항목에 있다.
     항목 이름표는 _TCOMUserDefine 에 TableName='_TDAEmp', TitleSerl=1000001, Title='차량번호'.
@@ -80,6 +82,7 @@ DDL = [
         retire_date CHAR(8),
         birth_date  CHAR(8),
         sex         VARCHAR(4),          -- 남 / 여 (ERP 코드 1010001/1010002 를 옮긴 값)
+        email       VARCHAR(120),        -- ERP 평문 이메일 (전화번호는 암호문이라 못 가져온다)
         car_no      VARCHAR(20),         -- ERP 사용자 정의 항목 '차량번호' (형태가 맞는 것만)
         is_active   TINYINT NOT NULL DEFAULT 0,
         t_uid       INT NULL,
@@ -141,7 +144,7 @@ def fetch_erp():
 
     cur.execute("""
         SELECT e.EmpSeq, e.Empid, e.EmpName, e.DeptSeq, d.DeptName,
-               e.EntDate, e.RetireDate, i.BirthDate, i.SMSexSeq, u.ValText
+               e.EntDate, e.RetireDate, i.BirthDate, i.SMSexSeq, u.ValText, i.Email
           FROM _TDAEmp e
           LEFT JOIN _TDADept  d ON d.DeptSeq = e.DeptSeq
           LEFT JOIN _TDAEmpIn i ON i.EmpSeq  = e.EmpSeq
@@ -152,7 +155,8 @@ def fetch_erp():
     # 사번 없는 사람은 급여도 없고 명부관리에도 없다 (2026-08-02 사용자 결정).
     emps = [(int(r[0]), s(r[1]), s(r[2]), int(r[3] or 0), s(r[4]),
              s(r[5]), s(r[6]), s(r[7]), SEX.get(s(r[8]), ""),
-             (" ".join(s(r[9]).split()) if CAR_RE.match(s(r[9])) else ""))
+             (" ".join(s(r[9]).split()) if CAR_RE.match(s(r[9])) else ""),
+             s(r[10])[:120])
             for r in cur.fetchall() if s(r[1])]
 
     cur.execute("""
@@ -224,8 +228,8 @@ def main():
              len([e for e in emps if e[6] != ACTIVE and e[6][:4] == this_year])))
     rest_now = [r for r in rests if r[1] <= today.strftime("%Y%m%d") <= (r[2] or "99991231")]
     print("  · 휴직 중 %d명" % len(rest_now))
-    print("  · 차량번호 있는 재직자 %d명 (형태가 아닌 값은 버린다)"
-          % len([e for e in active if e[9]]))
+    print("  · 차량번호 있는 재직자 %d명 (형태가 아닌 값은 버린다) / 이메일 %d명"
+          % (len([e for e in active if e[9]]), len([e for e in active if e[10]])))
 
     if not args.apply:
         print("\n  검증 모드입니다. 반영하려면 --apply 를 붙여 다시 실행하세요.")
@@ -237,9 +241,9 @@ def main():
     cur.executemany(
         """INSERT INTO hr_employees
            (emp_seq, empid, name, dept_seq, dept_name, ent_date, retire_date,
-            birth_date, sex, car_no, is_active, t_uid)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-        [(e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], e[8], e[9],
+            birth_date, sex, car_no, email, is_active, t_uid)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        [(e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], e[8], e[9], e[10],
           1 if e[6] == ACTIVE else 0, uid_of.get(e[1])) for e in emps])
 
     # ── 출근기록으로 복직 추정 ──────────────────────────────────

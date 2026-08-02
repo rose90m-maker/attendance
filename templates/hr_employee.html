@@ -56,6 +56,29 @@
         .kv dt { color:var(--sub); font-weight:600; }
         .kv dd { margin:0; color:var(--ink); word-break:break-all; }
         .kv dd.empty { color:var(--faint); }
+        /* 고칠 수 있는 칸 */
+        .kv dd.edit-cell { display:flex; align-items:center; gap:6px; min-height:22px; }
+        .kv dd .ev.empty { color:var(--faint); }
+        .src-tag {
+            font-size:.62rem; font-weight:700; color:var(--brand-dk);
+            background:#dbeafe; border-radius:5px; padding:1px 5px; flex:none;
+        }
+        .ed-btn {
+            border:none; background:transparent; color:var(--faint); cursor:pointer;
+            font-size:.78rem; padding:0 3px; line-height:1; opacity:0; transition:opacity .12s;
+        }
+        .kv dd.edit-cell:hover .ed-btn { opacity:1; }
+        .ed-input {
+            flex:1; min-width:0; border:1px solid var(--brand); border-radius:7px;
+            padding:3px 8px; font-size:.83rem; color:var(--ink); outline:none;
+        }
+        .ed-ok, .ed-no {
+            border:none; border-radius:6px; padding:3px 8px; font-size:.74rem;
+            font-weight:700; cursor:pointer; flex:none;
+        }
+        .ed-ok { background:var(--brand); color:#fff; }
+        .ed-no { background:#f1f5f9; color:var(--sub); }
+        .ed-msg { font-size:.72rem; color:var(--bad); }
 
         /* 타임라인 */
         .tl { position:relative; padding-left:22px; }
@@ -180,13 +203,15 @@
                     <dd class="{% if not emp.birth %}empty{% endif %}">
                         {% if emp.birth %}{{ emp.birth[:4] }}-{{ emp.birth[4:6] }}-{{ emp.birth[6:] }}
                         <span class="text-muted">(만 {{ emp.age }}세)</span>{% else %}ERP에 없음{% endif %}</dd>
-                    <dt>연락처</dt>
-                    <dd class="{% if not roster.phone %}empty{% endif %}">{{ roster.phone or '명부관리에 없음' }}</dd>
-                    <dt>이메일</dt>
-                    <dd class="{% if not roster.email %}empty{% endif %}">{{ roster.email or '명부관리에 없음' }}</dd>
-                    <dt>차량번호</dt>
-                    {% set car = emp.car or roster.car %}
-                    <dd class="{% if not car %}empty{% endif %}">{{ car or 'ERP에 등록 없음' }}</dd>
+                    {% for key in ['phone', 'email', 'car_number'] %}
+                    {% set f = fields[key] %}
+                    <dt>{{ f.label }}</dt>
+                    <dd class="edit-cell" data-field="{{ key }}">
+                        <span class="ev {% if not f.val %}empty{% endif %}">{{ f.val or '없음' }}</span>
+                        {% if f.src == 'ERP' %}<span class="src-tag">ERP</span>{% endif %}
+                        <button class="ed-btn" onclick="startEdit(this)" title="고치기">✏</button>
+                    </dd>
+                    {% endfor %}
                     <dt>주소</dt>
                     <dd class="{% if not roster.addr %}empty{% endif %}">{{ roster.addr or '명부관리에 없음' }}</dd>
                 </dl>
@@ -295,5 +320,65 @@
     </div>
 
 </div>
+
+<script>
+// 기본정보 고치기 — 저장은 명부관리에만 한다.
+// ERP 에 값이 있으면 화면에는 ERP 값이 계속 나온다 (ERP 우선).
+const EMP_SEQ = {{ emp.seq }};
+
+function startEdit(btn) {
+    const dd = btn.closest('.edit-cell');
+    if (dd.querySelector('.ed-input')) return;
+    const span = dd.querySelector('.ev');
+    const cur = span.classList.contains('empty') ? '' : span.textContent.trim();
+    dd.dataset.prev = dd.innerHTML;
+
+    dd.innerHTML =
+        '<input class="ed-input" value="' + cur.replace(/"/g, '&quot;') + '">' +
+        '<button class="ed-ok">저장</button>' +
+        '<button class="ed-no">취소</button>';
+    const input = dd.querySelector('.ed-input');
+    input.focus();
+    input.select();
+
+    dd.querySelector('.ed-no').onclick = function () { dd.innerHTML = dd.dataset.prev; };
+    dd.querySelector('.ed-ok').onclick = function () { saveEdit(dd, input.value); };
+    input.onkeydown = function (e) {
+        if (e.key === 'Enter') saveEdit(dd, input.value);
+        if (e.key === 'Escape') dd.innerHTML = dd.dataset.prev;
+    };
+}
+
+function saveEdit(dd, value) {
+    const field = dd.dataset.field;
+    dd.querySelector('.ed-ok').disabled = true;
+    fetch('/api/hr_employee/' + EMP_SEQ + '/field', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field: field, value: value })
+    }).then(r => r.json()).then(d => {
+        if (!d.ok) {
+            const b = dd.querySelector('.ed-ok');
+            if (b) b.disabled = false;
+            let m = dd.querySelector('.ed-msg');
+            if (!m) { m = document.createElement('span'); m.className = 'ed-msg'; dd.appendChild(m); }
+            m.textContent = d.error || '저장하지 못했습니다';
+            return;
+        }
+        const v = d.value || '';
+        dd.innerHTML =
+            '<span class="ev' + (v ? '' : ' empty') + '">' + (v || '없음') + '</span>' +
+            (d.src === 'ERP' ? '<span class="src-tag">ERP</span>' : '') +
+            '<button class="ed-btn" onclick="startEdit(this)" title="고치기">✏</button>';
+        if (d.overridden) {
+            alert('저장했지만 화면에는 ERP 값이 나옵니다.\n' +
+                  'ERP 에 값이 있으면 ERP 가 우선입니다. 바꾸려면 ERP 에서 고쳐 주세요.');
+        }
+    }).catch(() => {
+        const b = dd.querySelector('.ed-ok');
+        if (b) b.disabled = false;
+    });
+}
+</script>
 </body>
 </html>

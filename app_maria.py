@@ -6079,6 +6079,58 @@ def hr_roster():
                            active_page="hr_roster")
 
 
+@app.route("/api/hr_employee/<int:emp_seq>/field", methods=["POST"])
+@_admin_required
+def api_hr_employee_field(emp_seq):
+    """인사카드 기본정보 수정 — 연락처·이메일·차량번호
+
+    저장은 태인 명부관리(employee_roster)에만 한다. ERP 에는 쓰지 않는다.
+    ERP 에 값이 있으면 화면에는 ERP 값이 나온다 (ERP 우선, 사용자 결정 2026-08-02).
+    값을 비우면 지운 것으로 본다.
+    """
+    ALLOWED = {"phone": 30, "email": 100, "car_number": 30}
+    data = request.get_json(silent=True) or {}
+    field = str(data.get("field", ""))
+    value = " ".join(str(data.get("value", "")).split())
+
+    if field not in ALLOWED:
+        return jsonify(ok=False, error="고칠 수 없는 항목입니다"), 400
+    if len(value) > ALLOWED[field]:
+        return jsonify(ok=False, error="%d자를 넘을 수 없습니다" % ALLOWED[field]), 400
+    if field == "phone" and value and not re.fullmatch(r"[0-9\-+() ]{8,30}", value):
+        return jsonify(ok=False, error="전화번호 형태가 아닙니다"), 400
+    if field == "email" and value and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+        return jsonify(ok=False, error="이메일 형태가 아닙니다"), 400
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT empid, name, is_active FROM hr_employees WHERE emp_seq=%s", (emp_seq,))
+    row = cur.fetchone()
+    if not row or not row[2]:
+        conn.close()
+        return jsonify(ok=False, error="재직자만 고칠 수 있습니다"), 404
+    empid, name = row[0], row[1]
+
+    cur.execute("SELECT id FROM employee_roster WHERE emp_no=%s", (empid,))
+    if cur.fetchone():
+        cur.execute("UPDATE employee_roster SET `%s`=%%s WHERE emp_no=%%s" % field,
+                    (value, empid))
+    else:
+        cur.execute("INSERT INTO employee_roster (name, emp_no, `%s`) VALUES (%%s,%%s,%%s)"
+                    % field, (name, empid, value))
+    conn.commit()
+
+    # ERP 에 값이 있으면 화면에는 ERP 값이 계속 나온다 — 그 사실을 알려 준다
+    erp = ""
+    if field in ("email", "car_number"):
+        col = "email" if field == "email" else "car_no"
+        cur.execute("SELECT IFNULL(`%s`,'') FROM hr_employees WHERE emp_seq=%%s" % col,
+                    (emp_seq,))
+        erp = cur.fetchone()[0]
+    conn.close()
+    return jsonify(ok=True, value=erp or value, src="ERP" if erp else "명부관리",
+                   overridden=bool(erp))
+
+
 @app.route("/hr_vehicle")
 @_admin_required
 def hr_vehicle():
@@ -6157,7 +6209,7 @@ def hr_employee(emp_seq):
     conn = _conn(); cur = conn.cursor()
 
     cur.execute("""SELECT emp_seq, empid, name, dept_name, ent_date, retire_date,
-                          birth_date, sex, t_uid, is_active, car_no
+                          birth_date, sex, t_uid, is_active, car_no, email
                      FROM hr_employees WHERE emp_seq=%s""", (emp_seq,))
     row = cur.fetchone()
     if not row or not row[9]:
@@ -6184,6 +6236,7 @@ def hr_employee(emp_seq):
         "seq": row[0], "empid": row[1], "name": row[2] or "",
         "dept": row[3] or "미지정", "ent": row[4] or "", "birth": row[6] or "",
         "sex": row[7] or "", "t_uid": row[8], "car": row[10] or "",
+        "email": row[11] or "",
         "years": yrs(row[4]), "age": yrs(row[6]),
         "svc": ("%d년 %d개월" % (m // 12, m % 12)) if m is not None else "",
     }
@@ -6196,6 +6249,20 @@ def hr_employee(emp_seq):
                "addr": r[3] or "", "gender": r[4] or "", "dept": r[5] or "",
                "car": r[6] or ""}
               if r else {})
+
+    # ERP 가 항상 우선이다 (사용자 결정 2026-08-02). ERP 에 값이 있으면 그것을 쓰고,
+    # 비어 있을 때만 명부관리에 손으로 넣은 값을 쓴다.
+    # 전화번호는 ERP 가 암호문이라 명부관리가 유일한 출처다.
+    fields = {
+        "phone": {"val": roster.get("phone", ""), "src": "명부관리",
+                  "erp": "", "label": "연락처"},
+        "email": {"val": emp["email"] or roster.get("email", ""),
+                  "src": "ERP" if emp["email"] else "명부관리",
+                  "erp": emp["email"], "label": "이메일"},
+        "car_number": {"val": emp["car"] or roster.get("car", ""),
+                       "src": "ERP" if emp["car"] else "명부관리",
+                       "erp": emp["car"], "label": "차량번호"},
+    }
 
     # 이력 — 입사·부서이동·발령·휴직을 한 줄로 모은다
     events = []
@@ -6256,7 +6323,8 @@ def hr_employee(emp_seq):
 
     conn.close()
     return render_template("hr_employee.html",
-                           year=year, emp=emp, roster=roster, events=events,
+                           year=year, emp=emp, roster=roster, fields=fields,
+                           events=events,
                            orders=orders, rests=rests, certs=certs,
                            leave=leave, leave_days=leave_days,
                            active_page="hr_status")
