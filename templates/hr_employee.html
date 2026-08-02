@@ -108,11 +108,17 @@
 
         /* 이력 행 — 왼쪽(이력)과 오른쪽(휴직+증명서) 높이를 맞춘다.
            휴직 1 : 증명서 2 로 나누고, 표는 카드 안에서만 스크롤한다. */
-        @media (min-width:992px) { .hist-row { height:560px; } }
+        /* 높이를 560px 로 못박는다 — 사람마다(이력 3건이든 30건이든) 카드 크기가
+           달라지지 않게. 넘치는 내용은 카드 안에서 스크롤한다. */
+        .hist-row { height:560px; }
         .hist-row .panel { height:100%; min-height:0; display:flex; flex-direction:column; }
         .hist-row .panel h6 { flex:none; }
-        .side-col { display:flex; flex-direction:column; gap:1rem; }
-        @media (min-width:992px) { .side-col { height:100%; } }
+        .side-col { display:flex; flex-direction:column; gap:1rem; height:100%; }
+        /* 좁은 화면에서는 위아래로 쌓이므로 한 덩어리씩 높이를 준다 */
+        @media (max-width:991.98px) {
+            .hist-row { height:auto; }
+            .hist-row > div { height:560px; }
+        }
         .side-col .rest-box { flex:1 1 0; }
         .side-col .cert-box { flex:2 1 0; }
         .fill-scroll { flex:1 1 auto; min-height:0; overflow-y:auto; }
