@@ -11,49 +11,180 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
     <style>
-        .kpi { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; height:100%; }
-        .kpi .lbl { font-size:.78rem; color:#64748b; margin-bottom:4px; }
-        .kpi .val { font-size:1.6rem; font-weight:700; color:#0f172a; line-height:1.1; }
-        .kpi .val small { font-size:.8rem; font-weight:500; color:#94a3b8; }
-        .kpi.accent { background:linear-gradient(135deg,#1e40af,#2563eb); border-color:#1e40af; }
-        .kpi.accent .lbl, .kpi.accent .val, .kpi.accent .val small { color:#fff; }
-        .card-box { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px 18px; }
-        .card-box h6 { font-weight:700; color:#0f172a; margin-bottom:14px; font-size:.95rem; }
-        .bar-row { display:grid; grid-template-columns:96px 1fr 150px; gap:10px; align-items:center; margin-bottom:9px; font-size:.84rem; }
-        .bar-bg { background:#f1f5f9; border-radius:4px; height:20px; overflow:hidden; }
-        .bar-fill { height:100%; border-radius:4px; }
-        .bar-num { text-align:right; color:#64748b; font-size:.8rem; }
-        .bar-num b { color:#0f172a; }
-        .mbar-wrap { display:flex; align-items:flex-end; gap:6px; height:130px; }
-        .mbar { flex:1; text-align:center; }
-        .mbar .b { background:#3b82f6; border-radius:4px 4px 0 0; }
-        .mbar .b.max { background:#1e40af; }
-        .mbar .b.zero { background:#e2e8f0; }
-        .mbar .cap { font-size:.68rem; color:#94a3b8; display:block; margin-top:3px; }
-        .mbar .v { font-size:.68rem; color:#64748b; display:block; }
-        .alert-box { background:#fff; border-radius:12px; padding:14px 16px; height:100%; border:1px solid #e2e8f0; }
-        .alert-box.danger { border-color:#fca5a5; }
-        .alert-box.warn { border-color:#fcd34d; }
-        .alert-box .t { font-size:.8rem; font-weight:600; margin-bottom:4px; }
+        :root {
+            --ink:#0f172a; --sub:#64748b; --faint:#94a3b8;
+            --line:#e8edf4; --panel:#fff;
+            --brand:#2563eb; --brand-dk:#1e40af;
+            --ok:#16a34a; --warn:#f59e0b; --bad:#dc2626;
+        }
+        .lv-wrap { max-width:1560px; }
+
+        /* ── 헤더 ── */
+        .lv-head { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; }
+        .lv-head h4 { margin:0; font-weight:800; color:var(--ink); letter-spacing:-.02em; }
+        .lv-head .sub { font-size:.8rem; color:var(--faint); margin-top:3px; }
+        .year-pick { position:relative; margin-left:auto; }
+        .year-pick select {
+            appearance:none; -webkit-appearance:none;
+            min-width:118px; padding:8px 34px 8px 14px;
+            font-size:.88rem; font-weight:600; color:var(--ink);
+            background:#fff; border:1px solid var(--line); border-radius:999px;
+            box-shadow:0 1px 2px rgba(15,23,42,.05); cursor:pointer;
+        }
+        .year-pick select:focus { outline:none; border-color:var(--brand); box-shadow:0 0 0 3px rgba(37,99,235,.13); }
+        .year-pick::after {
+            content:""; position:absolute; right:14px; top:50%; width:7px; height:7px;
+            border-right:2px solid var(--sub); border-bottom:2px solid var(--sub);
+            transform:translateY(-70%) rotate(45deg); pointer-events:none;
+        }
+
+        /* ── 카드 공통 ── */
+        .panel {
+            background:var(--panel); border:1px solid var(--line); border-radius:16px;
+            padding:18px 20px; height:100%;
+            box-shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px -18px rgba(15,23,42,.35);
+        }
+        .panel h6 {
+            font-weight:700; color:var(--ink); font-size:.92rem;
+            margin:0 0 16px; display:flex; align-items:center; gap:7px;
+        }
+        .panel h6 .tag { font-size:.72rem; font-weight:600; color:var(--faint); margin-left:auto; }
+
+        /* ── 사용률 히어로 ── */
+        .hero {
+            border:none; border-radius:16px; padding:20px;
+            background:linear-gradient(140deg,#1e3a8a 0%,#2563eb 62%,#3b82f6 100%);
+            color:#fff; height:100%;
+            display:flex; align-items:center; gap:20px;
+            box-shadow:0 10px 30px -14px rgba(30,64,175,.65);
+        }
+        .ring { position:relative; width:118px; height:118px; flex:none; }
+        .ring .bg {
+            position:absolute; inset:0; border-radius:50%;
+            background:conic-gradient(#fff 0 {{ '%.1f'|format(s.rate) }}%, rgba(255,255,255,.22) {{ '%.1f'|format(s.rate) }}% 100%);
+        }
+        .ring .hole {
+            position:absolute; inset:13px; border-radius:50%;
+            background:rgba(30,58,138,.55); backdrop-filter:blur(2px);
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+        }
+        .ring .pct { font-size:1.55rem; font-weight:800; line-height:1; letter-spacing:-.03em; }
+        .ring .cap { font-size:.66rem; opacity:.82; margin-top:3px; }
+        .hero-txt .t { font-size:.78rem; opacity:.85; }
+        .hero-txt .m { font-size:1.05rem; font-weight:700; margin:5px 0 9px; line-height:1.35; }
+        .hero-chip {
+            display:inline-block; background:rgba(255,255,255,.16); border-radius:999px;
+            padding:4px 11px; font-size:.74rem; margin:0 5px 5px 0; white-space:nowrap;
+        }
+
+        /* ── 통계 타일 ── */
+        .stat {
+            background:var(--panel); border:1px solid var(--line); border-radius:14px;
+            padding:14px 15px; height:100%; position:relative; overflow:hidden;
+            transition:transform .12s ease, box-shadow .12s ease;
+        }
+        .stat:hover { transform:translateY(-2px); box-shadow:0 10px 22px -16px rgba(15,23,42,.5); }
+        .stat::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--c,#cbd5e1); }
+        .stat .lbl { font-size:.76rem; color:var(--sub); display:flex; align-items:center; gap:5px; }
+        .stat .val { font-size:1.5rem; font-weight:800; color:var(--ink); line-height:1.15; margin-top:5px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+        .stat .val small { font-size:.76rem; font-weight:600; color:var(--faint); margin-left:2px; }
+
+        /* ── 부서별 막대 ── */
+        .bar-row { display:grid; grid-template-columns:minmax(96px,1.1fr) 2.4fr auto; gap:12px; align-items:center; padding:7px 0; font-size:.84rem; }
+        .bar-row + .bar-row { border-top:1px dashed #eef2f7; }
+        .bar-row .who { font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .bar-row .who span { font-weight:500; color:var(--faint); font-size:.76rem; margin-left:4px; }
+        .track { background:#f1f5f9; border-radius:999px; height:9px; overflow:hidden; }
+        .track > i { display:block; height:100%; border-radius:999px; transition:width .5s ease; }
+        .bar-num { text-align:right; color:var(--faint); font-size:.76rem; white-space:nowrap; font-variant-numeric:tabular-nums; }
+        .bar-num b { font-size:.85rem; margin-left:3px; }
+
+        /* ── 월별 ── */
+        .mbar-wrap { display:flex; align-items:flex-end; gap:5px; height:142px; padding-top:4px; }
+        .mbar { flex:1; text-align:center; display:flex; flex-direction:column; justify-content:flex-end; height:100%; }
+        .mbar .b { background:linear-gradient(180deg,#60a5fa,#3b82f6); border-radius:6px 6px 2px 2px; transition:filter .12s; }
+        .mbar:hover .b { filter:brightness(1.12); }
+        .mbar .b.max { background:linear-gradient(180deg,#3b82f6,#1e40af); }
+        .mbar .b.zero { background:#eef2f7; }
+        .mbar .cap { font-size:.68rem; color:var(--faint); margin-top:5px; }
+        .mbar .v { font-size:.68rem; color:var(--sub); font-weight:600; margin-bottom:3px; min-height:14px; }
+
+        /* ── 확인 필요 ── */
+        .alert-box {
+            background:var(--panel); border:1px solid var(--line); border-radius:16px;
+            padding:16px 18px; height:100%; position:relative; overflow:hidden;
+            box-shadow:0 1px 2px rgba(15,23,42,.04);
+        }
+        .alert-box::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:#cbd5e1; }
+        .alert-box.danger { border-color:#fecaca; background:linear-gradient(180deg,#fff6f6,#fff 42%); }
+        .alert-box.danger::before { background:var(--bad); }
+        .alert-box.warn { border-color:#fde3ab; background:linear-gradient(180deg,#fffaf0,#fff 42%); }
+        .alert-box.warn::before { background:var(--warn); }
+        .alert-box.calm { border-color:#c7e2fb; background:linear-gradient(180deg,#f4f9ff,#fff 42%); }
+        .alert-box.calm::before { background:#38bdf8; }
+        .alert-box .t { font-size:.82rem; font-weight:700; display:flex; align-items:center; gap:6px; }
         .alert-box.danger .t { color:#b91c1c; }
-        .alert-box.warn .t { color:#b45309; }
-        .alert-box .n { font-size:1.4rem; font-weight:700; color:#0f172a; margin-bottom:6px; }
-        .alert-box .d { font-size:.78rem; color:#64748b; line-height:1.55; }
-        .sync-note { font-size:.78rem; color:#94a3b8; }
-        .name-link { color:#1e40af; text-decoration:none; }
+        .alert-box.warn  .t { color:#b45309; }
+        .alert-box.calm  .t { color:#0369a1; }
+        .alert-box .n { font-size:1.6rem; font-weight:800; color:var(--ink); margin:4px 0 8px; letter-spacing:-.02em; }
+        .alert-box .n small { font-size:.8rem; font-weight:600; color:var(--faint); margin-left:2px; }
+        .alert-box .d { font-size:.78rem; color:var(--sub); line-height:1.7; }
+        .alert-box .hint { display:block; margin-top:6px; font-size:.74rem; color:var(--faint); }
+        .pill {
+            display:inline-block; background:#f1f5f9; border-radius:999px;
+            padding:2px 9px; margin:0 4px 4px 0; font-size:.75rem; color:var(--ink);
+            text-decoration:none; white-space:nowrap; transition:background .12s;
+        }
+        .pill:hover { background:#e2e8f0; color:var(--ink); }
+        .pill b { color:var(--bad); font-weight:700; margin-left:3px; }
+        .pill i { font-style:normal; color:var(--faint); margin-left:3px; }
+
+        /* ── 표 ── */
+        .lv-table { width:100%; border-collapse:separate; border-spacing:0; font-size:.86rem; }
+        .lv-table th {
+            background:#f8fafc; color:var(--sub); font-weight:600; font-size:.76rem;
+            padding:10px 12px; border-bottom:1px solid var(--line); white-space:nowrap;
+        }
+        .lv-table th:first-child { border-radius:10px 0 0 0; }
+        .lv-table th:last-child  { border-radius:0 10px 0 0; }
+        .lv-table td { padding:10px 12px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+        .lv-table tbody tr:hover td { background:#f8fbff; }
+        .lv-table .num { text-align:right; font-variant-numeric:tabular-nums; }
+        .rank {
+            display:inline-flex; align-items:center; justify-content:center;
+            width:22px; height:22px; border-radius:7px; background:#f1f5f9;
+            font-size:.72rem; font-weight:700; color:var(--sub);
+        }
+        .rank.top { background:#dbeafe; color:var(--brand-dk); }
+        .name-link { color:var(--brand-dk); text-decoration:none; font-weight:600; }
         .name-link:hover { text-decoration:underline; }
+        .dept-tag { font-size:.74rem; color:var(--sub); background:#f1f5f9; border-radius:6px; padding:2px 7px; }
+
+        .sync-note {
+            font-size:.78rem; color:var(--faint); display:flex; align-items:center;
+            gap:7px; flex-wrap:wrap; padding:12px 2px;
+        }
+        .sync-note .dot { width:6px; height:6px; border-radius:50%; background:var(--ok); flex:none; }
+
+        @media (max-width:575px) {
+            .hero { flex-direction:column; text-align:center; }
+            .bar-row { grid-template-columns:minmax(74px,1fr) 1.6fr auto; gap:8px; font-size:.79rem; }
+        }
     </style>
 </head>
 <body>
 
 {% include '_sidebar.html' %}
 
-<div class="container-fluid px-3 mt-4">
+<div class="container-fluid px-3 mt-4 lv-wrap">
 
-    <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-        <h4 class="mb-0 fw-bold">🌴 {{ year }}년 연차관리 대시보드</h4>
-        <form method="get" class="ms-auto d-flex gap-2">
-            <select name="year" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+    <div class="lv-head">
+        <div>
+            <h4>🌴 {{ year }}년 연차관리</h4>
+            <div class="sub">ERP 입력 내용을 그대로 보여줍니다</div>
+        </div>
+        <form method="get" class="year-pick">
+            <select name="year" onchange="this.form.submit()">
                 {% for y in year_list %}
                 <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
                 {% endfor %}
@@ -62,32 +193,95 @@
     </div>
 
     <!-- 전사 요약 -->
-    <div class="row g-2 mb-3">
-        <div class="col-6 col-md"><div class="kpi"><div class="lbl">대상 인원</div><div class="val">{{ s.people }}<small>명</small></div></div></div>
-        <div class="col-6 col-md"><div class="kpi"><div class="lbl">발생연차</div><div class="val">{{ '%.0f'|format(s.generated) }}<small>일</small></div></div></div>
-        <div class="col-6 col-md"><div class="kpi"><div class="lbl">사용가능</div><div class="val">{{ '%.0f'|format(s.total) }}<small>일</small></div></div></div>
-        <div class="col-6 col-md"><div class="kpi"><div class="lbl">사용</div><div class="val">{{ '%.0f'|format(s.used) }}<small>일</small></div></div></div>
-        <div class="col-6 col-md"><div class="kpi"><div class="lbl">남은 연차</div><div class="val">{{ '%.0f'|format(s.rest) }}<small>일</small></div></div></div>
-        <div class="col-6 col-md"><div class="kpi accent"><div class="lbl">사용률</div><div class="val">{{ '%.1f'|format(s.rate) }}<small>%</small></div></div></div>
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-xl-4">
+            <div class="hero">
+                <div class="ring">
+                    <div class="bg"></div>
+                    <div class="hole">
+                        <div class="pct">{{ '%.0f'|format(s.rate) }}<span style="font-size:.9rem">%</span></div>
+                        <div class="cap">사용률</div>
+                    </div>
+                </div>
+                <div class="hero-txt">
+                    <div class="t">{{ year }}년 연차 사용 현황</div>
+                    <div class="m">{{ '%.0f'|format(s.used) }}일 썼고<br>{{ '%.0f'|format(s.rest) }}일 남았습니다</div>
+                    <span class="hero-chip">대상 {{ s.people }}명</span>
+                    <span class="hero-chip">쓸 수 있는 연차 {{ '%.0f'|format(s.total) }}일</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-8">
+            <div class="row g-3 h-100">
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#64748b">
+                        <div class="lbl">👥 대상 인원</div>
+                        <div class="val">{{ s.people }}<small>명</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#8b5cf6">
+                        <div class="lbl">📅 올해 발생연차</div>
+                        <div class="val">{{ '%.0f'|format(s.generated) }}<small>일</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#0ea5e9">
+                        <div class="lbl">🗂 쓸 수 있는 연차</div>
+                        <div class="val">{{ '%.0f'|format(s.total) }}<small>일</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#16a34a">
+                        <div class="lbl">✅ 쓴 연차</div>
+                        <div class="val">{{ '%.0f'|format(s.used) }}<small>일</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#f59e0b">
+                        <div class="lbl">🏝 남은 연차</div>
+                        <div class="val">{{ '%.0f'|format(s.rest) }}<small>일</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#dc2626">
+                        <div class="lbl">⚠ 연차보다 많이 씀</div>
+                        <div class="val">{{ negatives|length }}<small>명</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#eab308">
+                        <div class="lbl">⚠ 발생연차 없이 사용</div>
+                        <div class="val">{{ no_grant|length }}<small>명</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#38bdf8">
+                        <div class="lbl">🏖 한 번도 안 씀</div>
+                        <div class="val">{{ unused|length }}<small>명</small></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="row g-3 mb-3">
         <!-- 부서별 사용률 -->
         <div class="col-12 col-lg-6">
-            <div class="card-box">
-                <h6>부서별 사용률</h6>
+            <div class="panel">
+                <h6>🏢 부서별 사용률 <span class="tag">쓴 연차 / 쓸 수 있는 연차</span></h6>
                 {% if not depts %}
                 <div class="text-muted small">자료가 없습니다.</div>
                 {% endif %}
                 {% for d in depts %}
                 <div class="bar-row">
-                    <span>{{ d.name }} <span class="text-muted">{{ d.people }}명</span></span>
-                    <div class="bar-bg">
-                        <div class="bar-fill" style="width:{{ d.rate if d.rate > 1.5 else 1.5 }}%;
-                             background:{% if d.rate >= 40 %}#16a34a{% elif d.rate >= 20 %}#f59e0b{% else %}#dc2626{% endif %}"></div>
+                    <div class="who">{{ d.name }}<span>{{ d.people }}명</span></div>
+                    <div class="track">
+                        <i style="width:{{ d.rate if d.rate > 1.5 else 1.5 }}%;
+                           background:{% if d.rate >= 40 %}linear-gradient(90deg,#4ade80,#16a34a){% elif d.rate >= 20 %}linear-gradient(90deg,#fbbf24,#f59e0b){% else %}linear-gradient(90deg,#f87171,#dc2626){% endif %}"></i>
                     </div>
-                    <span class="bar-num">{{ '%.0f'|format(d.used) }} / {{ '%.0f'|format(d.total) }} ·
-                        <b style="color:{% if d.rate >= 40 %}#16a34a{% elif d.rate >= 20 %}#b45309{% else %}#b91c1c{% endif %}">{{ '%.1f'|format(d.rate) }}%</b></span>
+                    <div class="bar-num">{{ '%.0f'|format(d.used) }} / {{ '%.0f'|format(d.total) }}
+                        <b style="color:{% if d.rate >= 40 %}#16a34a{% elif d.rate >= 20 %}#b45309{% else %}#b91c1c{% endif %}">{{ '%.0f'|format(d.rate) }}%</b></div>
                 </div>
                 {% endfor %}
             </div>
@@ -95,92 +289,96 @@
 
         <!-- 월별 사용 추이 -->
         <div class="col-12 col-lg-6">
-            <div class="card-box">
-                <h6>월별 사용 추이</h6>
+            <div class="panel">
+                <h6>📈 월별 사용 추이 <span class="tag">단위: 일</span></h6>
                 <div class="mbar-wrap">
                     {% for m in months %}
-                    <div class="mbar">
+                    <div class="mbar" title="{{ loop.index }}월 {{ '%.0f'|format(m.v) }}일">
                         <span class="v">{{ '%.0f'|format(m.v) if m.v else '' }}</span>
                         <div class="b {% if m.v == 0 %}zero{% elif m.v == month_max %}max{% endif %}"
-                             style="height:{{ m.h }}px"></div>
-                        <span class="cap">{{ loop.index }}월</span>
+                             style="height:{{ m.h if m.h > 3 else 3 }}px"></div>
+                        <span class="cap">{{ loop.index }}</span>
                     </div>
                     {% endfor %}
                 </div>
-                <div class="mt-2 small text-muted">
-                    올해 사용 {{ '%.0f'|format(s.used) }}일 · 남은 연차 {{ '%.0f'|format(s.rest) }}일
+                <div class="mt-3 pt-2 small text-muted" style="border-top:1px dashed #eef2f7">
+                    올해 <b class="text-dark">{{ '%.0f'|format(s.used) }}일</b> 사용 ·
+                    남은 연차 <b class="text-dark">{{ '%.0f'|format(s.rest) }}일</b>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- 확인이 필요한 인원 -->
-    <div class="row g-3 mb-4">
+    <div class="row g-3 mb-3">
         <div class="col-12 col-md-4">
             <div class="alert-box danger">
                 <div class="t">⚠ 연차보다 많이 씀</div>
-                <div class="n">{{ negatives|length }}명</div>
+                <div class="n">{{ negatives|length }}<small>명</small></div>
                 <div class="d">
-                    {% for p in negatives[:6] %}<a class="name-link" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a> {{ '%.1f'|format(-p.rest) }}일{% if not loop.last %} · {% endif %}{% endfor %}
-                    {% if negatives|length > 6 %} 외 {{ negatives|length - 6 }}명{% endif %}
-                    {% if not negatives %}없음{% endif %}
+                    {% for p in negatives[:6] %}<a class="pill" href="/annual_leave?search={{ p.name }}">{{ p.name }}<b>{{ '%.1f'|format(-p.rest) }}일</b></a>{% endfor %}
+                    {% if negatives|length > 6 %}<span class="pill">외 {{ negatives|length - 6 }}명</span>{% endif %}
+                    {% if not negatives %}없음{% else %}<span class="hint">쓸 수 있는 연차보다 더 쓴 사람입니다</span>{% endif %}
                 </div>
             </div>
         </div>
         <div class="col-12 col-md-4">
             <div class="alert-box warn">
                 <div class="t">⚠ 발생연차 없이 사용</div>
-                <div class="n">{{ no_grant|length }}명</div>
+                <div class="n">{{ no_grant|length }}<small>명</small></div>
                 <div class="d">
-                    {% for p in no_grant[:8] %}<a class="name-link" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
-                    {% if not no_grant %}없음{% else %}<br><span class="text-muted">ERP에 발생연차 등록 필요</span>{% endif %}
+                    {% for p in no_grant[:8] %}<a class="pill" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a>{% endfor %}
+                    {% if not no_grant %}없음{% else %}<span class="hint">ERP에 올해 발생연차를 넣어야 합니다</span>{% endif %}
                 </div>
             </div>
         </div>
         <div class="col-12 col-md-4">
-            <div class="alert-box">
-                <div class="t text-secondary">🏖 한 번도 안 쓴 사람</div>
-                <div class="n">{{ unused|length }}명</div>
+            <div class="alert-box calm">
+                <div class="t">🏖 한 번도 안 쓴 사람</div>
+                <div class="n">{{ unused|length }}<small>명</small></div>
                 <div class="d">
-                    {% for p in unused[:6] %}<a class="name-link" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a> {{ '%.0f'|format(p.rest) }}{% if not loop.last %} · {% endif %}{% endfor %}
-                    {% if unused|length > 6 %} 외 {{ unused|length - 6 }}명{% endif %}
-                    {% if not unused %}없음{% else %}<br><span class="text-muted">연차 쓰라고 안내할 대상</span>{% endif %}
+                    {% for p in unused[:6] %}<a class="pill" href="/annual_leave?search={{ p.name }}">{{ p.name }}<i>{{ '%.0f'|format(p.rest) }}일</i></a>{% endfor %}
+                    {% if unused|length > 6 %}<span class="pill">외 {{ unused|length - 6 }}명</span>{% endif %}
+                    {% if not unused %}없음{% else %}<span class="hint">연차를 쓰라고 안내할 대상입니다</span>{% endif %}
                 </div>
             </div>
         </div>
     </div>
 
     <!-- 남은 연차 많은 순 -->
-    <div class="card-box mb-4">
-        <h6>남은 연차 많은 순 (상위 15명)</h6>
+    <div class="panel mb-3">
+        <h6>🏝 남은 연차 많은 순 <span class="tag">상위 15명</span></h6>
         <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-                <thead class="table-light">
+            <table class="lv-table">
+                <thead>
                     <tr>
-                        <th style="width:44px">#</th><th>이름</th><th>부서</th>
-                        <th class="text-end">사용가능</th><th class="text-end">사용</th>
-                        <th class="text-end">남은 연차</th><th style="width:120px">사용률</th>
+                        <th style="width:52px">#</th><th>이름</th><th>부서</th>
+                        <th class="num">쓸 수 있는 연차</th><th class="num">쓴 연차</th>
+                        <th class="num">남은 연차</th><th style="width:130px">사용률</th>
                     </tr>
                 </thead>
                 <tbody>
                 {% for p in top_rest %}
                     <tr>
-                        <td class="text-muted">{{ loop.index }}</td>
+                        <td><span class="rank {% if loop.index <= 3 %}top{% endif %}">{{ loop.index }}</span></td>
                         <td><a class="name-link" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a></td>
-                        <td class="text-muted">{{ p.dept }}</td>
-                        <td class="text-end">{{ '%.1f'|format(p.total) }}</td>
-                        <td class="text-end">{{ '%.1f'|format(p.used) }}</td>
-                        <td class="text-end fw-bold">{{ '%.1f'|format(p.rest) }}</td>
+                        <td><span class="dept-tag">{{ p.dept }}</span></td>
+                        <td class="num text-muted">{{ '%.1f'|format(p.total) }}</td>
+                        <td class="num text-muted">{{ '%.1f'|format(p.used) }}</td>
+                        <td class="num fw-bold">{{ '%.1f'|format(p.rest) }}</td>
                         <td>
-                            <div class="bar-bg" style="height:14px">
-                                <div class="bar-fill" style="height:100%;width:{{ p.rate }}%;
-                                     background:{% if p.rate >= 40 %}#16a34a{% elif p.rate >= 20 %}#f59e0b{% else %}#dc2626{% endif %}"></div>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="track" style="flex:1">
+                                    <i style="width:{{ p.rate if p.rate > 1.5 else 1.5 }}%;
+                                       background:{% if p.rate >= 40 %}linear-gradient(90deg,#4ade80,#16a34a){% elif p.rate >= 20 %}linear-gradient(90deg,#fbbf24,#f59e0b){% else %}linear-gradient(90deg,#f87171,#dc2626){% endif %}"></i>
+                                </div>
+                                <span class="text-muted" style="font-size:.72rem;width:30px;text-align:right">{{ '%.0f'|format(p.rate) }}%</span>
                             </div>
                         </td>
                     </tr>
                 {% endfor %}
                 {% if not top_rest %}
-                    <tr><td colspan="7" class="text-center text-muted py-3">자료가 없습니다.</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted py-4">자료가 없습니다.</td></tr>
                 {% endif %}
                 </tbody>
             </table>
@@ -188,7 +386,8 @@
     </div>
 
     <div class="sync-note mb-4">
-        🔄 ERP 입력 기준 · 매일 18:30 자동 동기화
+        <span class="dot"></span>
+        ERP 입력 기준 · 매일 18:30 자동 반영
         {% if last_sync %} · 마지막 반영 {{ last_sync }}{% endif %}
     </div>
 
