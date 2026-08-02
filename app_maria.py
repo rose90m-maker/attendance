@@ -5865,12 +5865,15 @@ def welfare():
 
 
 @app.route("/hr_status")
-@_login_required
+@_admin_required
 def hr_status():
     """인사현황 — hr_*(ERP 동기화 결과)를 집계해 보여준다.
 
     숫자는 전부 hr_employees 등에서 나온다. 화면에서 ERP 를 직접 보지 않는다.
     근속·나이는 오늘 기준으로 계산한다.
+
+    생년월일·나이가 들어가므로 관리자만 본다 (2026-08-02 사용자 결정).
+    개인 이력 화면을 붙일 때도 재직자만 대상으로 한다.
     """
     today = datetime.now().date()
     ymd = today.strftime("%Y%m%d")
