@@ -1511,6 +1511,9 @@ MENU_STRUCTURE = [
     # 통합관제는 사이드바 맨 위 그룹이다. 식수관리를 여기로 옮겼다 (2026-08-02).
     ("cat_control", None, "통합관제", []),
     ("meal_mgmt", "cat_control", "식수관리", ["view", "create", "update", "delete"]),
+    ("bus_members", "cat_control", "탑승자명단", ["view", "create", "update", "delete"]),
+    ("bus_dispatch", "cat_control", "배차조회", ["view", "update"]),
+    ("bus_sms", "cat_control", "발송이력", ["view", "create"]),
 
     ("cat_attendance", None, "근태관리", []),
     ("attendance_record", "cat_attendance", "근태기록", ["view"]),
@@ -1529,11 +1532,6 @@ MENU_STRUCTURE = [
     ("welfare", "cat_hr", "복지혜택", ["view"]),
     ("work_report", "cat_hr", "근무보고서", ["view", "create", "update", "delete"]),
     ("document_mgmt", "cat_hr", "공문서관리", ["view", "create", "update", "delete"]),
-
-    ("cat_bus", None, "배차관리", []),
-    ("bus_members", "cat_bus", "탑승자명단", ["view", "create", "update", "delete"]),
-    ("bus_dispatch", "cat_bus", "배차조회", ["view", "update"]),
-    ("bus_sms", "cat_bus", "발송이력", ["view", "create"]),
 
     ("cat_mes", None, "MES관리", []),
     ("mes_realtime", "cat_mes", "실시간카운트", ["view"]),
