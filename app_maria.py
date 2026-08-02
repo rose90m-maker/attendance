@@ -1520,6 +1520,7 @@ MENU_STRUCTURE = [
     ("leave_plan", "cat_leave", "연차사용계획", ["view", "create", "update", "delete"]),
 
     ("cat_hr", None, "인사관리", []),
+    ("hr_status", "cat_hr", "인사현황", ["view"]),
     ("welfare", "cat_hr", "복지혜택", ["view"]),
     ("meal_mgmt", "cat_hr", "식수관리", ["view", "create", "update", "delete"]),
     ("work_report", "cat_hr", "근무보고서", ["view", "create", "update", "delete"]),
@@ -5861,6 +5862,154 @@ def upload_schedule_record():
 @_login_required
 def welfare():
     return render_template("welfare.html")
+
+
+@app.route("/hr_status")
+@_login_required
+def hr_status():
+    """인사현황 — hr_*(ERP 동기화 결과)를 집계해 보여준다.
+
+    숫자는 전부 hr_employees 등에서 나온다. 화면에서 ERP 를 직접 보지 않는다.
+    근속·나이는 오늘 기준으로 계산한다.
+    """
+    today = datetime.now().date()
+    ymd = today.strftime("%Y%m%d")
+    year = today.year
+    conn = _conn(); cur = conn.cursor()
+
+    cur.execute("""SELECT emp_seq, name, dept_name, ent_date, retire_date,
+                          birth_date, sex, is_active
+                     FROM hr_employees""")
+    rows = cur.fetchall()
+
+    def years_between(d8, base=ymd):
+        """YYYYMMDD 두 값 사이의 만 나이/근속연수"""
+        if not d8 or len(d8) != 8:
+            return None
+        y = int(base[:4]) - int(d8[:4])
+        if base[4:8] < d8[4:8]:
+            y -= 1
+        return y
+
+    emps = []
+    for es, nm, dept, ent, ret, birth, sex, act in rows:
+        emps.append({"seq": es, "name": nm or "", "dept": dept or "미지정",
+                     "ent": ent or "", "ret": ret or "", "birth": birth or "",
+                     "sex": sex or "", "active": bool(act),
+                     "years": years_between(ent) if ent else None,
+                     "age": years_between(birth) if birth else None})
+    act_emps = [e for e in emps if e["active"]]
+
+    yrs = [e["years"] for e in act_emps if e["years"] is not None]
+    ages = [e["age"] for e in act_emps if e["age"] is not None]
+    s = {
+        "active": len(act_emps),
+        "retired": len(emps) - len(act_emps),
+        "in_this_year": len([e for e in emps if e["ent"][:4] == str(year)]),
+        "out_this_year": len([e for e in emps
+                              if not e["active"] and e["ret"][:4] == str(year)]),
+        "avg_years": (sum(yrs) / len(yrs)) if yrs else 0,
+        "avg_age": (sum(ages) / len(ages)) if ages else 0,
+    }
+
+    # 근속 구간
+    BANDS = [("1년 미만", 0, 1), ("1~3년", 1, 3), ("3~5년", 3, 5),
+             ("5~10년", 5, 10), ("10~20년", 10, 20), ("20년 이상", 20, 999)]
+    bands = []
+    for label, lo, hi in BANDS:
+        n = len([e for e in act_emps if e["years"] is not None and lo <= e["years"] < hi])
+        bands.append({"name": label, "n": n,
+                      "rate": (n / len(act_emps) * 100) if act_emps else 0})
+    band_max = max([b["n"] for b in bands], default=0)
+
+    # 부서별 인원
+    agg = {}
+    for e in act_emps:
+        d = agg.setdefault(e["dept"], {"name": e["dept"], "n": 0, "yrs": []})
+        d["n"] += 1
+        if e["years"] is not None:
+            d["yrs"].append(e["years"])
+    depts = sorted(agg.values(), key=lambda d: -d["n"])
+    for d in depts:
+        d["avg"] = (sum(d["yrs"]) / len(d["yrs"])) if d["yrs"] else 0
+    dept_max = max([d["n"] for d in depts], default=0)
+
+    # 올해·내년 근속 도래자 (10·15·20·25·30년)
+    MILE = (10, 15, 20, 25, 30)
+    miles = []
+    for y in (year, year + 1):
+        people = []
+        for e in act_emps:
+            if not e["ent"]:
+                continue
+            n = y - int(e["ent"][:4])
+            if n in MILE:
+                people.append({"name": e["name"], "dept": e["dept"],
+                               "n": n, "date": e["ent"]})
+        people.sort(key=lambda p: (-p["n"], p["date"]))
+        miles.append({"year": y, "people": people})
+
+    # 정년(만 60세) 도래 예정 — 올해부터 3년
+    RETIRE_AGE = 60
+    retires = []
+    for y in (year, year + 1, year + 2):
+        people = []
+        for e in act_emps:
+            if e["birth"] and int(e["birth"][:4]) + RETIRE_AGE == y:
+                people.append({"name": e["name"], "dept": e["dept"],
+                               "birth": e["birth"], "age": e["age"]})
+        people.sort(key=lambda p: p["birth"])
+        retires.append({"year": y, "people": people})
+
+    # 휴직 중 / 복직 예정
+    cur.execute("""SELECT r.emp_seq, e.name, e.dept_name, r.beg_date, r.end_date
+                     FROM hr_rests r LEFT JOIN hr_employees e ON e.emp_seq = r.emp_seq
+                    WHERE r.beg_date <= %s AND (r.end_date = '' OR r.end_date >= %s)
+                    ORDER BY r.end_date""", (ymd, ymd))
+    rests = [{"name": r[1] or "", "dept": r[2] or "", "beg": r[3], "end": r[4]}
+             for r in cur.fetchall()]
+
+    # 최근 발령
+    cur.execute("SELECT COUNT(*) FROM hr_orders WHERE LEFT(ord_date,4)=%s", (str(year),))
+    order_cnt = cur.fetchone()[0]
+    cur.execute("""SELECT o.ord_date, e.name, o.dept_name, o.contents
+                     FROM hr_orders o LEFT JOIN hr_employees e ON e.emp_seq = o.emp_seq
+                    ORDER BY o.ord_date DESC LIMIT 12""")
+    orders = [{"date": r[0], "name": r[1] or "", "dept": r[2] or "", "note": r[3] or ""}
+              for r in cur.fetchall()]
+
+    # 연도별 입·퇴사 추이 (최근 6년)
+    trend = []
+    for y in range(year - 5, year + 1):
+        trend.append({
+            "year": y,
+            "in": len([e for e in emps if e["ent"][:4] == str(y)]),
+            "out": len([e for e in emps if not e["active"] and e["ret"][:4] == str(y)]),
+        })
+    trend_max = max([max(t["in"], t["out"]) for t in trend], default=0)
+
+    # 증명서 발급 (올해)
+    cur.execute("""SELECT COUNT(*) FROM hr_certificates WHERE LEFT(issue_date,4)=%s""",
+                (str(year),))
+    cert_cnt = cur.fetchone()[0]
+    cur.execute("""SELECT c.issue_date, e.name, c.usage_txt, c.submit_to, c.issue_no
+                     FROM hr_certificates c LEFT JOIN hr_employees e ON e.emp_seq=c.emp_seq
+                    ORDER BY c.issue_date DESC LIMIT 10""")
+    certs = [{"date": r[0], "name": r[1] or "", "use": r[2] or "",
+              "to": r[3] or "", "no": r[4] or ""} for r in cur.fetchall()]
+
+    cur.execute("SELECT DATE_FORMAT(MAX(updated_at), '%Y-%m-%d %H:%i') FROM hr_employees")
+    last_sync = cur.fetchone()[0]
+    conn.close()
+
+    return render_template("hr_status.html",
+                           year=year, s=s, bands=bands, band_max=band_max,
+                           depts=depts, dept_max=dept_max, miles=miles,
+                           retires=retires, retire_age=RETIRE_AGE, rests=rests,
+                           orders=orders, order_cnt=order_cnt,
+                           trend=trend, trend_max=trend_max,
+                           cert_cnt=cert_cnt, certs=certs, last_sync=last_sync,
+                           active_page="hr_status")
 
 
 @app.route("/leave_dashboard")

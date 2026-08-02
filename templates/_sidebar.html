@@ -142,6 +142,7 @@
         <span class="ng-icon">👥</span><span class="ng-label">인사관리</span><span class="ng-arrow">▸</span>
     </button>
     <div class="nav-group-items" data-group="grp-hr">
+        <a href="/hr_status" class="side-link{% if active_page == 'hr_status' %} active{% endif %}"><span class="sl-icon">👤</span>인사현황</a>
         <a href="/welfare" class="side-link{% if active_page == 'welfare' %} active{% endif %}"><span class="sl-icon">🎁</span>복지혜택</a>
         {% if is_admin or 'meal' in session.get('permissions','') %}
         <a href="/meal_management" class="side-link{% if active_page == 'meal_management' %} active{% endif %}"><span class="sl-icon">🍽️</span>식수관리</a>

@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>인사현황</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        :root {
+            --ink:#0f172a; --sub:#64748b; --faint:#94a3b8;
+            --line:#e8edf4; --brand:#2563eb; --brand-dk:#1e40af;
+            --ok:#16a34a; --warn:#f59e0b; --bad:#dc2626;
+        }
+        .hr-wrap { max-width:1560px; }
+        .hr-head { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; }
+        .hr-head h4 { margin:0; font-weight:800; color:var(--ink); letter-spacing:-.02em; }
+        .hr-head .sub { font-size:.8rem; color:var(--faint); margin-top:3px; }
+
+        .panel {
+            background:#fff; border:1px solid var(--line); border-radius:16px;
+            padding:18px 20px; height:100%;
+            box-shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px -18px rgba(15,23,42,.35);
+        }
+        .panel h6 {
+            font-weight:700; color:var(--ink); font-size:.92rem;
+            margin:0 0 16px; display:flex; align-items:center; gap:7px;
+        }
+        .panel h6 .tag { font-size:.72rem; font-weight:600; color:var(--faint); margin-left:auto; }
+
+        .hero {
+            border-radius:16px; padding:20px; color:#fff; height:100%;
+            background:linear-gradient(140deg,#0f766e 0%,#0d9488 60%,#14b8a6 100%);
+            box-shadow:0 10px 30px -14px rgba(13,148,136,.65);
+        }
+        .hero .big { font-size:2.4rem; font-weight:800; line-height:1; letter-spacing:-.03em; }
+        .hero .big small { font-size:.9rem; font-weight:600; opacity:.85; margin-left:3px; }
+        .hero .t { font-size:.8rem; opacity:.85; }
+        .hero-chip {
+            display:inline-block; background:rgba(255,255,255,.16); border-radius:999px;
+            padding:4px 11px; font-size:.74rem; margin:10px 5px 0 0; white-space:nowrap;
+        }
+
+        .stat {
+            background:#fff; border:1px solid var(--line); border-radius:14px;
+            padding:14px 15px; height:100%; position:relative; overflow:hidden;
+            transition:transform .12s ease, box-shadow .12s ease;
+        }
+        .stat:hover { transform:translateY(-2px); box-shadow:0 10px 22px -16px rgba(15,23,42,.5); }
+        .stat::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--c,#cbd5e1); }
+        .stat .lbl { font-size:.76rem; color:var(--sub); }
+        .stat .val { font-size:1.5rem; font-weight:800; color:var(--ink); line-height:1.15; margin-top:5px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+        .stat .val small { font-size:.76rem; font-weight:600; color:var(--faint); margin-left:2px; }
+
+        .bar-row { display:grid; grid-template-columns:minmax(84px,1fr) 2.4fr auto; gap:12px; align-items:center; padding:7px 0; font-size:.84rem; }
+        .bar-row + .bar-row { border-top:1px dashed #eef2f7; }
+        .bar-row .who { font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .track { background:#f1f5f9; border-radius:999px; height:9px; overflow:hidden; }
+        .track > i { display:block; height:100%; border-radius:999px; }
+        .bar-num { text-align:right; color:var(--faint); font-size:.76rem; white-space:nowrap; font-variant-numeric:tabular-nums; }
+        .bar-num b { color:var(--ink); font-size:.85rem; margin-left:3px; }
+
+        .tbar-wrap { display:flex; align-items:flex-end; gap:12px; height:150px; padding-top:4px; }
+        .tbar { flex:1; display:flex; flex-direction:column; justify-content:flex-end; height:100%; text-align:center; }
+        .tbar .pair { display:flex; align-items:flex-end; justify-content:center; gap:3px; height:100%; }
+        .tbar .b { width:14px; border-radius:4px 4px 2px 2px; }
+        .tbar .b.in  { background:linear-gradient(180deg,#5eead4,#0d9488); }
+        .tbar .b.out { background:linear-gradient(180deg,#fda4af,#e11d48); }
+        .tbar .cap { font-size:.68rem; color:var(--faint); margin-top:6px; }
+        .tbar .v { font-size:.68rem; color:var(--sub); font-weight:600; margin-bottom:3px; }
+        .legend { font-size:.74rem; color:var(--sub); display:flex; gap:14px; margin-top:10px; }
+        .legend i { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:4px; }
+
+        .alert-box {
+            background:#fff; border:1px solid var(--line); border-radius:16px;
+            padding:16px 18px; height:100%; position:relative; overflow:hidden;
+        }
+        .alert-box::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:#cbd5e1; }
+        .alert-box.gold { border-color:#fde3ab; background:linear-gradient(180deg,#fffaf0,#fff 42%); }
+        .alert-box.gold::before { background:var(--warn); }
+        .alert-box.rose { border-color:#fecaca; background:linear-gradient(180deg,#fff6f6,#fff 42%); }
+        .alert-box.rose::before { background:var(--bad); }
+        .alert-box.calm { border-color:#c7e2fb; background:linear-gradient(180deg,#f4f9ff,#fff 42%); }
+        .alert-box.calm::before { background:#38bdf8; }
+        .alert-box .t { font-size:.82rem; font-weight:700; }
+        .alert-box.gold .t { color:#b45309; }
+        .alert-box.rose .t { color:#b91c1c; }
+        .alert-box.calm .t { color:#0369a1; }
+        .alert-box .n { font-size:1.6rem; font-weight:800; color:var(--ink); margin:4px 0 8px; letter-spacing:-.02em; }
+        .alert-box .n small { font-size:.8rem; font-weight:600; color:var(--faint); margin-left:2px; }
+        .alert-box .d { font-size:.78rem; color:var(--sub); line-height:1.75; }
+        .pill {
+            display:inline-block; background:#f1f5f9; border-radius:999px;
+            padding:2px 9px; margin:0 4px 4px 0; font-size:.75rem; color:var(--ink);
+            white-space:nowrap;
+        }
+        .pill b { color:var(--brand-dk); font-weight:700; margin-left:3px; }
+        .pill i { font-style:normal; color:var(--faint); margin-left:3px; }
+        .hint { display:block; margin-top:6px; font-size:.74rem; color:var(--faint); }
+
+        .hr-table { width:100%; border-collapse:separate; border-spacing:0; font-size:.84rem; }
+        .hr-table th {
+            background:#f8fafc; color:var(--sub); font-weight:600; font-size:.74rem;
+            padding:9px 11px; border-bottom:1px solid var(--line); white-space:nowrap;
+        }
+        .hr-table td { padding:9px 11px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+        .hr-table tbody tr:hover td { background:#f8fbff; }
+        .dept-tag { font-size:.73rem; color:var(--sub); background:#f1f5f9; border-radius:6px; padding:2px 7px; }
+        .sync-note { font-size:.78rem; color:var(--faint); display:flex; align-items:center; gap:7px; flex-wrap:wrap; padding:12px 2px; }
+        .sync-note .dot { width:6px; height:6px; border-radius:50%; background:var(--ok); flex:none; }
+    </style>
+</head>
+<body>
+
+{% include '_sidebar.html' %}
+
+<div class="container-fluid px-3 mt-4 hr-wrap">
+
+    <div class="hr-head">
+        <div>
+            <h4>👥 인사현황</h4>
+            <div class="sub">ERP 입력 내용을 그대로 보여줍니다</div>
+        </div>
+    </div>
+
+    <!-- 요약 -->
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-xl-4">
+            <div class="hero">
+                <div class="t">{{ year }}년 현재 재직 인원</div>
+                <div class="big">{{ s.active }}<small>명</small></div>
+                <div>
+                    <span class="hero-chip">평균 근속 {{ '%.1f'|format(s.avg_years) }}년</span>
+                    <span class="hero-chip">평균 나이 {{ '%.0f'|format(s.avg_age) }}세</span>
+                    <span class="hero-chip">퇴직자 누계 {{ s.retired }}명</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-8">
+            <div class="row g-3 h-100">
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#0d9488">
+                        <div class="lbl">🙋 올해 입사</div>
+                        <div class="val">{{ s.in_this_year }}<small>명</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#e11d48">
+                        <div class="lbl">👋 올해 퇴사</div>
+                        <div class="val">{{ s.out_this_year }}<small>명</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#8b5cf6">
+                        <div class="lbl">🏅 올해 근속 도래</div>
+                        <div class="val">{{ miles[0].people|length }}<small>명</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#f59e0b">
+                        <div class="lbl">🎓 올해 정년 도래</div>
+                        <div class="val">{{ retires[0].people|length }}<small>명</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#38bdf8">
+                        <div class="lbl">🛌 휴직 중</div>
+                        <div class="val">{{ rests|length }}<small>명</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#64748b">
+                        <div class="lbl">🏢 부서 수</div>
+                        <div class="val">{{ depts|length }}<small>개</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#6366f1">
+                        <div class="lbl">📄 올해 증명서 발급</div>
+                        <div class="val">{{ cert_cnt }}<small>건</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#16a34a">
+                        <div class="lbl">📋 올해 발령</div>
+                        <div class="val">{{ order_cnt }}<small>건</small></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <!-- 근속 분포 -->
+        <div class="col-12 col-lg-6">
+            <div class="panel">
+                <h6>⏳ 근속 분포 <span class="tag">재직자 {{ s.active }}명</span></h6>
+                {% for b in bands %}
+                <div class="bar-row">
+                    <div class="who">{{ b.name }}</div>
+                    <div class="track">
+                        <i style="width:{{ (b.n / band_max * 100) if band_max else 0 }}%;
+                           background:linear-gradient(90deg,#5eead4,#0d9488)"></i>
+                    </div>
+                    <div class="bar-num">{{ '%.0f'|format(b.rate) }}% <b>{{ b.n }}명</b></div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 입퇴사 추이 -->
+        <div class="col-12 col-lg-6">
+            <div class="panel">
+                <h6>📈 입·퇴사 추이 <span class="tag">최근 6년</span></h6>
+                <div class="tbar-wrap">
+                    {% for t in trend %}
+                    <div class="tbar">
+                        <div class="v">{{ t.in }} / {{ t.out }}</div>
+                        <div class="pair">
+                            <div class="b in" title="{{ t.year }}년 입사 {{ t.in }}명"
+                                 style="height:{{ (t.in / trend_max * 110) if trend_max else 0 }}px"></div>
+                            <div class="b out" title="{{ t.year }}년 퇴사 {{ t.out }}명"
+                                 style="height:{{ (t.out / trend_max * 110) if trend_max else 0 }}px"></div>
+                        </div>
+                        <div class="cap">{{ t.year }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="legend">
+                    <span><i style="background:#0d9488"></i>입사</span>
+                    <span><i style="background:#e11d48"></i>퇴사</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 챙겨야 할 사람 -->
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-md-4">
+            <div class="alert-box gold">
+                <div class="t">🏅 근속 도래자</div>
+                <div class="n">{{ miles[0].people|length }}<small>명 ({{ miles[0].year }}년)</small></div>
+                <div class="d">
+                    {% for p in miles[0].people[:8] %}<span class="pill">{{ p.name }}<b>{{ p.n }}년</b></span>{% endfor %}
+                    {% if not miles[0].people %}없음{% endif %}
+                    {% if miles[1].people %}
+                    <span class="hint">{{ miles[1].year }}년: {% for p in miles[1].people[:6] %}{{ p.name }} {{ p.n }}년{% if not loop.last %} · {% endif %}{% endfor %}{% if miles[1].people|length > 6 %} 외 {{ miles[1].people|length - 6 }}명{% endif %}</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="alert-box rose">
+                <div class="t">🎓 정년(만 {{ retire_age }}세) 도래</div>
+                <div class="n">{{ retires[0].people|length }}<small>명 ({{ retires[0].year }}년)</small></div>
+                <div class="d">
+                    {% for p in retires[0].people[:8] %}<span class="pill">{{ p.name }}<i>{{ p.birth[:4] }}년생</i></span>{% endfor %}
+                    {% if not retires[0].people %}없음{% endif %}
+                    <span class="hint">
+                        {% for r in retires[1:] %}{{ r.year }}년 {{ r.people|length }}명{% if not loop.last %} · {% endif %}{% endfor %}
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="alert-box calm">
+                <div class="t">🛌 휴직 중 · 복직 예정</div>
+                <div class="n">{{ rests|length }}<small>명</small></div>
+                <div class="d">
+                    {% for r in rests[:6] %}<span class="pill">{{ r.name }}<i>~{{ r.end[4:6] }}/{{ r.end[6:] }}</i></span>{% endfor %}
+                    {% if not rests %}없음{% else %}<span class="hint">복직일이 가까운 순입니다</span>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <!-- 부서별 -->
+        <div class="col-12 col-lg-6">
+            <div class="panel">
+                <h6>🏢 부서별 인원 <span class="tag">평균 근속</span></h6>
+                <div style="max-height:340px;overflow-y:auto">
+                {% for d in depts %}
+                <div class="bar-row">
+                    <div class="who">{{ d.name }}</div>
+                    <div class="track">
+                        <i style="width:{{ (d.n / dept_max * 100) if dept_max else 0 }}%;
+                           background:linear-gradient(90deg,#93c5fd,#2563eb)"></i>
+                    </div>
+                    <div class="bar-num">{{ '%.1f'|format(d.avg) }}년 <b>{{ d.n }}명</b></div>
+                </div>
+                {% endfor %}
+                {% if not depts %}<div class="text-muted small">자료가 없습니다.</div>{% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 최근 발령 -->
+        <div class="col-12 col-lg-6">
+            <div class="panel">
+                <h6>📋 최근 인사발령 <span class="tag">최근 12건</span></h6>
+                <div class="table-responsive" style="max-height:340px;overflow-y:auto">
+                    <table class="hr-table">
+                        <thead><tr><th style="width:100px">발령일</th><th>이름</th><th>부서</th><th>내용</th></tr></thead>
+                        <tbody>
+                        {% for o in orders %}
+                            <tr>
+                                <td class="text-muted">{{ o.date[:4] }}-{{ o.date[4:6] }}-{{ o.date[6:] }}</td>
+                                <td class="fw-semibold">{{ o.name }}</td>
+                                <td><span class="dept-tag">{{ o.dept }}</span></td>
+                                <td class="text-muted">{{ o.note }}</td>
+                            </tr>
+                        {% endfor %}
+                        {% if not orders %}<tr><td colspan="4" class="text-center text-muted py-4">자료가 없습니다.</td></tr>{% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 증명서 발급 -->
+    <div class="panel mb-3">
+        <h6>📄 최근 증명서 발급 <span class="tag">최근 10건</span></h6>
+        <div class="table-responsive">
+            <table class="hr-table">
+                <thead><tr><th style="width:110px">발급일</th><th>이름</th><th>용도</th><th>제출처</th><th>발급번호</th></tr></thead>
+                <tbody>
+                {% for c in certs %}
+                    <tr>
+                        <td class="text-muted">{{ c.date[:4] }}-{{ c.date[4:6] }}-{{ c.date[6:] }}</td>
+                        <td class="fw-semibold">{{ c.name }}</td>
+                        <td>{{ c.use }}</td>
+                        <td class="text-muted">{{ c.to }}</td>
+                        <td class="text-muted">{{ c.no }}</td>
+                    </tr>
+                {% endfor %}
+                {% if not certs %}<tr><td colspan="5" class="text-center text-muted py-4">자료가 없습니다.</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="sync-note mb-4">
+        <span class="dot"></span>
+        ERP 입력 기준 · 매일 자동 반영
+        {% if last_sync %} · 마지막 반영 {{ last_sync }}{% endif %}
+    </div>
+
+</div>
+</body>
+</html>
