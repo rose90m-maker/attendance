@@ -121,6 +121,9 @@ DEPT_MAP = {
     "0007000000000000": "경영기획팀",
 }
 
+# 연차 관리 대상이 아닌 부서 (연차관리 화면 · 대시보드 · ERP 동기화에서 모두 제외)
+LEAVE_EXCLUDE_COMPANIES = ("0007000000000000",)   # 경영기획팀
+
 
 def _conn():
     return pymysql.connect(**MARIA)
@@ -5876,18 +5879,24 @@ def leave_dashboard():
     cur.execute("SELECT DISTINCT year FROM annual_leave ORDER BY year DESC")
     year_list = [r[0] for r in cur.fetchall()] or [year]
 
-    cur.execute("""SELECT COUNT(*), IFNULL(SUM(generated),0), IFNULL(SUM(total),0),
-                          IFNULL(SUM(used),0)
-                     FROM annual_leave WHERE year=%s""", (year,))
+    exc0 = ",".join(["%s"] * len(LEAVE_EXCLUDE_COMPANIES))
+    cur.execute("""SELECT COUNT(*), IFNULL(SUM(a.generated),0), IFNULL(SUM(a.total),0),
+                          IFNULL(SUM(a.used),0)
+                     FROM annual_leave a LEFT JOIN tuser t ON t.id = a.e_id
+                    WHERE a.year=%%s AND IFNULL(t.company,'') NOT IN (%s)""" % exc0,
+                [year] + list(LEAVE_EXCLUDE_COMPANIES))
     cnt, gen, tot, used = cur.fetchone()
     s = {"people": cnt, "generated": float(gen), "total": float(tot), "used": float(used),
          "rest": float(tot) - float(used),
          "rate": (float(used) / float(tot) * 100) if float(tot) else 0.0}
 
     # 부서는 화면 다른 곳과 같게 tuser.company → DEPT_MAP 으로 묶는다
+    exc = LEAVE_EXCLUDE_COMPANIES
+    exc_ph = ",".join(["%s"] * len(exc))
     cur.execute("""SELECT t.company, COUNT(*), IFNULL(SUM(a.total),0), IFNULL(SUM(a.used),0)
                      FROM annual_leave a JOIN tuser t ON t.id = a.e_id
-                    WHERE a.year=%s GROUP BY t.company""", (year,))
+                    WHERE a.year=%%s AND t.company NOT IN (%s) GROUP BY t.company""" % exc_ph,
+                [year] + list(exc))
     agg = {}
     for comp, n, t2, u2 in cur.fetchall():
         d = agg.setdefault(DEPT_MAP.get(comp, "기타"),
@@ -5901,15 +5910,18 @@ def leave_dashboard():
         depts.append(d)
     depts.sort(key=lambda x: -x["total"])
 
-    cur.execute("SELECT %s FROM annual_leave WHERE year=%%s"
-                % ", ".join("IFNULL(SUM(m%d),0)" % i for i in range(1, 13)), (year,))
+    cur.execute("SELECT %s FROM annual_leave a LEFT JOIN tuser t ON t.id=a.e_id "
+                "WHERE a.year=%%s AND IFNULL(t.company,'') NOT IN (%s)"
+                % (", ".join("IFNULL(SUM(a.m%d),0)" % i for i in range(1, 13)), exc0),
+                [year] + list(LEAVE_EXCLUDE_COMPANIES))
     mvals = [float(x or 0) for x in cur.fetchone()]
     mmax = max(mvals) if mvals else 0
     months = [{"v": v, "h": int(v / mmax * 110) if mmax else 4} for v in mvals]
 
     cur.execute("""SELECT a.e_name, t.company, a.total, a.used, (a.total - a.used) AS rest
                      FROM annual_leave a LEFT JOIN tuser t ON t.id = a.e_id
-                    WHERE a.year=%s ORDER BY rest DESC""", (year,))
+                    WHERE a.year=%%s AND IFNULL(t.company,'') NOT IN (%s)
+                    ORDER BY rest DESC""" % exc0, [year] + list(LEAVE_EXCLUDE_COMPANIES))
     rows = []
     for nm, comp, t2, u2, rest in cur.fetchall():
         t2, u2, rest = float(t2), float(u2), float(rest)
@@ -5919,9 +5931,10 @@ def leave_dashboard():
 
     negatives = sorted([r for r in rows if r["rest"] < 0], key=lambda r: r["rest"])
     unused = [r for r in rows if r["used"] == 0 and r["total"] > 0]
-    cur.execute("""SELECT e_name FROM annual_leave
-                    WHERE year=%s AND IFNULL(generated,0)=0 AND used>0
-                    ORDER BY e_name""", (year,))
+    cur.execute("""SELECT a.e_name FROM annual_leave a LEFT JOIN tuser t ON t.id=a.e_id
+                    WHERE a.year=%%s AND IFNULL(a.generated,0)=0 AND a.used>0
+                      AND IFNULL(t.company,'') NOT IN (%s)
+                    ORDER BY a.e_name""" % exc0, [year] + list(LEAVE_EXCLUDE_COMPANIES))
     no_grant = [{"name": r[0]} for r in cur.fetchall()]
 
     cur.execute("""SELECT DATE_FORMAT(MAX(updated_at), '%%Y-%%m-%%d %%H:%%i')
@@ -5952,7 +5965,8 @@ def annual_leave():
     except (ValueError, IndexError):
         year_int, month_int = datetime.now().year, datetime.now().month
         sel_month = f"{year_int:04d}-{month_int:02d}"
-    dept_list = sorted(set(DEPT_MAP.values()))
+    dept_list = sorted(v for k, v in DEPT_MAP.items()
+                       if k not in LEAVE_EXCLUDE_COMPANIES)
     # 달력 정보
     _, dim = calendar.monthrange(year_int, month_int)
     first_wd = calendar.weekday(year_int, month_int, 1)  # 0=Mon
@@ -5977,8 +5991,8 @@ def annual_leave():
                    FROM tuser WHERE name IS NOT NULL AND name <> ''
                    GROUP BY name
                ) t ON t.name = er.name
-               WHERE 1=1"""
-    params_u = []
+               WHERE t.company NOT IN (%s)""" % ",".join(["%s"] * len(LEAVE_EXCLUDE_COMPANIES))
+    params_u = list(LEAVE_EXCLUDE_COMPANIES)
     if sel_dept:
         dept_codes = [k for k, v in DEPT_MAP.items() if v == sel_dept]
         if dept_codes:

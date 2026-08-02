@@ -38,6 +38,9 @@ DTL_ITEMS = (1001, 1009, 1011)    # + 경조 — 날짜별 기록에는 남긴�
 ITEM_NAME = {1001: "연차", 1009: "반차", 1011: "경조"}
 GRANT_TYPE = 5043001              # SMYyType — 같은 연도에 다른 유형 행이 또 있다
 
+# 연차를 관리하지 않는 부서 (tuser.company 코드) — 동기화 대상에서 뺀다
+EXCLUDE_COMPANIES = ("0007000000000000",)   # 경영기획팀
+
 
 def erp_conn():
     return pymssql.connect(
@@ -93,8 +96,14 @@ def fetch_erp(year):
 
 
 def load_map(cur):
-    """tuser.idno(= ERP 사번) → tuser.id. 사번이 겹치면 매핑하지 않는다."""
-    cur.execute("SELECT id, name, idno FROM tuser WHERE idno IS NOT NULL AND idno <> ''")
+    """tuser.idno(= ERP 사번) → tuser.id. 사번이 겹치면 매핑하지 않는다.
+
+    연차를 관리하지 않는 부서는 아예 뺀다.
+    """
+    ph = ",".join(["%s"] * len(EXCLUDE_COMPANIES))
+    cur.execute("SELECT id, name, idno FROM tuser "
+                "WHERE idno IS NOT NULL AND idno <> '' "
+                "  AND IFNULL(company,'') NOT IN (%s)" % ph, EXCLUDE_COMPANIES)
     by_idno = {}
     for tid, name, idno in cur.fetchall():
         by_idno.setdefault(str(idno).strip(), []).append((tid, name))
@@ -141,12 +150,22 @@ def main():
     mapped = {e: id_of[e] for e in targets if e in id_of}
     unmapped = [e for e in targets if e not in id_of]
 
-    cur.execute("""SELECT e_id, e_name, generated, total, used, deduct_prev
+    cur.execute("""SELECT e_id, e_name, generated, total, used, deduct_prev, IFNULL(memo,'')
                      FROM annual_leave WHERE year=%s""", (year,))
-    before = {r[0]: (r[1], float(r[2] or 0), float(r[3] or 0), float(r[4] or 0), float(r[5] or 0))
-              for r in cur.fetchall()}
+    before, manual = {}, set()
+    for r in cur.fetchall():
+        before[r[0]] = (r[1], float(r[2] or 0), float(r[3] or 0), float(r[4] or 0), float(r[5] or 0))
+        # memo 가 '수기' 로 시작하면 사람이 직접 넣은 값이라 건드리지 않는다.
+        # ERP 에 아직 안 올라간 연차를 계획서 기준으로 넣어 둔 경우가 있다.
+        if str(r[6]).startswith("수기"):
+            manual.add(r[0])
     eids = {v[0] for v in mapped.values()}
     outside = [(e, before[e][0]) for e in before if e not in eids]
+
+    ph_e = ",".join(["%s"] * len(EXCLUDE_COMPANIES))
+    cur.execute("SELECT id FROM tuser WHERE IFNULL(company,'') IN (%s)" % ph_e, EXCLUDE_COMPANIES)
+    excluded_eids = {r[0] for r in cur.fetchall()}
+    outside = [o for o in outside if o[0] not in excluded_eids]
 
     cur.execute("SELECT COUNT(*) FROM leave_records WHERE LEFT(leave_date,4)=%s", (str(year),))
     lr_before = cur.fetchone()[0]
@@ -175,6 +194,8 @@ def main():
 
     changed = []
     for empid, (tid, nm) in mapped.items():
+        if tid in manual or (empid not in with_data and tid in before):
+            continue                      # 건드리지 않는 사람은 미리보기에서도 뺀다
         g, pile = grant.get(empid, (0.0, 0.0))
         u = used.get(empid, 0.0)
         old = before.get(tid)
@@ -210,6 +231,10 @@ def main():
         if empid not in with_data and tid in before:
             skipped += 1
             continue
+        # 수기로 넣어 둔 값은 덮어쓰지 않는다 (memo 가 '수기…')
+        if tid in manual:
+            skipped += 1
+            continue
 
         cur.execute("""
             INSERT INTO annual_leave
@@ -225,12 +250,15 @@ def main():
         """, (tid, nm or "", year, pile + g, u, pile, g, *mo))
 
     # 날짜별 기록은 해당 연도 · 매핑된 사람 것만 갈아끼운다
-    if eids:
-        ph = ",".join(["%s"] * len(eids))
+    target_eids = [e for e in eids if e not in manual]
+    if target_eids:
+        ph = ",".join(["%s"] * len(target_eids))
         cur.execute("DELETE FROM leave_records WHERE LEFT(leave_date,4)=%%s AND e_id IN (%s)" % ph,
-                    [str(year)] + list(eids))
+                    [str(year)] + target_eids)
     ins = 0
     for empid, (tid, _nm) in mapped.items():
+        if tid in manual:
+            continue
         for vacdate, kind in rows.get(empid, []):
             cur.execute("""INSERT INTO leave_records (e_id, leave_date, leave_type, status, memo)
                            VALUES (%s,%s,%s,'승인','ERP')""", (tid, vacdate, kind))
@@ -242,7 +270,7 @@ def main():
     r = cur.fetchone()
     print("  반영 완료 — annual_leave %d명 / 발생 %.1f / 사용 %.1f / 차감 %.1f / 사용가능 %.1f"
           % (r[0], float(r[1] or 0), float(r[2] or 0), float(r[3] or 0), float(r[4] or 0)))
-    print("  ERP 자료가 없어 기존 값을 그대로 둔 사람: %d명" % skipped)
+    print("  건드리지 않은 사람: %d명 (ERP 자료 없음 + 수기 입력 %d명)" % (skipped, len(manual)))
     print("  leave_records %d년 %d건 기록" % (year, ins))
     print("\n  되돌리려면:")
     for bak, _n in made:
