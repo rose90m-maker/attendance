@@ -1528,6 +1528,7 @@ MENU_STRUCTURE = [
 
     ("cat_hr", None, "인사관리", []),
     ("hr_status", "cat_hr", "인사현황", ["view"]),
+    ("hr_roster", "cat_hr", "전체 재직자", ["view"]),
     ("hr_vehicle", "cat_hr", "차량현황", ["view"]),
     ("welfare", "cat_hr", "복지혜택", ["view"]),
     ("work_report", "cat_hr", "근무보고서", ["view", "create", "update", "delete"]),
@@ -6007,10 +6008,44 @@ def hr_status():
               "to": r[3] or "", "no": r[4] or "",
               "seq": r[5] if r[6] else None} for r in cur.fetchall()]
 
-    # 전체 재직자 명단 — 이름을 누르면 인사카드로 간다.
-    # 직급은 ERP 에 없어(PosSeq 전원 0) 명부관리에서, 연차는 태인에서 가져온다.
+    cur.execute("SELECT DATE_FORMAT(MAX(updated_at), '%Y-%m-%d %H:%i') FROM hr_employees")
+    last_sync = cur.fetchone()[0]
+    conn.close()
+
+    return render_template("hr_status.html",
+                           year=year, s=s, bands=bands, band_max=band_max,
+                           depts=depts, dept_max=dept_max, miles=miles,
+                           retires=retires, retire_age=RETIRE_AGE, rests=rests,
+                           orders=orders, order_cnt=order_cnt,
+                           trend=trend, trend_max=trend_max,
+                           cert_cnt=cert_cnt, certs=certs, last_sync=last_sync,
+                           active_page="hr_status")
+
+
+@app.route("/hr_roster")
+@_admin_required
+def hr_roster():
+    """전체 재직자 명단 — 이름을 누르면 개인 인사카드로 간다.
+
+    인사현황(hr_status)에 붙어 있던 표를 따로 뺐다 (2026-08-02).
+    직급은 ERP 에 없어(PosSeq 전원 0) 명부관리에서, 연차는 태인에서 가져온다.
+    관리자 전용 · 재직자만.
+    """
+    today = datetime.now().date()
+    ymd = today.strftime("%Y%m%d")
+    year = today.year
+    conn = _conn(); cur = conn.cursor()
+
+    def years_between(d8, base=ymd):
+        if not d8 or len(d8) != 8:
+            return None
+        y = int(base[:4]) - int(d8[:4])
+        if base[4:8] < d8[4:8]:
+            y -= 1
+        return y
+
     cur.execute("""SELECT h.emp_seq, h.empid, h.name, h.dept_name, h.ent_date,
-                          h.birth_date, h.sex, r.position, a.total, a.used
+                          h.birth_date, h.sex, r.position, a.total, a.used, h.car_no
                      FROM hr_employees h
                      LEFT JOIN employee_roster r ON r.emp_no = h.empid
                      LEFT JOIN annual_leave a ON a.e_id = h.t_uid AND a.year = %s
@@ -6022,26 +6057,24 @@ def hr_status():
         roster.append({
             "seq": r[0], "empid": r[1] or "", "name": r[2] or "",
             "dept": r[3] or "미지정", "ent": r[4] or "",
-            "pos": r[7] or "", "sex": r[6] or "",
+            "pos": r[7] or "", "sex": r[6] or "", "car": (r[10] or "").strip(),
             "years": years_between(r[4]) if r[4] else None,
             "age": years_between(r[5]) if r[5] else None,
             "rest": (tot - used) if tot else None,
         })
-    roster_depts = sorted({p["dept"] for p in roster})
-
-    cur.execute("SELECT DATE_FORMAT(MAX(updated_at), '%Y-%m-%d %H:%i') FROM hr_employees")
-    last_sync = cur.fetchone()[0]
     conn.close()
 
-    return render_template("hr_status.html",
-                           roster=roster, roster_depts=roster_depts,
-                           year=year, s=s, bands=bands, band_max=band_max,
-                           depts=depts, dept_max=dept_max, miles=miles,
-                           retires=retires, retire_age=RETIRE_AGE, rests=rests,
-                           orders=orders, order_cnt=order_cnt,
-                           trend=trend, trend_max=trend_max,
-                           cert_cnt=cert_cnt, certs=certs, last_sync=last_sync,
-                           active_page="hr_status")
+    yrs = [p["years"] for p in roster if p["years"] is not None]
+    ages = [p["age"] for p in roster if p["age"] is not None]
+    s = {"people": len(roster),
+         "avg_years": (sum(yrs) / len(yrs)) if yrs else 0,
+         "avg_age": (sum(ages) / len(ages)) if ages else 0,
+         "depts": len({p["dept"] for p in roster})}
+
+    return render_template("hr_roster.html",
+                           year=year, s=s, roster=roster,
+                           roster_depts=sorted({p["dept"] for p in roster}),
+                           active_page="hr_roster")
 
 
 @app.route("/hr_vehicle")

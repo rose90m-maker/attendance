@@ -97,6 +97,9 @@
     cursor:pointer; transition:background .15s, color .15s;
 }
 .sidebar .nav-sub-toggle:hover { background:rgba(255,255,255,0.05); color:#fff; }
+/* 2차 항목이면서 링크인 경우 (인사현황) — 눌러서 이동, 화살표로 하위 펼침 */
+.sidebar a.nav-sub-link { text-decoration:none; box-sizing:border-box; }
+.sidebar a.nav-sub-link.active { background:rgba(255,255,255,0.10); color:#fff; }
 .sidebar .nav-sub-toggle .sl-icon { width:18px; text-align:center; margin-right:8px; flex-shrink:0; }
 .sidebar .nav-sub-toggle .ns-label { flex:1; }
 .sidebar .nav-sub-toggle .ns-arrow {
@@ -182,7 +185,13 @@
     </button>
     <div class="nav-group-items" data-group="grp-hr">
         {% if is_admin %}
-        <a href="/hr_status" class="side-link{% if active_page == 'hr_status' %} active{% endif %}"><span class="sl-icon">👤</span>인사현황</a>
+        <a href="/hr_status" data-sub="sub-hr"
+           class="nav-sub-toggle nav-sub-link{% if active_page == 'hr_status' %} active{% endif %}">
+            <span class="sl-icon">👤</span><span class="ns-label">인사현황</span><span class="ns-arrow">▸</span>
+        </a>
+        <div class="nav-sub-items" data-sub="sub-hr">
+            <a href="/hr_roster" class="side-link{% if active_page == 'hr_roster' %} active{% endif %}"><span class="sl-icon">📋</span>전체 재직자</a>
+        </div>
         <a href="/hr_vehicle" class="side-link{% if active_page == 'hr_vehicle' %} active{% endif %}"><span class="sl-icon">🚗</span>차량현황</a>
         {% endif %}
         <a href="/welfare" class="side-link{% if active_page == 'welfare' %} active{% endif %}"><span class="sl-icon">🎁</span>복지혜택</a>
@@ -452,8 +461,8 @@ setInterval(checkNotiCount, 30000);
         var box = document.querySelector('.sidebar .nav-sub-items[data-sub="'+key+'"]');
         if (!box) return;
 
-        // 지금 보고 있는 화면이 이 안에 있으면 3차·2차·1차를 모두 펼쳐 둔다
-        if (box.querySelector('.side-link.active')) {
+        // 지금 보고 있는 화면이 이 안에 있거나, 머리 자체가 활성이면 모두 펼쳐 둔다
+        if (box.querySelector('.side-link.active') || sub.classList.contains('active')) {
             sub.classList.add('has-active', 'open');
             box.classList.add('open');
             var parentItems = sub.closest('.nav-group-items');
@@ -469,6 +478,8 @@ setInterval(checkNotiCount, 30000);
         sub.addEventListener('click', function(e){
             e.stopPropagation();          // 부모 그룹이 같이 접히지 않게
             var willOpen = !box.classList.contains('open');
+            // 머리가 링크면(인사현황) 접혀 있을 때 첫 클릭은 펼치기만 한다
+            if (willOpen && sub.tagName === 'A') e.preventDefault();
             sub.classList.toggle('open', willOpen);
             box.classList.toggle('open', willOpen);
         });

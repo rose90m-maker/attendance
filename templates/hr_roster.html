@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>전체 재직자</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        :root {
+            --ink:#0f172a; --sub:#64748b; --faint:#94a3b8;
+            --line:#e8edf4; --brand:#2563eb; --brand-dk:#1e40af;
+            --ok:#16a34a; --warn:#f59e0b; --bad:#dc2626;
+        }
+        .rs-page { max-width:1560px; }
+        .rs-head { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; }
+        .rs-head h4 { margin:0; font-weight:800; color:var(--ink); letter-spacing:-.02em; }
+        .rs-head .sub { font-size:.8rem; color:var(--faint); margin-top:3px; }
+        .back-link { color:var(--sub); text-decoration:none; font-size:.85rem; font-weight:600; margin-left:auto; }
+        .back-link:hover { color:var(--brand-dk); }
+
+        .panel {
+            background:#fff; border:1px solid var(--line); border-radius:16px;
+            padding:18px 20px;
+            box-shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px -18px rgba(15,23,42,.35);
+        }
+        .panel h6 {
+            font-weight:700; color:var(--ink); font-size:.92rem;
+            margin:0 0 14px; display:flex; align-items:center; gap:7px;
+        }
+        .panel h6 .tag { font-size:.72rem; font-weight:600; color:var(--faint); margin-left:auto; }
+
+        .stat {
+            background:#fff; border:1px solid var(--line); border-radius:14px;
+            padding:14px 15px; height:100%; position:relative; overflow:hidden;
+        }
+        .stat::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--c,#cbd5e1); }
+        .stat .lbl { font-size:.76rem; color:var(--sub); }
+        .stat .val { font-size:1.5rem; font-weight:800; color:var(--ink); line-height:1.15; margin-top:5px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+        .stat .val small { font-size:.76rem; font-weight:600; color:var(--faint); margin-left:2px; }
+
+        .rs-tools { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+        .rs-tools input, .rs-tools select {
+            border:1px solid var(--line); border-radius:9px; padding:7px 11px;
+            font-size:.84rem; color:var(--ink); background:#fff;
+        }
+        .rs-tools input { min-width:200px; }
+        .rs-tools input:focus, .rs-tools select:focus {
+            outline:none; border-color:var(--brand); box-shadow:0 0 0 3px rgba(37,99,235,.13);
+        }
+        .rs-count { font-size:.8rem; color:var(--faint); margin-left:auto; }
+
+        .rs-table { width:100%; border-collapse:separate; border-spacing:0; font-size:.85rem; }
+        .rs-table th {
+            background:#f8fafc; color:var(--sub); font-weight:600; font-size:.74rem;
+            padding:10px 12px; border-bottom:1px solid var(--line); white-space:nowrap;
+            position:sticky; top:0; z-index:1;
+        }
+        .rs-table td { padding:10px 12px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+        .rs-table tbody tr:hover td { background:#f8fbff; }
+        .rs-table .num { text-align:right; font-variant-numeric:tabular-nums; }
+        .rs-row.hide { display:none; }
+        .rs-wrap { max-height:660px; overflow-y:auto; }
+
+        .name-link { color:var(--brand-dk); text-decoration:none; font-weight:600; }
+        .name-link:hover { text-decoration:underline; }
+        .dept-tag { font-size:.73rem; color:var(--sub); background:#f1f5f9; border-radius:6px; padding:2px 7px; }
+        .plate { font-size:.78rem; color:var(--ink); background:#eef2ff; border-radius:6px; padding:2px 7px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+        .rest-tag { font-size:.74rem; font-weight:700; border-radius:6px; padding:2px 8px; }
+        .rest-tag.low { background:#fee2e2; color:#b91c1c; }
+        .rest-tag.mid { background:#fef3c7; color:#b45309; }
+        .rest-tag.ok  { background:#dcfce7; color:#15803d; }
+        .sync-note { font-size:.78rem; color:var(--faint); display:flex; align-items:center; gap:7px; flex-wrap:wrap; padding:12px 2px; }
+        .sync-note .dot { width:6px; height:6px; border-radius:50%; background:var(--ok); flex:none; }
+    </style>
+</head>
+<body>
+
+{% include '_sidebar.html' %}
+
+<div class="container-fluid px-3 mt-4 rs-page">
+
+    <div class="rs-head">
+        <div>
+            <h4>📋 전체 재직자</h4>
+            <div class="sub">이름을 누르면 인사카드로 갑니다</div>
+        </div>
+        <a href="/hr_status" class="back-link">← 인사현황</a>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3">
+            <div class="stat" style="--c:#0d9488">
+                <div class="lbl">👥 재직 인원</div>
+                <div class="val">{{ s.people }}<small>명</small></div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat" style="--c:#8b5cf6">
+                <div class="lbl">⏳ 평균 근속</div>
+                <div class="val">{{ '%.1f'|format(s.avg_years) }}<small>년</small></div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat" style="--c:#0ea5e9">
+                <div class="lbl">🎂 평균 나이</div>
+                <div class="val">{{ '%.0f'|format(s.avg_age) }}<small>세</small></div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat" style="--c:#64748b">
+                <div class="lbl">🏢 부서</div>
+                <div class="val">{{ s.depts }}<small>개</small></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel mb-3">
+        <h6>📇 명단 <span class="tag">{{ year }}년 기준</span></h6>
+        <div class="rs-tools">
+            <input type="search" id="rsSearch" placeholder="이름 · 사번 · 직급 · 차량번호 검색" oninput="rsFilter()">
+            <select id="rsDept" onchange="rsFilter()">
+                <option value="">전체 부서</option>
+                {% for d in roster_depts %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+            </select>
+            <span class="rs-count"><b id="rsShown">{{ roster|length }}</b> / {{ roster|length }}명</span>
+        </div>
+        <div class="table-responsive rs-wrap">
+            <table class="rs-table">
+                <thead>
+                    <tr>
+                        <th style="width:44px">#</th><th>이름</th><th>직급</th><th>부서</th>
+                        <th style="width:100px">사번</th><th style="width:110px">입사일</th>
+                        <th class="num" style="width:70px">근속</th>
+                        <th class="num" style="width:60px">나이</th>
+                        <th style="width:110px">차량번호</th>
+                        <th class="num" style="width:90px">남은 연차</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for p in roster %}
+                    <tr class="rs-row" data-dept="{{ p.dept }}"
+                        data-key="{{ p.name }} {{ p.empid }} {{ p.pos }} {{ p.car }} {{ p.car|replace(' ','') }}">
+                        <td class="text-muted rs-no">{{ loop.index }}</td>
+                        <td><a class="name-link" href="/hr_employee/{{ p.seq }}">{{ p.name }}</a></td>
+                        <td>{% if p.pos %}{{ p.pos }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                        <td><span class="dept-tag">{{ p.dept }}</span></td>
+                        <td class="text-muted">{{ p.empid }}</td>
+                        <td class="text-muted">{% if p.ent %}{{ p.ent[:4] }}-{{ p.ent[4:6] }}-{{ p.ent[6:] }}{% else %}—{% endif %}</td>
+                        <td class="num">{% if p.years is not none %}{{ p.years }}년{% else %}—{% endif %}</td>
+                        <td class="num text-muted">{% if p.age is not none %}{{ p.age }}{% else %}—{% endif %}</td>
+                        <td>{% if p.car %}<span class="plate">{{ p.car }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                        <td class="num">
+                            {% if p.rest is not none %}
+                            <span class="rest-tag {% if p.rest <= 3 %}low{% elif p.rest <= 10 %}mid{% else %}ok{% endif %}">{{ '%.1f'|format(p.rest) }}</span>
+                            {% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% if not roster %}
+                    <tr><td colspan="10" class="text-center text-muted py-4">자료가 없습니다.</td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="sync-note mb-4">
+        <span class="dot"></span>
+        ERP 인사자료 · 명부관리 · 연차관리를 합쳐 보여줍니다 · 매일 18:40 자동 반영
+    </div>
+
+</div>
+
+<script>
+// 이름·사번·직급·차량번호 검색 + 부서 거르기 (160명이라 화면에서 바로 거른다)
+function rsFilter() {
+    const raw = document.getElementById('rsSearch').value.trim().toLowerCase();
+    const q = raw.replace(/\s+/g, '');
+    const d = document.getElementById('rsDept').value;
+    let shown = 0;
+    document.querySelectorAll('.rs-row').forEach(function (tr) {
+        const key = tr.dataset.key.toLowerCase().replace(/\s+/g, '');
+        const okQ = !q || key.includes(q);
+        const okD = !d || tr.dataset.dept === d;
+        const on = okQ && okD;
+        tr.classList.toggle('hide', !on);
+        if (on) { shown++; tr.querySelector('.rs-no').textContent = shown; }
+    });
+    document.getElementById('rsShown').textContent = shown;
+}
+</script>
+</body>
+</html>
