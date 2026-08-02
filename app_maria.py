@@ -1521,6 +1521,7 @@ MENU_STRUCTURE = [
 
     ("cat_hr", None, "인사관리", []),
     ("hr_status", "cat_hr", "인사현황", ["view"]),
+    ("hr_vehicle", "cat_hr", "차량현황", ["view"]),
     ("welfare", "cat_hr", "복지혜택", ["view"]),
     ("meal_mgmt", "cat_hr", "식수관리", ["view", "create", "update", "delete"]),
     ("work_report", "cat_hr", "근무보고서", ["view", "create", "update", "delete"]),
@@ -6038,6 +6039,66 @@ def hr_status():
                            trend=trend, trend_max=trend_max,
                            cert_cnt=cert_cnt, certs=certs, last_sync=last_sync,
                            active_page="hr_status")
+
+
+@app.route("/hr_vehicle")
+@_admin_required
+def hr_vehicle():
+    """직원 차량현황 — 누가 어떤 차를 갖고 있나.
+
+    차량번호는 ERP 사원 화면의 사용자 정의 항목에서 온다
+    (_TDAEmpUserDefine, 이름표는 _TCOMUserDefine 의 '차량번호').
+    erp_hr_sync.py 가 hr_employees.car_no 로 옮겨 둔다.
+
+    사업부는 태인 기준(tuser.company → DEPT_MAP)을 쓴다.
+    ERP 의 BizUnit 은 전부 '본사' 하나라 나눌 수 없다.
+    """
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT h.emp_seq, h.name, h.dept_name, h.car_no, h.ent_date,
+                          t.company
+                     FROM hr_employees h
+                     LEFT JOIN tuser t ON t.id = h.t_uid
+                    WHERE h.is_active = 1
+                    ORDER BY h.dept_name, h.name""")
+    people = []
+    for seq, nm, dept, car, ent, comp in cur.fetchall():
+        people.append({"seq": seq, "name": nm or "", "dept": dept or "미지정",
+                       "car": (car or "").strip(), "ent": ent or "",
+                       "biz": DEPT_MAP.get(comp, "미지정")})
+    conn.close()
+
+    owners = [p for p in people if p["car"]]
+    s = {"people": len(people), "cars": len(owners),
+         "none": len(people) - len(owners),
+         "rate": (len(owners) / len(people) * 100) if people else 0}
+
+    def group(key):
+        agg = {}
+        for p in people:
+            g = agg.setdefault(p[key], {"name": p[key], "n": 0, "cars": 0})
+            g["n"] += 1
+            if p["car"]:
+                g["cars"] += 1
+        out = list(agg.values())
+        for g in out:
+            g["rate"] = (g["cars"] / g["n"] * 100) if g["n"] else 0
+        out.sort(key=lambda g: (-g["cars"], -g["n"]))
+        return out
+
+    bizs = group("biz")
+    depts = group("dept")
+    biz_max = max([g["cars"] for g in bizs], default=0)
+    dept_max = max([g["cars"] for g in depts], default=0)
+
+    return render_template("hr_vehicle.html",
+                           s=s, bizs=bizs, depts=depts,
+                           biz_max=biz_max, dept_max=dept_max,
+                           owners=sorted(owners, key=lambda p: (p["biz"], p["dept"], p["name"])),
+                           nones=sorted([p for p in people if not p["car"]],
+                                        key=lambda p: (p["biz"], p["dept"], p["name"])),
+                           biz_list=sorted({p["biz"] for p in people}),
+                           dept_list=sorted({p["dept"] for p in people}),
+                           active_page="hr_vehicle")
 
 
 @app.route("/hr_employee/<int:emp_seq>")

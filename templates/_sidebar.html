@@ -144,6 +144,7 @@
     <div class="nav-group-items" data-group="grp-hr">
         {% if is_admin %}
         <a href="/hr_status" class="side-link{% if active_page == 'hr_status' %} active{% endif %}"><span class="sl-icon">👤</span>인사현황</a>
+        <a href="/hr_vehicle" class="side-link{% if active_page == 'hr_vehicle' %} active{% endif %}"><span class="sl-icon">🚗</span>차량현황</a>
         {% endif %}
         <a href="/welfare" class="side-link{% if active_page == 'welfare' %} active{% endif %}"><span class="sl-icon">🎁</span>복지혜택</a>
         {% if is_admin or 'meal' in session.get('permissions','') %}
