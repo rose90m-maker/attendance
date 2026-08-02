@@ -69,6 +69,16 @@
         .name-link { color:var(--brand-dk); text-decoration:none; font-weight:600; }
         .name-link:hover { text-decoration:underline; }
         .dept-tag { font-size:.73rem; color:var(--sub); background:#f1f5f9; border-radius:6px; padding:2px 7px; }
+        .none-tag {
+            font-size:.72rem; font-weight:700; color:#b91c1c;
+            background:#fee2e2; border-radius:6px; padding:2px 8px;
+        }
+        .rs-row.has-miss td:first-child { box-shadow:inset 3px 0 0 #fca5a5; }
+        a.stat { display:block; text-decoration:none; transition:transform .12s, box-shadow .12s; }
+        a.stat:hover { transform:translateY(-2px); box-shadow:0 10px 22px -16px rgba(15,23,42,.5); }
+        a.stat.on .val { color:var(--bad); }
+        .mail { color:var(--sub); text-decoration:none; font-size:.8rem; }
+        .mail:hover { color:var(--brand-dk); text-decoration:underline; }
         .tel { color:var(--ink); text-decoration:none; font-variant-numeric:tabular-nums; white-space:nowrap; }
         .tel:hover { color:var(--brand-dk); text-decoration:underline; }
         .plate { font-size:.78rem; color:var(--ink); background:#eef2ff; border-radius:6px; padding:2px 7px; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -94,31 +104,23 @@
         <a href="/hr_status" class="back-link">← 인사현황</a>
     </div>
 
-    <div class="row g-3 mb-3">
-        <div class="col-6 col-md-3">
-            <div class="stat" style="--c:#0d9488">
-                <div class="lbl">👥 재직 인원</div>
-                <div class="val">{{ s.people }}<small>명</small></div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="stat" style="--c:#8b5cf6">
-                <div class="lbl">⏳ 평균 근속</div>
-                <div class="val">{{ '%.1f'|format(s.avg_years) }}<small>년</small></div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="stat" style="--c:#0ea5e9">
-                <div class="lbl">🎂 평균 나이</div>
-                <div class="val">{{ '%.0f'|format(s.avg_age) }}<small>세</small></div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="stat" style="--c:#64748b">
-                <div class="lbl">🏢 부서</div>
-                <div class="val">{{ s.depts }}<small>개</small></div>
-            </div>
-        </div>
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-md-2"><div class="stat" style="--c:#0d9488">
+            <div class="lbl">👥 재직 인원</div><div class="val">{{ s.people }}<small>명</small></div></div></div>
+        <div class="col-6 col-md-2"><div class="stat" style="--c:#8b5cf6">
+            <div class="lbl">⏳ 평균 근속</div><div class="val">{{ '%.1f'|format(s.avg_years) }}<small>년</small></div></div></div>
+        <div class="col-6 col-md-2"><a class="stat miss-card{% if s.no_phone %} on{% endif %}"
+               style="--c:#dc2626" href="#" onclick="pickMiss('phone');return false">
+            <div class="lbl">📞 연락처 없음</div><div class="val">{{ s.no_phone }}<small>명</small></div></a></div>
+        <div class="col-6 col-md-2"><a class="stat miss-card{% if s.no_email %} on{% endif %}"
+               style="--c:#f59e0b" href="#" onclick="pickMiss('email');return false">
+            <div class="lbl">✉️ 이메일 없음</div><div class="val">{{ s.no_email }}<small>명</small></div></a></div>
+        <div class="col-6 col-md-2"><a class="stat miss-card{% if s.no_car %} on{% endif %}"
+               style="--c:#6366f1" href="#" onclick="pickMiss('car');return false">
+            <div class="lbl">🚗 차량번호 없음</div><div class="val">{{ s.no_car }}<small>명</small></div></a></div>
+        <div class="col-6 col-md-2"><a class="stat miss-card{% if s.no_any %} on{% endif %}"
+               style="--c:#64748b" href="#" onclick="pickMiss('any');return false">
+            <div class="lbl">⚠ 하나라도 없음</div><div class="val">{{ s.no_any }}<small>명</small></div></a></div>
     </div>
 
     <div class="panel mb-3">
@@ -129,6 +131,13 @@
                 <option value="">전체 부서</option>
                 {% for d in roster_depts %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
             </select>
+            <select id="rsMiss" onchange="rsFilter()">
+                <option value="">빠진 항목 없이 전체</option>
+                <option value="phone">📞 연락처 없는 사람</option>
+                <option value="email">✉️ 이메일 없는 사람</option>
+                <option value="car">🚗 차량번호 없는 사람</option>
+                <option value="any">⚠ 하나라도 빠진 사람</option>
+            </select>
             <span class="rs-count"><b id="rsShown">{{ roster|length }}</b> / {{ roster|length }}명</span>
         </div>
         <div class="table-responsive rs-wrap">
@@ -137,7 +146,8 @@
                     <tr>
                         <th style="width:44px">#</th><th>이름</th><th>직급</th><th>부서</th>
                         <th style="width:100px">사번</th>
-                        <th style="width:130px">연락처</th><th style="width:110px">입사일</th>
+                        <th style="width:130px">연락처</th><th style="width:190px">이메일</th>
+                        <th style="width:110px">입사일</th>
                         <th class="num" style="width:70px">근속</th>
                         <th class="num" style="width:60px">나이</th>
                         <th style="width:110px">차량번호</th>
@@ -146,18 +156,19 @@
                 </thead>
                 <tbody>
                 {% for p in roster %}
-                    <tr class="rs-row" data-dept="{{ p.dept }}"
-                        data-key="{{ p.name }} {{ p.empid }} {{ p.pos }} {{ p.car }} {{ p.car|replace(' ','') }} {{ p.phone }} {{ p.phone|replace('-','') }}">
+                    <tr class="rs-row{% if p.miss %} has-miss{% endif %}" data-dept="{{ p.dept }}" data-miss="{{ p.miss }}"
+                        data-key="{{ p.name }} {{ p.empid }} {{ p.pos }} {{ p.car }} {{ p.car|replace(' ','') }} {{ p.phone }} {{ p.phone|replace('-','') }} {{ p.email }}">
                         <td class="text-muted rs-no">{{ loop.index }}</td>
                         <td><a class="name-link" href="/hr_employee/{{ p.seq }}">{{ p.name }}</a></td>
                         <td>{% if p.pos %}{{ p.pos }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                         <td><span class="dept-tag">{{ p.dept }}</span></td>
                         <td class="text-muted">{{ p.empid }}</td>
-                        <td>{% if p.phone %}<a class="tel" href="tel:{{ p.phone }}">{{ p.phone }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                        <td>{% if p.phone %}<a class="tel" href="tel:{{ p.phone }}">{{ p.phone }}</a>{% else %}<span class="none-tag">없음</span>{% endif %}</td>
+                        <td>{% if p.email %}<a class="mail" href="mailto:{{ p.email }}">{{ p.email }}</a>{% else %}<span class="none-tag">없음</span>{% endif %}</td>
                         <td class="text-muted">{% if p.ent %}{{ p.ent[:4] }}-{{ p.ent[4:6] }}-{{ p.ent[6:] }}{% else %}—{% endif %}</td>
                         <td class="num">{% if p.years is not none %}{{ p.years }}년{% else %}—{% endif %}</td>
                         <td class="num text-muted">{% if p.age is not none %}{{ p.age }}{% else %}—{% endif %}</td>
-                        <td>{% if p.car %}<span class="plate">{{ p.car }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                        <td>{% if p.car %}<span class="plate">{{ p.car }}</span>{% else %}<span class="none-tag">없음</span>{% endif %}</td>
                         <td class="num">
                             {% if p.rest is not none %}
                             <span class="rest-tag {% if p.rest <= 3 %}low{% elif p.rest <= 10 %}mid{% else %}ok{% endif %}">{{ '%.1f'|format(p.rest) }}</span>
@@ -166,7 +177,7 @@
                     </tr>
                 {% endfor %}
                 {% if not roster %}
-                    <tr><td colspan="11" class="text-center text-muted py-4">자료가 없습니다.</td></tr>
+                    <tr><td colspan="12" class="text-center text-muted py-4">자료가 없습니다.</td></tr>
                 {% endif %}
                 </tbody>
             </table>
@@ -182,16 +193,25 @@
 
 <script>
 // 이름·사번·직급·차량번호 검색 + 부서 거르기 (160명이라 화면에서 바로 거른다)
+function pickMiss(kind) {
+    document.getElementById('rsMiss').value = kind;
+    rsFilter();
+    document.querySelector('.rs-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function rsFilter() {
     const raw = document.getElementById('rsSearch').value.trim().toLowerCase();
     const q = raw.replace(/\s+/g, '');
     const d = document.getElementById('rsDept').value;
+    const m = document.getElementById('rsMiss').value;
     let shown = 0;
     document.querySelectorAll('.rs-row').forEach(function (tr) {
         const key = tr.dataset.key.toLowerCase().replace(/\s+/g, '');
+        const miss = tr.dataset.miss || '';
         const okQ = !q || key.includes(q);
         const okD = !d || tr.dataset.dept === d;
-        const on = okQ && okD;
+        const okM = !m || (m === 'any' ? miss !== '' : miss.split(' ').indexOf(m) >= 0);
+        const on = okQ && okD && okM;
         tr.classList.toggle('hide', !on);
         if (on) { shown++; tr.querySelector('.rs-no').textContent = shown; }
     });

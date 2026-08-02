@@ -6044,9 +6044,12 @@ def hr_roster():
             y -= 1
         return y
 
+    # 이메일·차량번호는 ERP 가 우선, 비어 있으면 명부관리 값을 쓴다 (사용자 결정)
     cur.execute("""SELECT h.emp_seq, h.empid, h.name, h.dept_name, h.ent_date,
-                          h.birth_date, h.sex, r.position, a.total, a.used, h.car_no,
-                          r.phone
+                          h.birth_date, h.sex, r.position, a.total, a.used,
+                          COALESCE(NULLIF(h.car_no,''), r.car_number, '') AS car,
+                          r.phone,
+                          COALESCE(NULLIF(h.email,''), r.email, '')      AS email
                      FROM hr_employees h
                      LEFT JOIN employee_roster r ON r.emp_no = h.empid
                      LEFT JOIN annual_leave a ON a.e_id = h.t_uid AND a.year = %s
@@ -6059,19 +6062,30 @@ def hr_roster():
             "seq": r[0], "empid": r[1] or "", "name": r[2] or "",
             "dept": r[3] or "미지정", "ent": r[4] or "",
             "pos": r[7] or "", "sex": r[6] or "", "car": (r[10] or "").strip(),
-            "phone": (r[11] or "").strip(),
+            "phone": (r[11] or "").strip(), "email": (r[12] or "").strip(),
             "years": years_between(r[4]) if r[4] else None,
             "age": years_between(r[5]) if r[5] else None,
             "rest": (tot - used) if tot else None,
         })
     conn.close()
 
+    # 전화번호가 하이픈 없이 들어간 게 섞여 있어 보기 좋게 맞춘다 (원본은 안 고친다)
+    for p in roster:
+        d = "".join(ch for ch in p["phone"] if ch.isdigit())
+        if len(d) == 11 and "-" not in p["phone"]:
+            p["phone"] = "%s-%s-%s" % (d[:3], d[3:7], d[7:])
+        p["miss"] = " ".join(k for k in ("phone", "email", "car") if not p[k])
+
     yrs = [p["years"] for p in roster if p["years"] is not None]
     ages = [p["age"] for p in roster if p["age"] is not None]
     s = {"people": len(roster),
          "avg_years": (sum(yrs) / len(yrs)) if yrs else 0,
          "avg_age": (sum(ages) / len(ages)) if ages else 0,
-         "depts": len({p["dept"] for p in roster})}
+         "depts": len({p["dept"] for p in roster}),
+         "no_phone": len([p for p in roster if not p["phone"]]),
+         "no_email": len([p for p in roster if not p["email"]]),
+         "no_car": len([p for p in roster if not p["car"]]),
+         "no_any": len([p for p in roster if p["miss"]])}
 
     return render_template("hr_roster.html",
                            year=year, s=s, roster=roster,
