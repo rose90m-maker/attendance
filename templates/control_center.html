@@ -28,6 +28,7 @@
 .bus-row { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid #f2f2f2; font-size:0.84rem; }
 .bus-row:last-child { border-bottom:none; }
 .bus-cnt { font-weight:700; color:#0d6efd; }
+.bus-sub { font-size:0.74rem; color:#8a8a8a; padding:0 0 7px; margin-top:-4px; }
 /* ── 상태 배지 (정상/경고/위험) ── */
 .st-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; vertical-align:middle; }
 .st-ok     { background:#27ae60; }
@@ -283,7 +284,7 @@
           <a href="/bus_dispatch" class="cc-more">배차 →</a>
         </div>
         <div class="mb-2">
-          <span class="cc-lbl">등록 인원</span>
+          <span class="cc-lbl">오늘 배정</span>
           <span class="cc-val ms-2" id="bTotal">-</span><span class="cc-unit">명</span>
         </div>
         <div id="bList"></div>
@@ -531,14 +532,18 @@ function loadOverview() {
         // ── 통근버스 ──
         safe('통근버스', function() {
             var b = d.bus || {};
-            document.getElementById('bTotal').textContent = fmt(b.total, 0);
-            var bl = b.by_bus || [];
-            document.getElementById('bList').innerHTML = bl.length
-                ? bl.map(function(x){
-                    return '<div class="bus-row"><span>' + x.bus_no + '호차</span>'
-                         + '<span class="bus-cnt">' + x.cnt + '명</span></div>';
+            document.getElementById('bTotal').textContent = fmt(b.assigned_total, 0);
+            var sh = b.shifts || [];
+            var any = sh.some(function(s){ return s.total > 0; });
+            document.getElementById('bList').innerHTML = any
+                ? sh.map(function(s){
+                    var icon = s.shift === '주간' ? '☀️' : '🌙';
+                    return '<div class="bus-row"><span>' + icon + ' ' + s.shift + '</span>'
+                         + '<span class="bus-cnt">' + s.total + '명</span></div>'
+                         + '<div class="bus-sub">1호차 ' + s.bus1 + ' · 2호차 ' + s.bus2
+                         + (s.unassigned ? ' · 미배정 ' + s.unassigned : '') + '</div>';
                   }).join('')
-                : '<div class="cc-empty">등록된 탑승자가 없습니다.</div>';
+                : '<div class="cc-empty">오늘 배정된 인원이 없습니다.</div>';
         });
 
         // ── 전산실 온·습도 ──

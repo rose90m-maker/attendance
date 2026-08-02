@@ -648,12 +648,12 @@ def _check_attendance_sync(cur):
     if _today_record_cnt() > 0:
         return
 
-    # ── 조기 체크: 07:30 이후, 금일 근태기록 0건 ──
-    if not day_flags.get("early_alerted") and (now.hour > 7 or (now.hour == 7 and now.minute >= 30)):
+    # ── 조기 체크: 07:00 이후, 금일 근태기록 0건 ──
+    if not day_flags.get("early_alerted") and now.hour >= 7:
         _send_telegram(
             f"🚨 출근 데이터 이상 (조기 경보)!\n"
             f"📅 {today_str}\n"
-            f"⏰ 07:30 기준 금일 근태기록: 0건\n"
+            f"⏰ 07:00 기준 금일 근태기록: 0건\n"
             f"➡️ CAPS 서버/출입단말기 상태를 확인하세요.",
             "sync_check"
         )
@@ -10064,10 +10064,21 @@ def api_cc_overview():
             "year_sum": sum(v for (y, m), v in cost_map.items() if y == today.year),
         }
 
-        # ── 통근버스: 등록 인원(호차별) + 실제 탑승 통계(경비실 운행일지) ──
-        cur.execute("""SELECT bus_no, COUNT(*) FROM bus_members
-                       WHERE active=1 GROUP BY bus_no ORDER BY bus_no""")
-        by_bus = [{"bus_no": int(b or 0), "cnt": int(c or 0)} for b, c in cur.fetchall()]
+        # ── 통근버스: 오늘 배정 인원(주간/야간 × 호차) + 실제 탑승 통계(경비실 운행일지) ──
+        # bus_members 는 호차 매핑 마스터일 뿐이라 그 수(31명)는 인원 현황이 아니다.
+        # 배차조회와 같은 값을 쓰도록 _bus_assign() 을 그대로 호출한다.
+        _bt = datetime.now()
+        shifts_today = []
+        for _s in ("주간", "야간"):
+            _r = _bus_assign(cur, _bt, _s)
+            shifts_today.append({
+                "shift": _s,
+                "bus1": len(_r["bus1"]), "bus2": len(_r["bus2"]),
+                "total": len(_r["bus1"]) + len(_r["bus2"]),
+                "unassigned": len(_r["unassigned"]),
+            })
+        cur.execute("SELECT COUNT(*) FROM bus_members WHERE active=1")
+        master_cnt = int(cur.fetchone()[0] or 0)
 
         # 올해 1월~전월 월별 탑승 인원 (자료 있는 달만)
         cur.execute("""SELECT MONTH(ride_date) mo,
@@ -10098,8 +10109,9 @@ def api_cc_overview():
 
         cur.execute("SELECT MAX(ride_date) FROM bus_ridership")
         last_d = cur.fetchone()[0]
-        out["bus"] = {"by_bus": by_bus,
-                      "total": sum(b["cnt"] for b in by_bus),
+        out["bus"] = {"shifts": shifts_today,
+                      "assigned_total": sum(s["total"] for s in shifts_today),
+                      "master_cnt": master_cnt,
                       "by_month": by_month, "monthly": monthly,
                       "year": today.year,
                       "last_date": last_d.strftime("%Y-%m-%d") if last_d else ""}
@@ -11084,6 +11096,75 @@ def bus_dispatch():
                            is_admin=(session.get("role") == "admin"))
 
 
+def _bus_assign(cur, dt, shift):
+    """특정 날짜·시프트의 버스 배정 산출 (배차조회·통합관제 공용)
+
+    배정 인원 = 그날 근무자 ∩ bus_members. bus_members 는 '호차 매핑 마스터'라
+    그 자체는 인원 현황이 아니다 — 실제로 몇 명이 타는지는 이 함수로 구해야 한다.
+    제외 규칙: 휴무(기타)·연차/반차·휴일 주간의 전기사업부·식수 스킵 부서.
+    """
+    date_str = dt.strftime("%Y%m%d")
+    is_holiday = dt.weekday() >= 5 or bool(KR_HOLIDAYS.get(dt.date(), ""))
+
+    cur.execute("""SELECT DISTINCT e.user_name FROM wr_entries e
+                   JOIN wr_reports r ON e.report_id=r.id
+                   WHERE r.report_date=%s AND e.category='기타'""", (date_str,))
+    off_workers = set(r[0] for r in cur.fetchall())
+
+    elec_names = set()
+    if is_holiday:
+        cur.execute("SELECT name FROM tuser WHERE company IN (%s,%s) AND name IS NOT NULL",
+                    tuple(ELEC_DEPT_CODES))
+        elec_names = set(r[0] for r in cur.fetchall())
+
+    cur.execute("SELECT user_name, bus_no, dept FROM bus_members WHERE active=1")
+    bus_map = {nm: {"bus_no": bno, "dept": dp} for nm, bno, dp in cur.fetchall()}
+
+    cats = ("주간기본", "주간연장") if shift == "주간" else ("야간기본", "야간연장")
+    cur.execute("""
+        SELECT DISTINCT e.user_name FROM wr_entries e
+        JOIN wr_reports r ON e.report_id = r.id
+        WHERE r.report_date = %s AND e.category IN (%s, %s)
+          AND IFNULL(e.skipped, 0) = 0
+          AND (e.etc_value IS NULL OR e.etc_value NOT LIKE '%%연차%%')
+          AND (e.etc_value IS NULL OR e.etc_value NOT LIKE '%%반차%%')
+    """, (date_str, cats[0], cats[1]))
+    workers = set(r[0] for r in cur.fetchall()) - off_workers
+
+    elec_excluded = []
+    if is_holiday and shift == "주간":
+        elec_excluded = sorted(elec_names & workers & set(bus_map.keys()))
+        workers -= elec_names
+
+    mt = "석식" if shift == "주간" else "조식"
+    cur.execute("""SELECT `dept`, `count` FROM `meal_count`
+                   WHERE `year_month`=%s AND `day`=%s AND `meal_type`=%s""",
+                (dt.strftime("%Y-%m"), dt.day, mt))
+    mi = {}; ho = False; skip_depts = set()
+    for dept, cnt in cur.fetchall():
+        if str(cnt).strip() == '스킵':
+            skip_depts.add(dept); mi[dept] = '스킵'; continue
+        try:
+            cval = int(cnt)
+        except (ValueError, TypeError):
+            cval = 0
+        if cval > 0:
+            ho = True
+        mi[dept] = cval
+
+    b1 = []; b2 = []; un = []
+    for nm in sorted(workers):
+        if nm in bus_map:
+            if bus_map[nm]["dept"] in skip_depts:
+                continue
+            (b1 if bus_map[nm]["bus_no"] == 1 else b2).append(nm)
+        else:
+            un.append(nm)
+    return {"shift": shift, "bus1": b1, "bus2": b2, "unassigned": un,
+            "has_overtime": ho, "meal_info": mi, "meal_type": mt,
+            "elec_excluded": elec_excluded, "skip_depts": sorted(skip_depts)}
+
+
 @app.route("/api/bus_dispatch_query")
 @_login_required
 def api_bus_dispatch_query():
@@ -11104,15 +11185,7 @@ def api_bus_dispatch_query():
 
     conn = _conn(); cur = conn.cursor()
 
-    # 휴무자 조회 (공통)
-    cur.execute("""
-        SELECT DISTINCT e.user_name
-        FROM wr_entries e JOIN wr_reports r ON e.report_id = r.id
-        WHERE r.report_date = %s AND e.category = '기타'
-    """, (date_str,))
-    off_workers = set(r[0] for r in cur.fetchall())
-
-    # 전기사업부 명단 (공통)
+    # 전기사업부 명단 (휴일전 추가배차용 — 시프트별 배정은 _bus_assign 안에서 처리)
     elec_names = set()
     if is_holiday:
         cur.execute("SELECT name FROM tuser WHERE company IN (%s,%s) AND name IS NOT NULL",
@@ -11127,60 +11200,17 @@ def api_bus_dispatch_query():
     all_members = [{"name": nm, "bus_no": d["bus_no"], "dept": d["dept"]}
                    for nm, d in sorted(bus_map.items())]
 
-    month_str = dt.strftime("%Y-%m")
-    day_num = dt.day
-
     def _query_shift(s):
-        """단일 시프트 배차 조회"""
-        cats = ("주간기본", "주간연장") if s == "주간" else ("야간기본", "야간연장")
-        cur.execute("""
-            SELECT DISTINCT e.user_name
-            FROM wr_entries e JOIN wr_reports r ON e.report_id = r.id
-            WHERE r.report_date = %s AND e.category IN (%s, %s)
-              AND IFNULL(e.skipped, 0) = 0
-              AND (e.etc_value IS NULL OR e.etc_value NOT LIKE '%%연차%%')
-              AND (e.etc_value IS NULL OR e.etc_value NOT LIKE '%%반차%%')
-        """, (date_str, cats[0], cats[1]))
-        workers = set(r[0] for r in cur.fetchall()) - off_workers
-        s_elec_excluded = []
-        if is_holiday and s == "주간":
-            s_elec_excluded = sorted(elec_names & workers & set(bus_map.keys()))
-            workers -= elec_names
-        # 식수 연동
-        mt = "석식" if s == "주간" else "조식"
-        cur.execute("""SELECT `dept`, `count` FROM `meal_count`
-                       WHERE `year_month`=%s AND `day`=%s AND `meal_type`=%s""",
-                    (month_str, day_num, mt))
-        mi = {}; ho = False; skip_depts = set()
-        for dept, cnt in cur.fetchall():
-            if str(cnt).strip() == '스킵':
-                skip_depts.add(dept)
-                mi[dept] = '스킵'
-                continue
-            try: c = int(cnt)
-            except (ValueError, TypeError): c = 0
-            if c > 0: ho = True
-            mi[dept] = c
-        # 스킵 부서 직원은 버스 제외
-        b1 = []; b2 = []; un = []
-        for nm in sorted(workers):
-            if nm in bus_map:
-                if bus_map[nm]["dept"] in skip_depts:
-                    continue
-                (b1 if bus_map[nm]["bus_no"] == 1 else b2).append(nm)
-            else:
-                un.append(nm)
+        """단일 시프트 배차 조회 — 배정 산출은 _bus_assign() 공용"""
+        res = _bus_assign(cur, dt, s)
         # 담당자 확인 플래그: 당일 조회 + 15:30 이후 + 식수 미입력(스킵/인원 모두 없음)
         now = datetime.now()
-        needs_check = (
+        res["needs_check"] = (
             dt.date() == now.date()
             and (now.hour * 60 + now.minute) >= (15 * 60 + 30)
-            and len(mi) == 0
+            and len(res["meal_info"]) == 0
         )
-        return {"shift": s, "bus1": b1, "bus2": b2, "unassigned": un,
-                "has_overtime": ho, "meal_info": mi, "meal_type": mt,
-                "elec_excluded": s_elec_excluded, "skip_depts": sorted(skip_depts),
-                "needs_check": needs_check}
+        return res
 
     # 금요일/휴일전일 판단
     is_pre_holiday = False
