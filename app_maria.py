@@ -1530,7 +1530,7 @@ MENU_STRUCTURE = [
     # 연차는 대시보드를 1차로 두고 그 아래 2차로 묶는다
     ("cat_leave", None, "연차관리 대시보드", ["view"]),
     ("annual_leave", "cat_leave", "연차관리", ["view", "create"]),
-    ("leave_plan", "cat_leave", "연차사용계획", ["view", "create", "update", "delete"]),
+    ("leave_plan", "cat_leave", "연차사용계획 (개발중)", ["view", "create", "update", "delete"]),
 
     ("cat_hr", None, "인사관리", []),
     ("hr_status", "cat_hr", "인사현황", ["view"]),
