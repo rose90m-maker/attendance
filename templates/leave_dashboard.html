@@ -88,6 +88,17 @@
         .stat .lbl { font-size:.76rem; color:var(--sub); display:flex; align-items:center; gap:5px; }
         .stat .val { font-size:1.5rem; font-weight:800; color:var(--ink); line-height:1.15; margin-top:5px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
         .stat .val small { font-size:.76rem; font-weight:600; color:var(--faint); margin-left:2px; }
+        .stat .note { font-size:.7rem; color:var(--faint); margin-top:4px; white-space:nowrap; }
+
+        /* ── 종류별 ── */
+        .kind-row { display:flex; flex-wrap:wrap; gap:8px; }
+        .kind {
+            flex:1 1 90px; background:#f8fafc; border:1px solid var(--line);
+            border-radius:10px; padding:8px 11px;
+        }
+        .kind .k { font-size:.74rem; color:var(--sub); font-weight:600; }
+        .kind .n { font-size:.98rem; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; }
+        .kind .n small { font-size:.7rem; font-weight:500; color:var(--faint); margin-left:3px; }
 
         /* ── 부서별 막대 ── */
         .bar-row { display:grid; grid-template-columns:minmax(96px,1.1fr) 2.4fr auto; gap:12px; align-items:center; padding:7px 0; font-size:.84rem; }
@@ -214,15 +225,17 @@
         <div class="col-12 col-xl-8">
             <div class="row g-3 h-100">
                 <div class="col-6 col-md-3">
-                    <div class="stat" style="--c:#64748b">
-                        <div class="lbl">👥 대상 인원</div>
-                        <div class="val">{{ s.people }}<small>명</small></div>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
                     <div class="stat" style="--c:#8b5cf6">
                         <div class="lbl">📅 올해 발생연차</div>
                         <div class="val">{{ '%.0f'|format(s.generated) }}<small>일</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#6366f1"
+                         title="쓴 연차 {{ '%.0f'|format(s.used) }}일 중 반차가 {{ '%.1f'|format(s.half_days) }}일">
+                        <div class="lbl">🌗 반차 사용률</div>
+                        <div class="val">{{ '%.1f'|format(s.half_rate) }}<small>%</small></div>
+                        <div class="note">{{ s.half_cnt }}건 · {{ '%.1f'|format(s.half_days) }}일 · {{ s.half_people }}명</div>
                     </div>
                 </div>
                 <div class="col-6 col-md-3">
@@ -301,9 +314,22 @@
                     </div>
                     {% endfor %}
                 </div>
-                <div class="mt-3 pt-2 small text-muted" style="border-top:1px dashed #eef2f7">
-                    올해 <b class="text-dark">{{ '%.0f'|format(s.used) }}일</b> 사용 ·
-                    남은 연차 <b class="text-dark">{{ '%.0f'|format(s.rest) }}일</b>
+                <div class="mt-3 pt-3" style="border-top:1px dashed #eef2f7">
+                    <div class="kind-row">
+                        {% for k in kinds %}
+                        <div class="kind">
+                            <div class="k">{{ k.name }}</div>
+                            <div class="n">{{ k.cnt }}<small>건</small>
+                                <small>{{ '%.1f'|format(k.days) }}일 · {{ k.people }}명</small></div>
+                        </div>
+                        {% endfor %}
+                        {% if not kinds %}<div class="text-muted small">자료가 없습니다.</div>{% endif %}
+                    </div>
+                    <div class="small text-muted mt-2">
+                        올해 <b class="text-dark">{{ '%.0f'|format(s.used) }}일</b> 사용 ·
+                        남은 연차 <b class="text-dark">{{ '%.0f'|format(s.rest) }}일</b> ·
+                        반차 비중 <b class="text-dark">{{ '%.1f'|format(s.half_rate) }}%</b>
+                    </div>
                 </div>
             </div>
         </div>

@@ -5937,6 +5937,25 @@ def leave_dashboard():
                     ORDER BY a.e_name""" % exc0, [year] + list(LEAVE_EXCLUDE_COMPANIES))
     no_grant = [{"name": r[0]} for r in cur.fetchall()]
 
+    # 종류별(연차/반차/경조) — 날짜별 기록에서 센다. 반차는 하루의 절반이다.
+    LEAVE_UNIT = {"연차": 1.0, "반차": 0.5, "반반차": 0.25, "경조": 1.0}
+    cur.execute("""SELECT r.leave_type, COUNT(*), COUNT(DISTINCT r.e_id)
+                     FROM leave_records r LEFT JOIN tuser t ON t.id = r.e_id
+                    WHERE LEFT(r.leave_date,4)=%%s AND IFNULL(t.company,'') NOT IN (%s)
+                    GROUP BY r.leave_type""" % exc0,
+                [str(year)] + list(LEAVE_EXCLUDE_COMPANIES))
+    kinds = []
+    for nm, n, ppl in cur.fetchall():
+        kinds.append({"name": nm or "", "cnt": n, "people": ppl,
+                      "days": n * LEAVE_UNIT.get(nm, 1.0)})
+    kinds.sort(key=lambda k: -k["cnt"])
+    half = next((k for k in kinds if k["name"] == "반차"), None)
+    # 반차 사용률 = 쓴 연차 중 반차가 차지하는 비율 (일수 기준)
+    s["half_cnt"] = half["cnt"] if half else 0
+    s["half_days"] = half["days"] if half else 0.0
+    s["half_people"] = half["people"] if half else 0
+    s["half_rate"] = (s["half_days"] / s["used"] * 100) if s["used"] else 0.0
+
     cur.execute("""SELECT DATE_FORMAT(MAX(updated_at), '%%Y-%%m-%%d %%H:%%i')
                      FROM annual_leave WHERE year=%s""", (year,))
     last_sync = cur.fetchone()[0]
@@ -5944,7 +5963,7 @@ def leave_dashboard():
 
     return render_template("leave_dashboard.html",
                            year=year, year_list=year_list, s=s, depts=depts,
-                           months=months, month_max=mmax,
+                           months=months, month_max=mmax, kinds=kinds,
                            negatives=negatives, unused=unused, no_grant=no_grant,
                            top_rest=rows[:15], last_sync=last_sync,
                            active_page="leave_dashboard")
