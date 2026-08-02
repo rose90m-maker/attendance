@@ -6377,6 +6377,23 @@ def leave_dashboard():
          "rest": float(tot) - float(used),
          "rate": (float(used) / float(tot) * 100) if float(tot) else 0.0}
 
+    # 계산이 어떻게 나오는지 한 카드에 보여주기 위한 값들.
+    #   쓸 수 있는 연차 = 발생연차 + 전년도 차감(음수)
+    # 다만 ERP 에 발생 자료가 아예 없는 사람은 동기화가 건드리지 않아
+    # 예전 태인 값이 그대로 남는다. 그만큼은 위 식으로 설명이 안 되므로 따로 보여준다.
+    cur.execute("""SELECT IFNULL(SUM(a.deduct_prev),0),
+                          IFNULL(SUM(CASE WHEN IFNULL(a.generated,0)=0
+                                          THEN a.total ELSE 0 END),0),
+                          SUM(CASE WHEN IFNULL(a.generated,0)=0 AND IFNULL(a.total,0)<>0
+                                   THEN 1 ELSE 0 END)
+                     FROM annual_leave a LEFT JOIN tuser t ON t.id = a.e_id
+                    WHERE a.year=%%s AND IFNULL(t.company,'') NOT IN (%s)""" % exc0,
+                [year] + list(LEAVE_EXCLUDE_COMPANIES))
+    d_prev, no_erp_amt, no_erp_cnt = cur.fetchone()
+    s["deduct_prev"] = float(d_prev or 0)
+    s["no_erp_amt"] = float(no_erp_amt or 0)
+    s["no_erp_cnt"] = int(no_erp_cnt or 0)
+
     # 부서는 화면 다른 곳과 같게 tuser.company → DEPT_MAP 으로 묶는다
     exc = LEAVE_EXCLUDE_COMPANIES
     exc_ph = ",".join(["%s"] * len(exc))

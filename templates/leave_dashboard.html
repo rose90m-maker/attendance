@@ -90,6 +90,26 @@
         .stat .val small { font-size:.76rem; font-weight:600; color:var(--faint); margin-left:2px; }
         .stat .note { font-size:.7rem; color:var(--faint); margin-top:4px; white-space:nowrap; }
 
+        /* 계산 카드 — 발생 − 차감 = 쓸 수 있는 연차 를 눈으로 따라가게 */
+        .calc {
+            background:#fff; border:1px solid var(--line); border-radius:14px;
+            padding:14px 16px; height:100%;
+        }
+        .calc-t { font-size:.78rem; font-weight:700; color:var(--sub); margin-bottom:9px; }
+        .calc-row {
+            display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+            padding:5px 0; font-size:.86rem; color:var(--ink);
+        }
+        .calc-row span { display:flex; flex-direction:column; }
+        .calc-row i { font-style:normal; font-size:.68rem; color:var(--faint); margin-top:1px; }
+        .calc-row b { font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+        .calc-row b.minus { color:var(--bad); }
+        .calc-row.sub { color:var(--sub); }
+        .calc-row.sub b { color:var(--warn); }
+        .calc-row.eq { border-top:1px solid var(--line); margin-top:3px; padding-top:8px; }
+        .calc-row.eq b { font-size:1.05rem; color:var(--brand-dk); }
+        .calc-row.eq.last b { font-size:1.15rem; color:var(--ok); }
+
         /* ── 종류별 ── */
         .kind-row { display:flex; flex-wrap:wrap; gap:8px; }
         .kind {
@@ -224,10 +244,17 @@
         </div>
         <div class="col-12 col-xl-8">
             <div class="row g-3 h-100">
-                <div class="col-6 col-md-3">
-                    <div class="stat" style="--c:#8b5cf6">
-                        <div class="lbl">📅 올해 발생연차</div>
-                        <div class="val">{{ '%.0f'|format(s.generated) }}<small>일</small></div>
+                <div class="col-12 col-md-6">
+                    <div class="calc">
+                        <div class="calc-t">🧮 쓸 수 있는 연차가 어떻게 나오나</div>
+                        <div class="calc-row"><span>올해 발생연차</span><b>{{ '%.0f'|format(s.generated) }}일</b></div>
+                        <div class="calc-row"><span>전년도 차감<i>작년에 미리 당겨 쓴 만큼</i></span><b class="minus">{{ '%.0f'|format(s.deduct_prev) }}일</b></div>
+                        {% if s.no_erp_cnt %}
+                        <div class="calc-row sub"><span>ERP 미등록 {{ s.no_erp_cnt }}명<i>ERP 에 발생연차가 없어 예전 값이 남아 있음</i></span><b>+{{ '%.0f'|format(s.no_erp_amt) }}일</b></div>
+                        {% endif %}
+                        <div class="calc-row eq"><span>쓸 수 있는 연차</span><b>{{ '%.0f'|format(s.total) }}일</b></div>
+                        <div class="calc-row"><span>쓴 연차</span><b class="minus">-{{ '%.0f'|format(s.used) }}일</b></div>
+                        <div class="calc-row eq last"><span>남은 연차</span><b>{{ '%.0f'|format(s.rest) }}일</b></div>
                     </div>
                 </div>
                 <div class="col-6 col-md-3">
@@ -239,21 +266,9 @@
                     </div>
                 </div>
                 <div class="col-6 col-md-3">
-                    <div class="stat" style="--c:#0ea5e9">
-                        <div class="lbl">🗂 쓸 수 있는 연차</div>
-                        <div class="val">{{ '%.0f'|format(s.total) }}<small>일</small></div>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <div class="stat" style="--c:#16a34a">
-                        <div class="lbl">✅ 쓴 연차</div>
-                        <div class="val">{{ '%.0f'|format(s.used) }}<small>일</small></div>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <div class="stat" style="--c:#f59e0b">
-                        <div class="lbl">🏝 남은 연차</div>
-                        <div class="val">{{ '%.0f'|format(s.rest) }}<small>일</small></div>
+                    <div class="stat" style="--c:#64748b">
+                        <div class="lbl">👥 대상 인원</div>
+                        <div class="val">{{ s.people }}<small>명</small></div>
                     </div>
                 </div>
                 <div class="col-6 col-md-3">
