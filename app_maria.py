@@ -1511,10 +1511,13 @@ MENU_STRUCTURE = [
     ("work_schedule", "cat_attendance", "근무표", ["view", "update"]),
     ("schedule_record", "cat_attendance", "근무표기록관리", ["view", "create", "update", "delete"]),
 
+    # 연차는 대시보드를 1차로 두고 그 아래 2차로 묶는다
+    ("cat_leave", None, "연차관리 대시보드", ["view"]),
+    ("annual_leave", "cat_leave", "연차관리", ["view", "create"]),
+    ("leave_plan", "cat_leave", "연차사용계획", ["view", "create", "update", "delete"]),
+
     ("cat_hr", None, "인사관리", []),
     ("welfare", "cat_hr", "복지혜택", ["view"]),
-    ("annual_leave", "cat_hr", "연차관리", ["view", "create"]),
-    ("leave_plan", "cat_hr", "연차사용계획", ["view", "create", "update", "delete"]),
     ("meal_mgmt", "cat_hr", "식수관리", ["view", "create", "update", "delete"]),
     ("work_report", "cat_hr", "근무보고서", ["view", "create", "update", "delete"]),
     ("document_mgmt", "cat_hr", "공문서관리", ["view", "create", "update", "delete"]),
@@ -5855,6 +5858,83 @@ def upload_schedule_record():
 @_login_required
 def welfare():
     return render_template("welfare.html")
+
+
+@app.route("/leave_dashboard")
+@_login_required
+def leave_dashboard():
+    """연차관리 대시보드 — annual_leave(ERP 동기화 결과)를 집계해 보여준다.
+
+    숫자는 전부 annual_leave 한 곳에서 나온다. 화면에서 다시 계산하지 않는다.
+    """
+    try:
+        year = int(request.args.get("year", datetime.now().year))
+    except ValueError:
+        year = datetime.now().year
+    conn = _conn(); cur = conn.cursor()
+
+    cur.execute("SELECT DISTINCT year FROM annual_leave ORDER BY year DESC")
+    year_list = [r[0] for r in cur.fetchall()] or [year]
+
+    cur.execute("""SELECT COUNT(*), IFNULL(SUM(generated),0), IFNULL(SUM(total),0),
+                          IFNULL(SUM(used),0)
+                     FROM annual_leave WHERE year=%s""", (year,))
+    cnt, gen, tot, used = cur.fetchone()
+    s = {"people": cnt, "generated": float(gen), "total": float(tot), "used": float(used),
+         "rest": float(tot) - float(used),
+         "rate": (float(used) / float(tot) * 100) if float(tot) else 0.0}
+
+    # 부서는 화면 다른 곳과 같게 tuser.company → DEPT_MAP 으로 묶는다
+    cur.execute("""SELECT t.company, COUNT(*), IFNULL(SUM(a.total),0), IFNULL(SUM(a.used),0)
+                     FROM annual_leave a JOIN tuser t ON t.id = a.e_id
+                    WHERE a.year=%s GROUP BY t.company""", (year,))
+    agg = {}
+    for comp, n, t2, u2 in cur.fetchall():
+        d = agg.setdefault(DEPT_MAP.get(comp, "기타"),
+                           {"people": 0, "total": 0.0, "used": 0.0})
+        d["people"] += n; d["total"] += float(t2); d["used"] += float(u2)
+    depts = []
+    for name, d in agg.items():
+        d["name"] = name
+        d["rest"] = d["total"] - d["used"]
+        d["rate"] = (d["used"] / d["total"] * 100) if d["total"] else 0.0
+        depts.append(d)
+    depts.sort(key=lambda x: -x["total"])
+
+    cur.execute("SELECT %s FROM annual_leave WHERE year=%%s"
+                % ", ".join("IFNULL(SUM(m%d),0)" % i for i in range(1, 13)), (year,))
+    mvals = [float(x or 0) for x in cur.fetchone()]
+    mmax = max(mvals) if mvals else 0
+    months = [{"v": v, "h": int(v / mmax * 110) if mmax else 4} for v in mvals]
+
+    cur.execute("""SELECT a.e_name, t.company, a.total, a.used, (a.total - a.used) AS rest
+                     FROM annual_leave a LEFT JOIN tuser t ON t.id = a.e_id
+                    WHERE a.year=%s ORDER BY rest DESC""", (year,))
+    rows = []
+    for nm, comp, t2, u2, rest in cur.fetchall():
+        t2, u2, rest = float(t2), float(u2), float(rest)
+        rows.append({"name": nm or "", "dept": DEPT_MAP.get(comp, "기타"),
+                     "total": t2, "used": u2, "rest": rest,
+                     "rate": (u2 / t2 * 100) if t2 else 0.0})
+
+    negatives = sorted([r for r in rows if r["rest"] < 0], key=lambda r: r["rest"])
+    unused = [r for r in rows if r["used"] == 0 and r["total"] > 0]
+    cur.execute("""SELECT e_name FROM annual_leave
+                    WHERE year=%s AND IFNULL(generated,0)=0 AND used>0
+                    ORDER BY e_name""", (year,))
+    no_grant = [{"name": r[0]} for r in cur.fetchall()]
+
+    cur.execute("""SELECT DATE_FORMAT(MAX(updated_at), '%%Y-%%m-%%d %%H:%%i')
+                     FROM annual_leave WHERE year=%s""", (year,))
+    last_sync = cur.fetchone()[0]
+    conn.close()
+
+    return render_template("leave_dashboard.html",
+                           year=year, year_list=year_list, s=s, depts=depts,
+                           months=months, month_max=mmax,
+                           negatives=negatives, unused=unused, no_grant=no_grant,
+                           top_rest=rows[:15], last_sync=last_sync,
+                           active_page="leave_dashboard")
 
 
 @app.route("/annual_leave")

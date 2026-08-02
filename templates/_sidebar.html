@@ -65,6 +65,9 @@
     text-align:left;
 }
 .sidebar .nav-group-toggle:hover { background:rgba(255,255,255,0.05); color:#fff; }
+/* 1차 항목이면서 링크인 경우 (연차관리 대시보드) — 버튼과 같은 모양으로 */
+.sidebar a.nav-group-link { text-decoration:none; box-sizing:border-box; }
+.sidebar a.nav-group-link.active { background:rgba(255,255,255,0.10); color:#fff; }
 .sidebar .nav-group-toggle .ng-icon { font-size:0.95rem; width:22px; text-align:center; flex-shrink:0; margin-right:10px; }
 .sidebar .nav-group-toggle .ng-label { flex:1; }
 .sidebar .nav-group-toggle .ng-arrow {
@@ -121,16 +124,25 @@
         {% endif %}
     </div>
 
+    <!-- 연차관리 대시보드 (1차) — 눌러서 대시보드로 가고, 아래가 2차 -->
+    <a href="/leave_dashboard"
+       class="nav-group-toggle nav-group-link{% if active_page == 'leave_dashboard' %} active{% endif %}"
+       data-group="grp-leave">
+        <span class="ng-icon">🌴</span><span class="ng-label">연차관리 대시보드</span><span class="ng-arrow">▸</span>
+    </a>
+    <div class="nav-group-items" data-group="grp-leave">
+        <a href="/annual_leave" class="side-link{% if active_page == 'annual_leave' %} active{% endif %}"><span class="sl-icon">📋</span>연차관리</a>
+        {% if is_admin or 'leave' in session.get('permissions','') or is_lp_member %}
+        <a href="/leave_approval" class="side-link{% if active_page == 'leave_approval' %} active{% endif %}"><span class="sl-icon">✅</span>연차사용계획</a>
+        {% endif %}
+    </div>
+
     <!-- 인사관리 -->
     <button class="nav-group-toggle" data-group="grp-hr">
         <span class="ng-icon">👥</span><span class="ng-label">인사관리</span><span class="ng-arrow">▸</span>
     </button>
     <div class="nav-group-items" data-group="grp-hr">
         <a href="/welfare" class="side-link{% if active_page == 'welfare' %} active{% endif %}"><span class="sl-icon">🎁</span>복지혜택</a>
-        <a href="/annual_leave" class="side-link{% if active_page == 'annual_leave' %} active{% endif %}"><span class="sl-icon">🌴</span>연차관리</a>
-        {% if is_admin or 'leave' in session.get('permissions','') or is_lp_member %}
-        <a href="/leave_approval" class="side-link{% if active_page == 'leave_approval' %} active{% endif %}"><span class="sl-icon">✅</span>연차사용계획</a>
-        {% endif %}
         {% if is_admin or 'meal' in session.get('permissions','') %}
         <a href="/meal_management" class="side-link{% if active_page == 'meal_management' %} active{% endif %}"><span class="sl-icon">🍽️</span>식수관리</a>
         {% endif %}
@@ -362,7 +374,9 @@ setInterval(checkNotiCount, 30000);
         if (!items) return;
 
         // 현재 페이지가 속한 그룹은 기본 펼쳐진 상태 유지
-        var hasActive = items.querySelector('.side-link.active') !== null;
+        // 1차 자체가 활성(대시보드)인 경우도 펼쳐 둔다
+        var hasActive = items.querySelector('.side-link.active') !== null
+                        || btn.classList.contains('active');
         if (hasActive) {
             btn.classList.add('has-active', 'open');
             items.classList.add('open');
@@ -370,8 +384,10 @@ setInterval(checkNotiCount, 30000);
 
         if (isTouch) {
             // 모바일/터치: 클릭 토글 (hover 없음)
-            btn.addEventListener('click', function(){
+            btn.addEventListener('click', function(e){
                 var willOpen = !items.classList.contains('open');
+                // 1차가 링크인 경우: 접혀 있으면 첫 탭은 펼치기만, 펼쳐져 있으면 이동
+                if (willOpen && btn.tagName === 'A') e.preventDefault();
                 btn.classList.toggle('open', willOpen);
                 items.classList.toggle('open', willOpen);
             });

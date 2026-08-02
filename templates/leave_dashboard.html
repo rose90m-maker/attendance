@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>연차관리 대시보드</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        .kpi { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; height:100%; }
+        .kpi .lbl { font-size:.78rem; color:#64748b; margin-bottom:4px; }
+        .kpi .val { font-size:1.6rem; font-weight:700; color:#0f172a; line-height:1.1; }
+        .kpi .val small { font-size:.8rem; font-weight:500; color:#94a3b8; }
+        .kpi.accent { background:linear-gradient(135deg,#1e40af,#2563eb); border-color:#1e40af; }
+        .kpi.accent .lbl, .kpi.accent .val, .kpi.accent .val small { color:#fff; }
+        .card-box { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px 18px; }
+        .card-box h6 { font-weight:700; color:#0f172a; margin-bottom:14px; font-size:.95rem; }
+        .bar-row { display:grid; grid-template-columns:96px 1fr 150px; gap:10px; align-items:center; margin-bottom:9px; font-size:.84rem; }
+        .bar-bg { background:#f1f5f9; border-radius:4px; height:20px; overflow:hidden; }
+        .bar-fill { height:100%; border-radius:4px; }
+        .bar-num { text-align:right; color:#64748b; font-size:.8rem; }
+        .bar-num b { color:#0f172a; }
+        .mbar-wrap { display:flex; align-items:flex-end; gap:6px; height:130px; }
+        .mbar { flex:1; text-align:center; }
+        .mbar .b { background:#3b82f6; border-radius:4px 4px 0 0; }
+        .mbar .b.max { background:#1e40af; }
+        .mbar .b.zero { background:#e2e8f0; }
+        .mbar .cap { font-size:.68rem; color:#94a3b8; display:block; margin-top:3px; }
+        .mbar .v { font-size:.68rem; color:#64748b; display:block; }
+        .alert-box { background:#fff; border-radius:12px; padding:14px 16px; height:100%; border:1px solid #e2e8f0; }
+        .alert-box.danger { border-color:#fca5a5; }
+        .alert-box.warn { border-color:#fcd34d; }
+        .alert-box .t { font-size:.8rem; font-weight:600; margin-bottom:4px; }
+        .alert-box.danger .t { color:#b91c1c; }
+        .alert-box.warn .t { color:#b45309; }
+        .alert-box .n { font-size:1.4rem; font-weight:700; color:#0f172a; margin-bottom:6px; }
+        .alert-box .d { font-size:.78rem; color:#64748b; line-height:1.55; }
+        .sync-note { font-size:.78rem; color:#94a3b8; }
+        .name-link { color:#1e40af; text-decoration:none; }
+        .name-link:hover { text-decoration:underline; }
+    </style>
+</head>
+<body>
+
+{% include '_sidebar.html' %}
+
+<div class="container-fluid px-3 mt-4">
+
+    <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+        <h4 class="mb-0 fw-bold">🌴 {{ year }}년 연차관리 대시보드</h4>
+        <form method="get" class="ms-auto d-flex gap-2">
+            <select name="year" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+                {% for y in year_list %}
+                <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    <!-- 전사 요약 -->
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-md"><div class="kpi"><div class="lbl">대상 인원</div><div class="val">{{ s.people }}<small>명</small></div></div></div>
+        <div class="col-6 col-md"><div class="kpi"><div class="lbl">발생</div><div class="val">{{ '%.0f'|format(s.generated) }}<small>일</small></div></div></div>
+        <div class="col-6 col-md"><div class="kpi"><div class="lbl">사용가능</div><div class="val">{{ '%.0f'|format(s.total) }}<small>일</small></div></div></div>
+        <div class="col-6 col-md"><div class="kpi"><div class="lbl">사용</div><div class="val">{{ '%.0f'|format(s.used) }}<small>일</small></div></div></div>
+        <div class="col-6 col-md"><div class="kpi"><div class="lbl">잔여</div><div class="val">{{ '%.0f'|format(s.rest) }}<small>일</small></div></div></div>
+        <div class="col-6 col-md"><div class="kpi accent"><div class="lbl">소진율</div><div class="val">{{ '%.1f'|format(s.rate) }}<small>%</small></div></div></div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <!-- 부서별 소진율 -->
+        <div class="col-12 col-lg-6">
+            <div class="card-box">
+                <h6>부서별 소진율</h6>
+                {% if not depts %}
+                <div class="text-muted small">자료가 없습니다.</div>
+                {% endif %}
+                {% for d in depts %}
+                <div class="bar-row">
+                    <span>{{ d.name }} <span class="text-muted">{{ d.people }}명</span></span>
+                    <div class="bar-bg">
+                        <div class="bar-fill" style="width:{{ d.rate if d.rate > 1.5 else 1.5 }}%;
+                             background:{% if d.rate >= 40 %}#16a34a{% elif d.rate >= 20 %}#f59e0b{% else %}#dc2626{% endif %}"></div>
+                    </div>
+                    <span class="bar-num">{{ '%.0f'|format(d.used) }} / {{ '%.0f'|format(d.total) }} ·
+                        <b style="color:{% if d.rate >= 40 %}#16a34a{% elif d.rate >= 20 %}#b45309{% else %}#b91c1c{% endif %}">{{ '%.1f'|format(d.rate) }}%</b></span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 월별 사용 추이 -->
+        <div class="col-12 col-lg-6">
+            <div class="card-box">
+                <h6>월별 사용 추이</h6>
+                <div class="mbar-wrap">
+                    {% for m in months %}
+                    <div class="mbar">
+                        <span class="v">{{ '%.0f'|format(m.v) if m.v else '' }}</span>
+                        <div class="b {% if m.v == 0 %}zero{% elif m.v == month_max %}max{% endif %}"
+                             style="height:{{ m.h }}px"></div>
+                        <span class="cap">{{ loop.index }}월</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="mt-2 small text-muted">
+                    올해 사용 {{ '%.0f'|format(s.used) }}일 · 남은 잔여 {{ '%.0f'|format(s.rest) }}일
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 확인이 필요한 인원 -->
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-md-4">
+            <div class="alert-box danger">
+                <div class="t">⚠ 잔여 음수</div>
+                <div class="n">{{ negatives|length }}명</div>
+                <div class="d">
+                    {% for p in negatives[:6] %}<a class="name-link" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a> {{ '%.1f'|format(p.rest) }}{% if not loop.last %} · {% endif %}{% endfor %}
+                    {% if negatives|length > 6 %} 외 {{ negatives|length - 6 }}명{% endif %}
+                    {% if not negatives %}없음{% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="alert-box warn">
+                <div class="t">⚠ 부여 없이 사용만</div>
+                <div class="n">{{ no_grant|length }}명</div>
+                <div class="d">
+                    {% for p in no_grant[:8] %}<a class="name-link" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+                    {% if not no_grant %}없음{% else %}<br><span class="text-muted">ERP 부여 등록 필요</span>{% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="alert-box">
+                <div class="t text-secondary">🏖 한 번도 안 쓴 사람</div>
+                <div class="n">{{ unused|length }}명</div>
+                <div class="d">
+                    {% for p in unused[:6] %}<a class="name-link" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a> {{ '%.0f'|format(p.rest) }}{% if not loop.last %} · {% endif %}{% endfor %}
+                    {% if unused|length > 6 %} 외 {{ unused|length - 6 }}명{% endif %}
+                    {% if not unused %}없음{% else %}<br><span class="text-muted">연차촉진 대상</span>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 잔여 많은 순 -->
+    <div class="card-box mb-4">
+        <h6>잔여 많은 순 (상위 15명)</h6>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:44px">#</th><th>이름</th><th>부서</th>
+                        <th class="text-end">사용가능</th><th class="text-end">사용</th>
+                        <th class="text-end">잔여</th><th style="width:120px">소진율</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for p in top_rest %}
+                    <tr>
+                        <td class="text-muted">{{ loop.index }}</td>
+                        <td><a class="name-link" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a></td>
+                        <td class="text-muted">{{ p.dept }}</td>
+                        <td class="text-end">{{ '%.1f'|format(p.total) }}</td>
+                        <td class="text-end">{{ '%.1f'|format(p.used) }}</td>
+                        <td class="text-end fw-bold">{{ '%.1f'|format(p.rest) }}</td>
+                        <td>
+                            <div class="bar-bg" style="height:14px">
+                                <div class="bar-fill" style="height:100%;width:{{ p.rate }}%;
+                                     background:{% if p.rate >= 40 %}#16a34a{% elif p.rate >= 20 %}#f59e0b{% else %}#dc2626{% endif %}"></div>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% if not top_rest %}
+                    <tr><td colspan="7" class="text-center text-muted py-3">자료가 없습니다.</td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="sync-note mb-4">
+        🔄 ERP 입력 기준 · 매일 18:30 자동 동기화
+        {% if last_sync %} · 마지막 반영 {{ last_sync }}{% endif %}
+    </div>
+
+</div>
+</body>
+</html>
