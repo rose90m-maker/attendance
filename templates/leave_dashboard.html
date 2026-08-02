@@ -64,18 +64,18 @@
     <!-- 전사 요약 -->
     <div class="row g-2 mb-3">
         <div class="col-6 col-md"><div class="kpi"><div class="lbl">대상 인원</div><div class="val">{{ s.people }}<small>명</small></div></div></div>
-        <div class="col-6 col-md"><div class="kpi"><div class="lbl">발생</div><div class="val">{{ '%.0f'|format(s.generated) }}<small>일</small></div></div></div>
+        <div class="col-6 col-md"><div class="kpi"><div class="lbl">발생연차</div><div class="val">{{ '%.0f'|format(s.generated) }}<small>일</small></div></div></div>
         <div class="col-6 col-md"><div class="kpi"><div class="lbl">사용가능</div><div class="val">{{ '%.0f'|format(s.total) }}<small>일</small></div></div></div>
         <div class="col-6 col-md"><div class="kpi"><div class="lbl">사용</div><div class="val">{{ '%.0f'|format(s.used) }}<small>일</small></div></div></div>
-        <div class="col-6 col-md"><div class="kpi"><div class="lbl">잔여</div><div class="val">{{ '%.0f'|format(s.rest) }}<small>일</small></div></div></div>
-        <div class="col-6 col-md"><div class="kpi accent"><div class="lbl">소진율</div><div class="val">{{ '%.1f'|format(s.rate) }}<small>%</small></div></div></div>
+        <div class="col-6 col-md"><div class="kpi"><div class="lbl">남은 연차</div><div class="val">{{ '%.0f'|format(s.rest) }}<small>일</small></div></div></div>
+        <div class="col-6 col-md"><div class="kpi accent"><div class="lbl">사용률</div><div class="val">{{ '%.1f'|format(s.rate) }}<small>%</small></div></div></div>
     </div>
 
     <div class="row g-3 mb-3">
-        <!-- 부서별 소진율 -->
+        <!-- 부서별 사용률 -->
         <div class="col-12 col-lg-6">
             <div class="card-box">
-                <h6>부서별 소진율</h6>
+                <h6>부서별 사용률</h6>
                 {% if not depts %}
                 <div class="text-muted small">자료가 없습니다.</div>
                 {% endif %}
@@ -108,7 +108,7 @@
                     {% endfor %}
                 </div>
                 <div class="mt-2 small text-muted">
-                    올해 사용 {{ '%.0f'|format(s.used) }}일 · 남은 잔여 {{ '%.0f'|format(s.rest) }}일
+                    올해 사용 {{ '%.0f'|format(s.used) }}일 · 남은 연차 {{ '%.0f'|format(s.rest) }}일
                 </div>
             </div>
         </div>
@@ -118,10 +118,10 @@
     <div class="row g-3 mb-4">
         <div class="col-12 col-md-4">
             <div class="alert-box danger">
-                <div class="t">⚠ 잔여 음수</div>
+                <div class="t">⚠ 연차보다 많이 씀</div>
                 <div class="n">{{ negatives|length }}명</div>
                 <div class="d">
-                    {% for p in negatives[:6] %}<a class="name-link" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a> {{ '%.1f'|format(p.rest) }}{% if not loop.last %} · {% endif %}{% endfor %}
+                    {% for p in negatives[:6] %}<a class="name-link" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a> {{ '%.1f'|format(-p.rest) }}일{% if not loop.last %} · {% endif %}{% endfor %}
                     {% if negatives|length > 6 %} 외 {{ negatives|length - 6 }}명{% endif %}
                     {% if not negatives %}없음{% endif %}
                 </div>
@@ -144,22 +144,22 @@
                 <div class="d">
                     {% for p in unused[:6] %}<a class="name-link" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a> {{ '%.0f'|format(p.rest) }}{% if not loop.last %} · {% endif %}{% endfor %}
                     {% if unused|length > 6 %} 외 {{ unused|length - 6 }}명{% endif %}
-                    {% if not unused %}없음{% else %}<br><span class="text-muted">연차촉진 대상</span>{% endif %}
+                    {% if not unused %}없음{% else %}<br><span class="text-muted">연차 쓰라고 안내할 대상</span>{% endif %}
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 잔여 많은 순 -->
+    <!-- 남은 연차 많은 순 -->
     <div class="card-box mb-4">
-        <h6>잔여 많은 순 (상위 15명)</h6>
+        <h6>남은 연차 많은 순 (상위 15명)</h6>
         <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
                 <thead class="table-light">
                     <tr>
                         <th style="width:44px">#</th><th>이름</th><th>부서</th>
                         <th class="text-end">사용가능</th><th class="text-end">사용</th>
-                        <th class="text-end">잔여</th><th style="width:120px">소진율</th>
+                        <th class="text-end">남은 연차</th><th style="width:120px">사용률</th>
                     </tr>
                 </thead>
                 <tbody>
