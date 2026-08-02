@@ -12,7 +12,7 @@ ERP 가 원본이다. 태인 시스템은 조회·집계만 한다.
 주의
   · 일수는 반드시 _TXPRWkVactionAppDtl.AppDay 에서 온다.
     확정근태(_TXPRWkAbsence)는 AppDay 가 전부 NULL 이라 건수 대조용으로만 쓸 수 있다.
-  · ERP 에 부여 데이터가 없는 사람은 건드리지 않는다. 재직자인데 ERP 등록이
+  · ERP 에 발생연차 자료가 없는 사람은 건드리지 않는다. 재직자인데 ERP 등록이
     안 된 경우가 있어서, 지우면 화면에서 사라지고 연차를 적을 곳이 없어진다.
     그런 사람은 로그로만 남기고 인사팀이 ERP 에서 처리하게 한다.
 
@@ -144,7 +144,7 @@ def main():
             months.setdefault(empid, [0.0] * 12)[mm - 1] += day
         rows.setdefault(empid, []).append((vacdate, ITEM_NAME[item]))
 
-    # 부여·사용이 있는 사람 + 재직자 전원. 재직자를 넣어야 신규 입사자도 화면에 나온다.
+    # 발생·사용이 있는 사람 + 재직자 전원. 재직자를 넣어야 신규 입사자도 화면에 나온다.
     with_data = set(grant) | set(used)
     targets = sorted(with_data | set(active))
     mapped = {e: id_of[e] for e in targets if e in id_of}
@@ -167,20 +167,23 @@ def main():
     excluded_eids = {r[0] for r in cur.fetchall()}
     outside = [o for o in outside if o[0] not in excluded_eids]
 
-    cur.execute("SELECT COUNT(*) FROM leave_records WHERE LEFT(leave_date,4)=%s", (str(year),))
-    lr_before = cur.fetchone()[0]
+    cur.execute("""SELECT COUNT(*), SUM(IFNULL(memo,'')<>'ERP')
+                     FROM leave_records WHERE LEFT(leave_date,4)=%s""", (str(year),))
+    _r = cur.fetchone()
+    lr_before, lr_keep = _r[0], int(_r[1] or 0)
 
     print("=" * 78)
     print("■ %d년 ERP 연차 동기화 %s" % (year, "" if args.apply else "(검증 모드 — 쓰지 않음)"))
-    print("  대상 %d명 (부여·사용 있음 %d명 + 재직자 %d명) → 매핑 %d명 / 미매핑 %d명 / 사번중복 %d건"
+    print("  대상 %d명 (발생·사용 있음 %d명 + 재직자 %d명) → 매핑 %d명 / 미매핑 %d명 / 사번중복 %d건"
           % (len(targets), len(with_data), len(active), len(mapped), len(unmapped), len(ambiguous)))
     print("  발생 합계 %.1f일 / 사용 합계 %.1f일 / 날짜별 기록 %d건"
           % (sum(g[0] for g in grant.values()), sum(used.values()), len(detail)))
     print("  annual_leave 현재 %d명 → 갱신 %d명, 신규 %d명"
           % (len(before), len([e for e in mapped.values() if e[0] in before]),
              len([e for e in mapped.values() if e[0] not in before])))
-    print("  leave_records %d년 %d건 → %d건 (%+d)"
-          % (year, lr_before, len(detail), len(detail) - lr_before))
+    print("  leave_records %d년 %d건 → 약 %d건 (%+d) — 태인에서 직접 넣은 %d건은 그대로 둔다"
+          % (year, lr_before, len(detail) + lr_keep,
+             len(detail) + lr_keep - lr_before, lr_keep))
 
     if unmapped:
         print("\n  · tuser 에서 사번을 못 찾은 ERP 사원 %d명: %s" % (len(unmapped), unmapped[:10]))
@@ -225,7 +228,7 @@ def main():
         u = used.get(empid, 0.0)
         mo = months.get(empid, [0.0] * 12)
 
-        # ERP 에 부여도 사용도 없는 사람은 이미 있는 행을 덮어쓰지 않는다.
+        # ERP 에 발생도 사용도 없는 사람은 이미 있는 행을 덮어쓰지 않는다.
         # 재직자인데 ERP 등록이 안 된 경우가 있어서, 0 으로 밀면 화면에서 연차가 사라진다.
         # 행 자체가 없을 때만 만들어 준다 (신규 입사자가 목록에 보이게).
         if empid not in with_data and tid in before:
@@ -249,19 +252,24 @@ def main():
                    m9=VALUES(m9),m10=VALUES(m10),m11=VALUES(m11),m12=VALUES(m12)
         """, (tid, nm or "", year, pile + g, u, pile, g, *mo))
 
-    # 날짜별 기록은 해당 연도 · 매핑된 사람 것만 갈아끼운다
+    # 날짜별 기록은 해당 연도 · 매핑된 사람 것만 갈아끼운다.
+    # 단 memo='ERP' 인 행만 지운다 — 태인 화면에서 직접 넣은 기록(계획서 승인 등)은
+    # ERP 에 없다는 이유로 매일 밤 사라지면 안 된다. 같은 날짜가 ERP 에도 들어오면
+    # 아래 ON DUPLICATE KEY 로 ERP 값이 이긴다.
     target_eids = [e for e in eids if e not in manual]
     if target_eids:
         ph = ",".join(["%s"] * len(target_eids))
-        cur.execute("DELETE FROM leave_records WHERE LEFT(leave_date,4)=%%s AND e_id IN (%s)" % ph,
-                    [str(year)] + target_eids)
+        cur.execute("DELETE FROM leave_records WHERE LEFT(leave_date,4)=%%s AND e_id IN (%s)"
+                    "  AND IFNULL(memo,'')='ERP'" % ph, [str(year)] + target_eids)
     ins = 0
     for empid, (tid, _nm) in mapped.items():
         if tid in manual:
             continue
         for vacdate, kind in rows.get(empid, []):
             cur.execute("""INSERT INTO leave_records (e_id, leave_date, leave_type, status, memo)
-                           VALUES (%s,%s,%s,'승인','ERP')""", (tid, vacdate, kind))
+                           VALUES (%s,%s,%s,'승인','ERP')
+                           ON DUPLICATE KEY UPDATE status='승인', memo='ERP'""",
+                        (tid, vacdate, kind))
             ins += 1
     conn.commit()
 

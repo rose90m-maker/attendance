@@ -129,11 +129,11 @@
         </div>
         <div class="col-12 col-md-4">
             <div class="alert-box warn">
-                <div class="t">⚠ 부여 없이 사용만</div>
+                <div class="t">⚠ 발생연차 없이 사용</div>
                 <div class="n">{{ no_grant|length }}명</div>
                 <div class="d">
                     {% for p in no_grant[:8] %}<a class="name-link" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
-                    {% if not no_grant %}없음{% else %}<br><span class="text-muted">ERP 부여 등록 필요</span>{% endif %}
+                    {% if not no_grant %}없음{% else %}<br><span class="text-muted">ERP에 발생연차 등록 필요</span>{% endif %}
                 </div>
             </div>
         </div>
