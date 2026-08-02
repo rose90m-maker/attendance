@@ -6045,7 +6045,8 @@ def hr_roster():
         return y
 
     cur.execute("""SELECT h.emp_seq, h.empid, h.name, h.dept_name, h.ent_date,
-                          h.birth_date, h.sex, r.position, a.total, a.used, h.car_no
+                          h.birth_date, h.sex, r.position, a.total, a.used, h.car_no,
+                          r.phone
                      FROM hr_employees h
                      LEFT JOIN employee_roster r ON r.emp_no = h.empid
                      LEFT JOIN annual_leave a ON a.e_id = h.t_uid AND a.year = %s
@@ -6058,6 +6059,7 @@ def hr_roster():
             "seq": r[0], "empid": r[1] or "", "name": r[2] or "",
             "dept": r[3] or "미지정", "ent": r[4] or "",
             "pos": r[7] or "", "sex": r[6] or "", "car": (r[10] or "").strip(),
+            "phone": (r[11] or "").strip(),
             "years": years_between(r[4]) if r[4] else None,
             "age": years_between(r[5]) if r[5] else None,
             "rest": (tot - used) if tot else None,

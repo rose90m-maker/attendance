@@ -69,6 +69,8 @@
         .name-link { color:var(--brand-dk); text-decoration:none; font-weight:600; }
         .name-link:hover { text-decoration:underline; }
         .dept-tag { font-size:.73rem; color:var(--sub); background:#f1f5f9; border-radius:6px; padding:2px 7px; }
+        .tel { color:var(--ink); text-decoration:none; font-variant-numeric:tabular-nums; white-space:nowrap; }
+        .tel:hover { color:var(--brand-dk); text-decoration:underline; }
         .plate { font-size:.78rem; color:var(--ink); background:#eef2ff; border-radius:6px; padding:2px 7px; font-variant-numeric:tabular-nums; white-space:nowrap; }
         .rest-tag { font-size:.74rem; font-weight:700; border-radius:6px; padding:2px 8px; }
         .rest-tag.low { background:#fee2e2; color:#b91c1c; }
@@ -122,7 +124,7 @@
     <div class="panel mb-3">
         <h6>📇 명단 <span class="tag">{{ year }}년 기준</span></h6>
         <div class="rs-tools">
-            <input type="search" id="rsSearch" placeholder="이름 · 사번 · 직급 · 차량번호 검색" oninput="rsFilter()">
+            <input type="search" id="rsSearch" placeholder="이름 · 사번 · 직급 · 연락처 · 차량번호 검색" oninput="rsFilter()">
             <select id="rsDept" onchange="rsFilter()">
                 <option value="">전체 부서</option>
                 {% for d in roster_depts %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
@@ -134,7 +136,8 @@
                 <thead>
                     <tr>
                         <th style="width:44px">#</th><th>이름</th><th>직급</th><th>부서</th>
-                        <th style="width:100px">사번</th><th style="width:110px">입사일</th>
+                        <th style="width:100px">사번</th>
+                        <th style="width:130px">연락처</th><th style="width:110px">입사일</th>
                         <th class="num" style="width:70px">근속</th>
                         <th class="num" style="width:60px">나이</th>
                         <th style="width:110px">차량번호</th>
@@ -144,12 +147,13 @@
                 <tbody>
                 {% for p in roster %}
                     <tr class="rs-row" data-dept="{{ p.dept }}"
-                        data-key="{{ p.name }} {{ p.empid }} {{ p.pos }} {{ p.car }} {{ p.car|replace(' ','') }}">
+                        data-key="{{ p.name }} {{ p.empid }} {{ p.pos }} {{ p.car }} {{ p.car|replace(' ','') }} {{ p.phone }} {{ p.phone|replace('-','') }}">
                         <td class="text-muted rs-no">{{ loop.index }}</td>
                         <td><a class="name-link" href="/hr_employee/{{ p.seq }}">{{ p.name }}</a></td>
                         <td>{% if p.pos %}{{ p.pos }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                         <td><span class="dept-tag">{{ p.dept }}</span></td>
                         <td class="text-muted">{{ p.empid }}</td>
+                        <td>{% if p.phone %}<a class="tel" href="tel:{{ p.phone }}">{{ p.phone }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
                         <td class="text-muted">{% if p.ent %}{{ p.ent[:4] }}-{{ p.ent[4:6] }}-{{ p.ent[6:] }}{% else %}—{% endif %}</td>
                         <td class="num">{% if p.years is not none %}{{ p.years }}년{% else %}—{% endif %}</td>
                         <td class="num text-muted">{% if p.age is not none %}{{ p.age }}{% else %}—{% endif %}</td>
@@ -162,7 +166,7 @@
                     </tr>
                 {% endfor %}
                 {% if not roster %}
-                    <tr><td colspan="10" class="text-center text-muted py-4">자료가 없습니다.</td></tr>
+                    <tr><td colspan="11" class="text-center text-muted py-4">자료가 없습니다.</td></tr>
                 {% endif %}
                 </tbody>
             </table>
