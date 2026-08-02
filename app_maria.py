@@ -124,6 +124,12 @@ DEPT_MAP = {
 # 연차 관리 대상이 아닌 부서 (연차관리 화면 · 대시보드 · ERP 동기화에서 모두 제외)
 LEAVE_EXCLUDE_COMPANIES = ("0007000000000000",)   # 경영기획팀
 
+# 연차는 ERP 가 원본이다. 태인에서 신청·추가해 봐야 매일 18:30 동기화 때 덮어써진다.
+# 그래서 연차관리 화면의 신청·추가를 막아 둔다 (2026-08-02 사용자 결정).
+# 다시 열려면 이 값을 False 로 바꾸면 된다. 삭제는 그대로 되게 뒀다.
+LEAVE_ENTRY_LOCKED = True
+LEAVE_LOCK_MSG = "연차는 ERP 에서 신청합니다. 여기서는 넣을 수 없습니다."
+
 
 def _conn():
     return pymysql.connect(**MARIA)
@@ -6605,6 +6611,8 @@ def annual_leave():
                            first_wd=first_wd,
                            total_emp=total_emp,
                            can_edit=_has_perm("leave"),
+                           leave_locked=LEAVE_ENTRY_LOCKED,
+                           leave_lock_msg=LEAVE_LOCK_MSG,
                            user_eid=session.get("e_id"),
                            is_lp_member=is_lp_member,
                            pending_count=pending_count,
@@ -6624,6 +6632,9 @@ def save_leave_record():
         leave_date = str(data["date"])
         leave_type = str(data.get("type", "연차"))
         action = str(data.get("action", "add"))
+        # 넣는 것만 막는다. 지우는 건 잘못 들어간 걸 치울 수 있어야 하므로 그대로 둔다.
+        if LEAVE_ENTRY_LOCKED and action != "delete":
+            return jsonify({"ok": False, "error": LEAVE_LOCK_MSG}), 403
         conn = _conn(); cur = conn.cursor()
         if action == "delete":
             cur.execute("DELETE FROM leave_records WHERE e_id=%s AND leave_date=%s AND leave_type=%s",
@@ -6689,6 +6700,8 @@ def save_leave_record():
 @_login_required
 def request_leave():
     """일반 직원 연차 신청 (단일 또는 복수 날짜, 대기 상태로 저장)"""
+    if LEAVE_ENTRY_LOCKED:
+        return jsonify({"ok": False, "error": LEAVE_LOCK_MSG}), 403
     try:
         data = request.get_json()
         e_id = session.get("e_id")

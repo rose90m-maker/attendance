@@ -67,6 +67,17 @@
 {% set active_page = 'annual_leave' %}
 {% include '_sidebar.html' %}
 {% set can_edit = can_edit if can_edit is defined else (session.get('role') == 'admin') %}
+{% if leave_locked %}
+<div class="container-fluid px-3 mt-3">
+    <div style="background:linear-gradient(90deg,#fffbeb,#fff);border:1px solid #fde68a;
+                border-left:4px solid #f59e0b;border-radius:12px;padding:11px 16px;
+                font-size:.85rem;color:#92400e;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:1rem">🔒</span>
+        <b>연차 신청은 ERP 에서 합니다.</b>
+        <span style="color:#a16207">여기서 넣은 값은 매일 18:30 ERP 동기화 때 사라지기 때문입니다. 조회와 삭제는 됩니다.</span>
+    </div>
+</div>
+{% endif %}
 
 <div class="container-fluid px-3 mt-4">
     {% if can_edit %}
@@ -249,9 +260,9 @@
                     {% set dl = emp.days[i] %}
                     <td class="{% if di.is_sun %}sun{% elif di.is_sat %}sat{% elif di.is_holiday %}hol{% endif %}"
                         {% if emp.id == user_eid and is_lp_member and not di.is_sun and not di.is_sat and not di.is_holiday %}
-                        data-ds="{{ di.ds }}" data-day="{{ di.day }}" data-has-leave="{{ dl|length }}" onclick="toggleDateSel(this)"
+                        data-ds="{{ di.ds }}" data-day="{{ di.day }}" data-has-leave="{{ dl|length }}" {% if not leave_locked %}onclick="toggleDateSel(this)"{% endif %}
                         {% elif not can_edit and emp.id == user_eid and not di.is_sun and not di.is_sat and not di.is_holiday %}
-                        data-ds="{{ di.ds }}" data-day="{{ di.day }}" data-has-leave="{{ dl|length }}" onclick="toggleDateSel(this)"
+                        data-ds="{{ di.ds }}" data-day="{{ di.day }}" data-has-leave="{{ dl|length }}" {% if not leave_locked %}onclick="toggleDateSel(this)"{% endif %}
                         {% endif %}>
                         <div class="day-num {% if di.is_sun %}sun-num{% elif di.is_sat %}sat-num{% elif di.is_holiday %}hol-num{% endif %}">{{ di.day }}</div>
                         {% if di.hol_name %}<span class="hol-label">{{ di.hol_name }}</span>{% endif %}
@@ -279,10 +290,12 @@
                                 <span class="badge-rejected">{{ lt }}(반려)</span>
                             {% endif %}
                         {% endfor %}
+                        {% if not leave_locked %}
                         {% if can_edit and not di.is_sun and not di.is_sat and not di.is_holiday and ns_approved.count == 0 %}
                         <span class="badge-add" onclick="event.stopPropagation(); addLeave({{ emp.id }},'{{ di.ds }}','{{ emp.name }}',{{ di.day }})">+</span>
                         {% elif not can_edit and emp.id == user_eid and not di.is_sun and not di.is_sat and not di.is_holiday and dl|length == 0 %}
                         <span class="badge-add" onclick="event.stopPropagation(); toggleDateSel(this.closest('td'))">+</span>
+                        {% endif %}
                         {% endif %}
                     </td>
                     {% set ns.cell = ns.cell + 1 %}
