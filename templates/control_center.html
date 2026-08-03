@@ -79,11 +79,11 @@
         </div>
         <div class="row g-2 mb-2">
           <div class="col-6">
-            <div class="cc-lbl">오늘 사용량</div>
+            <div class="cc-lbl" id="wUsageLbl">오늘 사용량</div>
             <div><span class="cc-val" id="wUsage">-</span><span class="cc-unit">㎥</span></div>
           </div>
           <div class="col-6">
-            <div class="cc-lbl">오늘 지침</div>
+            <div class="cc-lbl" id="wReadingLbl">오늘 지침</div>
             <div><span class="cc-val" id="wReading">-</span><span class="cc-unit">㎥</span></div>
           </div>
         </div>
@@ -381,9 +381,16 @@ function loadOverview() {
         // ── 수도 ──
         safe('수도', function() {
             var w = d.water || {};
-            document.getElementById('wUsage').textContent   = fmt(w.today_usage, 2);
-            document.getElementById('wReading').textContent = fmt(w.today_reading, 2);
-            document.getElementById('wEmpty').style.display = w.has_today ? 'none' : '';
+            // 오늘 검침이 없으면 최근 검침일 값을 대신 보여준다 (라벨에 그 날짜를 붙인다)
+            document.getElementById('wUsage').textContent   = fmt(w.shown_usage, 2);
+            document.getElementById('wReading').textContent = fmt(w.shown_reading, 2);
+            var wLbl = w.has_today ? '오늘' : (w.shown_md || '최근');
+            document.getElementById('wUsageLbl').textContent   = wLbl + ' 사용량';
+            document.getElementById('wReadingLbl').textContent = wLbl + ' 지침';
+            var wEmp = document.getElementById('wEmpty');
+            wEmp.style.display = w.has_today ? 'none' : '';
+            wEmp.textContent = '오늘 검침이 아직 입력되지 않았습니다 — '
+                             + (w.shown_md || '이전') + ' 기준으로 표시 중입니다.';
             var wDays = w.days || [];
             var wCtx = document.getElementById('wChart');
             var wData = {

@@ -10232,13 +10232,21 @@ def api_cc_overview():
                           "memo": (mo or "").strip() or _water_state(u),
                           "auto": not (mo or "").strip()})
 
+        has_today = today_reading is not None
+        today_usage = (water_days[-1]["usage"] if water_days and
+                       water_days[-1]["date"] == today.strftime("%m/%d") else None)
+        # 오늘 검침이 아직 안 들어왔으면 가장 최근 검침일 값을 대신 보여준다.
+        # (경비실이 아침에 적으므로 그 전까지는 화면이 계속 비어 있었다)
+        latest = table[0] if table else None
         out["water"] = {
             "days": water_days[-7:],
             "table": table,
             "today_reading": today_reading,
-            "today_usage": (water_days[-1]["usage"] if water_days and
-                            water_days[-1]["date"] == today.strftime("%m/%d") else None),
-            "has_today": today_reading is not None,
+            "today_usage": today_usage,
+            "has_today": has_today,
+            "shown_md": today.strftime("%m/%d") if has_today else (latest["md"] if latest else ""),
+            "shown_reading": today_reading if has_today else (latest["reading"] if latest else None),
+            "shown_usage": today_usage if has_today else (latest["usage"] if latest else None),
             "last_date": recs[0][0].strftime("%Y-%m-%d") if recs else "",
         }
 
