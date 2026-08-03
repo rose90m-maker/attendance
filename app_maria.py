@@ -7002,6 +7002,247 @@ def api_leave_erp_pending():
     return jsonify(_leave_erp_pending())
 
 
+# ── 연차휴가사용계획서(엑셀) 읽기 ────────────────────────────
+# 계획서 달력에 도형으로 표시한다: 동그라미=연차(1일), 삼각형=반차(0.5일).
+# 달력 칸 밖의 도형은 범례이므로 세지 않는다.
+# openpyxl 은 도형을 못 읽어서 xlsx(zip) 안의 drawing XML 을 직접 파싱한다.
+_PLAN_SHAPE = {"ellipse": "연차", "triangle": "반차"}
+_PLAN_UNIT = {"연차": 1.0, "반차": 0.5}
+
+
+def _parse_leave_plan(src, year):
+    """계획서 엑셀 → {name, dept, rows:[{date,type,days}], total, warn[...]}
+
+    시트가 스스로 가진 검산표(월별 사용계획·사용연차 ⓐ)와 대조해,
+    도형을 잘못 읽으면 조용히 넘어가지 않고 warn 에 남긴다."""
+    import re as _re
+    import zipfile as _zip
+    from openpyxl import load_workbook
+
+    z = _zip.ZipFile(src)
+    wbx = z.read("xl/workbook.xml").decode("utf-8")
+    rl = z.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+    tgt = dict(_re.findall(r'Id="(rId\d+)"[^>]*Target="([^"]+)"', rl))
+    sheet_dwg = {}
+    for nm, rid in _re.findall(r'<sheet name="([^"]+)"[^>]*r:id="(rId\d+)"', wbx):
+        m = _re.search(r"sheet(\d+)\.xml", tgt.get(rid, ""))
+        if not m:
+            continue
+        try:
+            sr = z.read(f"xl/worksheets/_rels/sheet{m.group(1)}.xml.rels").decode("utf-8")
+        except KeyError:
+            continue
+        d = _re.search(r'Target="[^"]*?(drawing\d+\.xml)"', sr)
+        if d:
+            sheet_dwg[nm] = d.group(1)
+
+    try:
+        src.seek(0)
+    except AttributeError:
+        pass
+    wb = load_workbook(src, data_only=True)
+
+    name = dept = ""
+    marks, warn = set(), []
+    plan_m, plan_total = {}, None
+
+    for sn in wb.sheetnames:
+        if "계획서" not in sn:
+            continue
+        ws = wb[sn]
+        # 소속·성명 (라벨 오른쪽 첫 값). '지 창 구' 처럼 띄어 쓴 경우가 있어 공백 제거
+        for r in range(1, min(16, ws.max_row + 1)):
+            for c in range(1, min(20, ws.max_column + 1)):
+                lab = str(ws.cell(r, c).value or "").replace(" ", "")
+                if lab not in ("소속", "성명"):
+                    continue
+                for c2 in range(c + 1, min(c + 6, ws.max_column + 1)):
+                    v = str(ws.cell(r, c2).value or "").strip().replace(" ", "")
+                    if v:
+                        if lab == "소속" and not dept:
+                            dept = v
+                        elif lab == "성명" and not name:
+                            name = v
+                        break
+
+        # 달력: 'N월' 라벨이 나오면 그 아래 두 줄이 그 달의 날짜 칸
+        cell_day, cur_m = {}, None
+        for r in range(1, ws.max_row + 1):
+            m = _re.match(r"^(\d{1,2})월$", str(ws.cell(r, 2).value or "").strip())
+            if m:
+                cur_m = int(m.group(1))
+            if cur_m is None:
+                continue
+            for c in range(4, ws.max_column + 1):
+                try:
+                    d = int(float(ws.cell(r, c).value))
+                except (TypeError, ValueError):
+                    continue
+                if 1 <= d <= 31:
+                    cell_day[(r, c)] = (cur_m, d)
+
+        # 아래쪽 검산표: 'N월' 라벨 아래칸 = 계획일수 / '사용연차' 아래칸 = 합계
+        for r in range(1, ws.max_row + 1):
+            for c in range(1, ws.max_column + 1):
+                lab = str(ws.cell(r, c).value or "").replace(" ", "").replace("\n", "")
+                mm = _re.match(r"^(\d{1,2})월$", lab)
+                if mm:
+                    try:
+                        n = float(ws.cell(r + 1, c).value)
+                    except (TypeError, ValueError):
+                        continue
+                    if n > 0:
+                        k = int(mm.group(1))
+                        plan_m[k] = max(plan_m.get(k, 0), n)
+                elif lab.startswith("사용연차"):
+                    # (하) 시트 합계는 상반기까지 누계라 더 크다. 빈 시트의 0 에 덮이면 안 된다
+                    try:
+                        v = float(ws.cell(r + 1, c).value)
+                    except (TypeError, ValueError):
+                        continue
+                    plan_total = v if plan_total is None else max(plan_total, v)
+
+        dwg = sheet_dwg.get(sn)
+        if not dwg:
+            continue
+        x = z.read(f"xl/drawings/{dwg}").decode("utf-8")
+        for mm in _re.finditer(r"<xdr:twoCellAnchor.*?</xdr:twoCellAnchor>", x, _re.S):
+            s = mm.group(0)
+            g = _re.search(r'prstGeom prst="(\w+)"', s)
+            kind = _PLAN_SHAPE.get(g.group(1)) if g else None
+            if kind is None:
+                continue
+            fr = _re.search(r"<xdr:from>\s*<xdr:col>(\d+)</xdr:col>.*?<xdr:row>(\d+)</xdr:row>",
+                            s, _re.S)
+            if not fr:
+                continue
+            # 도형 앵커는 0-based, openpyxl 은 1-based
+            md = cell_day.get((int(fr.group(2)) + 1, int(fr.group(1)) + 1))
+            if md is None:
+                continue          # 달력 칸 밖 = 범례
+            marks.add((f"{year}{md[0]:02d}{md[1]:02d}", kind))
+
+    got = {}
+    for d, k in marks:
+        mo = int(d[4:6])
+        got[mo] = got.get(mo, 0) + _PLAN_UNIT[k]
+    for mo in sorted(set(plan_m) | set(got)):
+        a, b = plan_m.get(mo, 0), got.get(mo, 0)
+        if abs(a - b) > 0.01:
+            warn.append(f"{mo}월 계획표 {a:g}일 ≠ 도형 {b:g}일")
+    total = sum(_PLAN_UNIT[k] for _, k in marks)
+    if plan_total is not None and abs(plan_total - total) > 0.01:
+        warn.append(f"사용연차 합계 {plan_total:g}일 ≠ 도형 {total:g}일")
+
+    return {"name": name, "dept": dept, "total": total, "warn": warn,
+            "rows": [{"date": d, "type": k, "days": _PLAN_UNIT[k]}
+                     for d, k in sorted(marks)]}
+
+
+def _leave_plan_guard():
+    return (session.get("role") == "admin" or _has_perm("leave_erp") or _has_perm("leave"))
+
+
+@app.route("/leave_plan_import", methods=["POST"])
+@_login_required
+def leave_plan_import():
+    """계획서 엑셀 업로드 → 파싱 결과 미리보기. 이 단계에서는 아무것도 저장하지 않는다."""
+    if not _leave_plan_guard():
+        flash("접근 권한이 없습니다.", "danger")
+        return redirect(url_for("dashboard"))
+    year = int(request.form.get("year") or datetime.now().year)
+    files = [f for f in request.files.getlist("files") if f and f.filename]
+    if not files:
+        flash("파일을 선택하세요.", "warning")
+        return redirect(url_for("leave_erp"))
+
+    conn = _conn(); cur = conn.cursor()
+    people = []
+    for f in files:
+        item = {"file": f.filename, "rows": [], "warn": [], "err": "",
+                "name": "", "dept": "", "total": 0, "e_id": None}
+        try:
+            p = _parse_leave_plan(f, year)
+        except Exception as ex:
+            item["err"] = f"엑셀을 읽지 못했습니다: {str(ex)[:120]}"
+            people.append(item); continue
+        item.update({"name": p["name"], "dept": p["dept"],
+                     "total": p["total"], "warn": p["warn"]})
+        if not p["name"]:
+            item["err"] = "계획서에서 성명을 찾지 못했습니다."
+            people.append(item); continue
+        if not p["rows"]:
+            item["err"] = "달력에 표시된 연차(동그라미)·반차(삼각형)가 없습니다."
+            people.append(item); continue
+        # 이름으로 사원 찾기. 동명이인이면 사람이 판단해야 하므로 중단한다
+        cur.execute("SELECT id FROM tuser WHERE name=%s", (p["name"],))
+        hit = cur.fetchall()
+        if len(hit) != 1:
+            item["err"] = ("사원을 찾지 못했습니다." if not hit
+                           else f"같은 이름이 {len(hit)}명이라 자동 매칭할 수 없습니다.")
+            people.append(item); continue
+        item["e_id"] = hit[0][0]
+        cur.execute("""SELECT leave_date, leave_type FROM leave_records
+                        WHERE e_id=%s AND LEFT(leave_date,4)=%s""", (item["e_id"], str(year)))
+        exist = {r[0]: r[1] for r in cur.fetchall()}
+        for x in p["rows"]:
+            x = dict(x)
+            x["exist"] = exist.get(x["date"], "")
+            x["skip"] = bool(x["exist"])
+            item["rows"].append(x)
+        people.append(item)
+    conn.close()
+
+    return render_template("leave_plan_import.html", active_page="leave_erp",
+                           year=year, people=people,
+                           payload=json.dumps(people, ensure_ascii=False))
+
+
+@app.route("/leave_plan_apply", methods=["POST"])
+@_login_required
+def leave_plan_apply():
+    """미리보기에서 확인한 내용을 leave_records 에 '승인'으로 등록.
+
+    memo 는 '계획서' 로 남긴다 — erp_leave_sync 가 매일 밤 memo='ERP' 인 행만 지우므로
+    이 표시가 있어야 살아남는다. 등록되면 휴가 ERP 이관 목록에 '미등록'으로 뜬다."""
+    if not _leave_plan_guard():
+        return jsonify(ok=False, error="권한이 없습니다."), 403
+    try:
+        people = json.loads(request.form.get("payload") or "[]")
+    except ValueError:
+        flash("전달된 내용을 읽지 못했습니다.", "danger")
+        return redirect(url_for("leave_erp"))
+
+    conn = _conn(); cur = conn.cursor()
+    added = skipped = 0
+    who = []
+    for it in people:
+        if it.get("err") or not it.get("e_id"):
+            continue
+        n_add = 0
+        for x in it.get("rows", []):
+            if x.get("skip"):
+                skipped += 1
+                continue
+            cur.execute("""INSERT IGNORE INTO leave_records
+                               (e_id, leave_date, leave_type, status, memo)
+                           VALUES (%s,%s,%s,'승인','계획서')""",
+                        (it["e_id"], x["date"], x["type"]))
+            if cur.rowcount:
+                n_add += 1
+            else:
+                skipped += 1
+        if n_add:
+            # annual_leave 는 건드리지 않는다. 그쪽 used 는 ERP 가 정본이라
+            # erp_leave_sync 가 매일 채운다. 여기서 손대면 ERP 값과 싸운다.
+            who.append(f"{it['name']} {n_add}건")
+        added += n_add
+    conn.commit(); conn.close()
+    flash(f"등록 {added}건 · 건너뜀 {skipped}건" + (f" — {', '.join(who)}" if who else ""),
+          "success" if added else "warning")
+    return redirect(url_for("leave_erp", scope="all", stat="pending"))
+
+
 @app.route("/leave_erp")
 @_login_required
 def leave_erp():
