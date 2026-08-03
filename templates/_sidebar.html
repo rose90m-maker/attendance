@@ -185,6 +185,9 @@
         {# 연차사용계획은 아직 손보는 중이라 눌리지 않게 해 뒀다 (2026-08-02) #}
         <span class="side-link side-link-off" title="아직 만드는 중입니다"><span class="sl-icon">🚧</span>연차사용계획 <em>(개발중)</em></span>
         {% endif %}
+        {% if is_admin or 'leave' in session.get('permissions','') %}
+        <a href="/leave_erp" class="side-link{% if active_page == 'leave_erp' %} active{% endif %}"><span class="sl-icon">🔗</span>휴가 ERP 이관</a>
+        {% endif %}
     </div>
 
     <!-- 인사관리 -->
