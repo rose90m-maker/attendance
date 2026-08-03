@@ -49,13 +49,21 @@
     </div>
 
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-        <button class="btn btn-success btn-sm" onclick="copyCol('name')">📋 사원 복사</button>
-        <button class="btn btn-success btn-sm" onclick="copyCol('fr')">📋 시작일 복사</button>
-        <button class="btn btn-success btn-sm" onclick="copyCol('to')">📋 종료일 복사</button>
-        <button class="btn btn-outline-success btn-sm" onclick="copyTable()">📋 전체 표 복사</button>
+        <button class="btn btn-success btn-sm" onclick="copyCol('name')">① 📋 사원</button>
+        <button class="btn btn-success btn-sm" onclick="copyCol('type')">② 📋 휴가항목</button>
+        <button class="btn btn-success btn-sm" onclick="copyCol('fr')">③ 📋 휴가시작일</button>
+        <button class="btn btn-success btn-sm" onclick="copyCol('to')">④ 📋 휴가종료일</button>
+        <span class="mx-1 text-muted">|</span>
+        <button class="btn btn-outline-success btn-sm" onclick="copyTable()">📋 전체 표</button>
         <span id="copyMsg" class="small text-success fw-bold"></span>
     </div>
-    <div class="small text-primary mb-2">💡 사원 이름을 ERP 휴가신청 <b>사원</b> 칸에 넣으면 사번·부서·직위가 자동 채워집니다. 시작일/종료일을 <b>휴가기간</b>에 넣고 <b>내역생성</b>.</div>
+    <div class="alert alert-primary py-2 mb-2" style="font-size:0.82rem;">
+        <b>🔗 영림원 [휴가신청(일괄)] 화면에 붙여넣는 순서</b><br>
+        ERP에서 <span class="badge bg-secondary">급여 → 근태신청 → 휴가신청(일괄)</span> 화면을 연 뒤,
+        그리드 <b>첫 행</b>의 해당 열 첫 칸을 클릭하고 <b>Ctrl+V</b> 하세요.
+        <span class="text-muted">(사번·부서는 사원을 넣으면 자동으로 채워집니다)</span><br>
+        <span class="fw-bold">①사원 → ②휴가항목 → ③휴가시작일 → ④휴가종료일</span> 순서로 4번 붙여넣고 <b>저장</b>.
+    </div>
 
     <div style="overflow-x:auto;">
     <table class="table table-sm table-bordered erp-table" id="erpTbl">
@@ -74,7 +82,7 @@
                 <td class="text-muted">{{ loop.index }}</td>
                 <td class="fw-bold" data-col="name">{{ r.name }}</td>
                 <td data-col="emp_no">{{ r.emp_no }}</td>
-                <td><span class="badge bg-secondary">{{ r.leave_type }}</span></td>
+                <td data-col="type"><span class="badge bg-secondary">{{ r.leave_type }}</span></td>
                 <td class="fw-bold" data-col="fr">{{ r.fr_fmt }}</td>
                 <td data-col="to">{{ r.to_fmt }}</td>
                 <td>{{ r.days }}일</td>
