@@ -6895,6 +6895,97 @@ def _erp_conn():
 _ERP_VAC_WKITEM = {"연차": 1001}
 
 
+def _leave_erp_pending(days_back=45, days_fwd=60):
+    """우리 승인휴가 ↔ ERP 입력분 대조 → ERP 미입력분을 사원·기간 단위로 반환.
+    화면(/leave_erp)과 자동입력 봇(/api/leave_erp_pending)이 같은 로직을 쓴다."""
+    from datetime import date as _date, datetime as _dt, timedelta as _tdelta
+    from collections import defaultdict as _dd
+
+    today = _date.today()
+    frm = (today - _tdelta(days=days_back)).strftime("%Y%m%d")
+    to = (today + _tdelta(days=days_fwd)).strftime("%Y%m%d")
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT lr.e_id, u.name, u.idno, u.company, lr.leave_date, lr.leave_type
+                   FROM leave_records lr LEFT JOIN tuser u ON lr.e_id=u.id
+                   WHERE lr.status='승인' AND lr.leave_date BETWEEN %s AND %s
+                   ORDER BY u.name, lr.leave_type, lr.leave_date""", (frm, to))
+    ours = cur.fetchall()
+    conn.close()
+
+    erp_ok = True; erp_err = ""
+    by_empid = {}; erp_set = set()
+    try:
+        ec = _erp_conn(); ecur = ec.cursor()
+        ecur.execute("SELECT EmpSeq, Empid FROM _TDAEmp")
+        for seq, empid in ecur.fetchall():
+            if empid:
+                by_empid[str(empid).strip()] = seq
+        ecur.execute("""SELECT d.EmpSeq, d.VacDate FROM _TXPRWkVactionAppDtl d
+                        JOIN _TXPRWkVactionApp m ON d.VacAppSeq=m.VacAppSeq
+                        WHERE (m.IsCancel IS NULL OR m.IsCancel<>'1') AND d.VacDate BETWEEN %s AND %s""",
+                     (frm, to))
+        erp_set = {(r[0], str(r[1]).strip()) for r in ecur.fetchall()}
+        ec.close()
+    except Exception as e:
+        erp_ok = False; erp_err = str(e)[:150]
+
+    DOW = ["월", "화", "수", "목", "금", "토", "일"]
+    missing = []; matched = 0; nomap = 0
+    for e_id, name, idno, company, ldate, ltype in ours:
+        empseq = by_empid.get(str(idno).strip()) if idno else None
+        if erp_ok:
+            if empseq is None:
+                nomap += 1
+            elif (empseq, ldate) in erp_set:
+                matched += 1
+                continue
+        missing.append((name or f"ID-{e_id}", idno or "", ldate, ltype))
+
+    grp = _dd(list)
+    for name, idno, ldate, ltype in missing:
+        grp[(name, idno, ltype)].append(ldate)
+
+    def _dow(d):
+        return DOW[_dt.strptime(d, "%Y%m%d").weekday()]
+
+    rows = []
+    for (name, idno, ltype), dates in grp.items():
+        dates = sorted(set(dates))
+        seg = [dates[0]]; segs = []
+        for prev, cur_d in zip(dates, dates[1:]):
+            if _dt.strptime(cur_d, "%Y%m%d") - _dt.strptime(prev, "%Y%m%d") == _tdelta(days=1):
+                seg.append(cur_d)
+            else:
+                segs.append(seg); seg = [cur_d]
+        segs.append(seg)
+        for s in segs:
+            st, en = s[0], s[-1]
+            rows.append({
+                "name": name, "emp_no": idno, "leave_type": ltype,
+                "wkitem": _ERP_VAC_WKITEM.get(ltype, ""),
+                "fr": st, "to": en,
+                "fr_fmt": f"{st[:4]}-{st[4:6]}-{st[6:]}", "to_fmt": f"{en[:4]}-{en[4:6]}-{en[6:]}",
+                "days": len(s),
+                "dow": _dow(st) if st == en else f"{_dow(st)}~{_dow(en)}",
+                "same": st == en,
+            })
+    rows.sort(key=lambda r: (r["fr"], r["name"]))
+    return {"rows": rows, "erp_ok": erp_ok, "erp_err": erp_err,
+            "total_ours": len(ours), "matched": matched,
+            "missing_cnt": len(missing), "nomap": nomap,
+            "frm": frm, "to": to, "today": today.isoformat()}
+
+
+@app.route("/api/leave_erp_pending")
+@_login_required
+def api_leave_erp_pending():
+    """자동입력 봇이 읽는 대상자 목록 (ERP 미입력 승인휴가)."""
+    if session.get("role") != "admin" and not _has_perm("leave_erp") and not _has_perm("leave"):
+        return jsonify({"error": "권한 없음"}), 403
+    return jsonify(_leave_erp_pending())
+
+
 @app.route("/leave_erp")
 @_login_required
 def leave_erp():
@@ -6903,6 +6994,11 @@ def leave_erp():
     if session.get("role") != "admin" and not _has_perm("leave_erp") and not _has_perm("leave"):
         flash("접근 권한이 없습니다.", "danger")
         return redirect(url_for("dashboard"))
+    d = _leave_erp_pending()
+    return render_template("leave_erp.html", **d)
+
+
+def _leave_erp_old():
     from datetime import date as _date, datetime as _dt, timedelta as _tdelta
     from collections import defaultdict as _dd
 
