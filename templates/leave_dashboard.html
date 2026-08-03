@@ -358,17 +358,6 @@
     <!-- 확인이 필요한 인원 -->
     <div class="row g-3 mb-3">
         <div class="col-12 col-sm-6 col-xl-3">
-            <div class="alert-box today">
-                <div class="t">🌴 금일 연차</div>
-                <div class="n">{{ today_leave|length }}<small>명</small>{% if today_days != today_leave|length %}<small class="ms-1">· {{ '%g'|format(today_days) }}일</small>{% endif %}</div>
-                <div class="d">
-                    {% for p in today_leave[:8] %}<a class="pill" href="/annual_leave?search={{ p.name }}">{{ p.name }}{% if p.type != '연차' %}<i>{{ p.type }}</i>{% endif %}</a>{% endfor %}
-                    {% if today_leave|length > 8 %}<span class="pill">외 {{ today_leave|length - 8 }}명</span>{% endif %}
-                    {% if not today_leave %}없음{% else %}<span class="hint">오늘 연차를 쓴 사람입니다</span>{% endif %}
-                </div>
-            </div>
-        </div>
-        <div class="col-12 col-sm-6 col-xl-3">
             <div class="alert-box danger">
                 <div class="t">⚠ 연차보다 많이 씀</div>
                 <div class="n">{{ negatives|length }}<small>명</small></div>
@@ -398,6 +387,17 @@
                     {% for p in unused[:6] %}<a class="pill" href="/annual_leave?search={{ p.name }}">{{ p.name }}<i>{{ '%.0f'|format(p.rest) }}일</i></a>{% endfor %}
                     {% if unused|length > 6 %}<span class="pill">외 {{ unused|length - 6 }}명</span>{% endif %}
                     {% if not unused %}없음{% else %}<span class="hint">연차를 쓰라고 안내할 대상입니다</span>{% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="alert-box today">
+                <div class="t">🌴 금일 연차</div>
+                <div class="n">{{ today_leave|length }}<small>명</small>{% if today_days != today_leave|length %}<small class="ms-1">· {{ '%g'|format(today_days) }}일</small>{% endif %}</div>
+                <div class="d">
+                    {% for p in today_leave[:8] %}<a class="pill" href="/annual_leave?search={{ p.name }}">{{ p.name }}{% if p.type != '연차' %}<i>{{ p.type }}</i>{% endif %}</a>{% endfor %}
+                    {% if today_leave|length > 8 %}<span class="pill">외 {{ today_leave|length - 8 }}명</span>{% endif %}
+                    {% if not today_leave %}없음{% else %}<span class="hint">오늘 연차를 쓴 사람입니다</span>{% endif %}
                 </div>
             </div>
         </div>
