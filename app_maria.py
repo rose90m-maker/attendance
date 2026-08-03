@@ -7146,6 +7146,13 @@ def _parse_leave_plan(src, year=None, filename=""):
             md = cell_day.get((int(fr.group(2)) + 1, int(fr.group(1)) + 1))
             if md is None:
                 continue          # 달력 칸 밖 = 범례
+            # 실제로 있는 날짜인지 확인한다. 양식을 다른 해에서 복사해 쓰면
+            # 4월 31일·평년 2월 29일 같은 칸이 남아 엉뚱한 날짜가 만들어진다.
+            try:
+                datetime(year, md[0], md[1])
+            except ValueError:
+                warn.append(f"{year}년 {md[0]}월 {md[1]}일은 없는 날짜입니다 — 제외")
+                continue
             marks.add((f"{year}{md[0]:02d}{md[1]:02d}", kind))
 
     got = {}
@@ -7284,7 +7291,10 @@ def leave_erp():
     from datetime import date as _date
     # 조회기간: 기본 45일 전 ~ 60일 후 / year=1년치 (누락분 소급 등록용)
     rng = (request.args.get("range") or "").strip()
-    d = _leave_erp_pending(days_back=365 if rng == "year" else 45)
+    # 앞으로도 1년을 봐야 한다 — 계획서는 연초에 그해 12월까지 한 번에 올라온다.
+    # 향후 60일만 보면 하반기 계획이 목록에서 통째로 빠진다.
+    d = (_leave_erp_pending(days_back=365, days_fwd=365) if rng == "year"
+         else _leave_erp_pending(days_back=45))
     # ── 검색/필터 ──
     q = (request.args.get("q") or "").strip()
     scope = (request.args.get("scope") or "today").strip()    # all | today | week

@@ -101,8 +101,8 @@
                 <button type="submit" class="btn btn-sm btn-secondary">🔍 검색</button>
                 <a href="/leave_erp?scope=all&range={% if rng == 'year' %}{% else %}year{% endif %}{% if q %}&q={{ q }}{% endif %}"
                    class="btn btn-sm btn-{% if rng == 'year' %}warning{% else %}outline-warning{% endif %}"
-                   title="누락분 소급 등록용 — 지난 1년치를 모두 조회">
-                    🗓 {% if rng == 'year' %}1년치 조회중{% else %}지난 1년{% endif %}
+                   title="누락분 소급 등록 + 계획서 선등록분 확인 — 지난 1년 ~ 향후 1년">
+                    🗓 {% if rng == 'year' %}±1년 조회중{% else %}±1년{% endif %}
                 </a>
                 {% if q or scope != 'today' or stat != 'all' or rng %}
                 <a href="/leave_erp" class="btn btn-sm btn-outline-secondary">✕ 초기화</a>
