@@ -174,6 +174,7 @@ files = [
     ("templates/document_management.html", "templates/document_management.html"),
     ("templates/_sidebar.html", "templates/_sidebar.html"),
     ("templates/leave_approval.html", "templates/leave_approval.html"),
+    ("templates/leave_erp.html", "templates/leave_erp.html"),
     ("templates/leave_plan_view.html", "templates/leave_plan_view.html"),
     ("templates/work_report.html", "templates/work_report.html"),
     (".env", ".env"),
