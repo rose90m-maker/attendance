@@ -6527,6 +6527,18 @@ def leave_dashboard():
                 for r in cur.fetchall()
                 if exempt.get(r[0]) in (None, "계약직")]
 
+    # ── 금일 연차 — 오늘 쉬는 사람 (반차는 0.5일로 센다) ──
+    UNIT = {"연차": 1.0, "반차": 0.5, "반반차": 0.25, "경조": 1.0}
+    cur.execute("""SELECT t.name, r.leave_type, IFNULL(e.dept,'')
+                     FROM leave_records r
+                     JOIN tuser t ON t.id = r.e_id
+                     LEFT JOIN employee_roster e ON e.name = t.name
+                    WHERE r.leave_date=%%s AND IFNULL(t.company,'') NOT IN (%s)
+                    ORDER BY t.name""" % exc0,
+                [datetime.now().strftime("%Y%m%d")] + list(LEAVE_EXCLUDE_COMPANIES))
+    today_leave = [{"name": r[0], "type": r[1], "dept": r[2] or ""} for r in cur.fetchall()]
+    today_days = sum(UNIT.get(p["type"], 1.0) for p in today_leave)
+
     # 종류별(연차/반차/경조) — 날짜별 기록에서 센다. 반차는 하루의 절반이다.
     LEAVE_UNIT = {"연차": 1.0, "반차": 0.5, "반반차": 0.25, "경조": 1.0}
     cur.execute("""SELECT r.leave_type, COUNT(*), COUNT(DISTINCT r.e_id)
@@ -6555,6 +6567,7 @@ def leave_dashboard():
                            year=year, year_list=year_list, s=s, depts=depts,
                            months=months, month_max=mmax, kinds=kinds,
                            negatives=negatives, unused=unused, no_grant=no_grant,
+                           today_leave=today_leave, today_days=today_days,
                            top_rest=rows[:15], last_sync=last_sync,
                            active_page="leave_dashboard")
 

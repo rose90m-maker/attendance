@@ -153,6 +153,9 @@
         .alert-box.warn::before { background:var(--warn); }
         .alert-box.calm { border-color:#c7e2fb; background:linear-gradient(180deg,#f4f9ff,#fff 42%); }
         .alert-box.calm::before { background:#38bdf8; }
+        .alert-box.today { border-color:#bbf7d0; background:linear-gradient(180deg,#f2fdf6,#fff 42%); }
+        .alert-box.today::before { background:#16a34a; }
+        .alert-box.today .t { color:#15803d; }
         .alert-box .t { font-size:.82rem; font-weight:700; display:flex; align-items:center; gap:6px; }
         .alert-box.danger .t { color:#b91c1c; }
         .alert-box.warn  .t { color:#b45309; }
@@ -354,7 +357,18 @@
 
     <!-- 확인이 필요한 인원 -->
     <div class="row g-3 mb-3">
-        <div class="col-12 col-md-4">
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="alert-box today">
+                <div class="t">🌴 금일 연차</div>
+                <div class="n">{{ today_leave|length }}<small>명</small>{% if today_days != today_leave|length %}<small class="ms-1">· {{ '%g'|format(today_days) }}일</small>{% endif %}</div>
+                <div class="d">
+                    {% for p in today_leave[:8] %}<a class="pill" href="/annual_leave?search={{ p.name }}">{{ p.name }}{% if p.type != '연차' %}<i>{{ p.type }}</i>{% endif %}</a>{% endfor %}
+                    {% if today_leave|length > 8 %}<span class="pill">외 {{ today_leave|length - 8 }}명</span>{% endif %}
+                    {% if not today_leave %}없음{% else %}<span class="hint">오늘 연차를 쓴 사람입니다</span>{% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
             <div class="alert-box danger">
                 <div class="t">⚠ 연차보다 많이 씀</div>
                 <div class="n">{{ negatives|length }}<small>명</small></div>
@@ -365,7 +379,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-12 col-md-4">
+        <div class="col-12 col-sm-6 col-xl-3">
             <div class="alert-box warn">
                 <div class="t">⚠ 발생연차 없이 사용</div>
                 <div class="n">{{ no_grant|length }}<small>명</small></div>
@@ -376,7 +390,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-12 col-md-4">
+        <div class="col-12 col-sm-6 col-xl-3">
             <div class="alert-box calm">
                 <div class="t">🏖 한 번도 안 쓴 사람</div>
                 <div class="n">{{ unused|length }}<small>명</small></div>
