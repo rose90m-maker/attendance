@@ -48,6 +48,39 @@
         {% endif %}
     </div>
 
+    <!-- 검색 / 필터 -->
+    <div class="card shadow-sm mb-3">
+        <div class="card-body py-2">
+            <form method="get" class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="btn-group btn-group-sm" role="group">
+                    <a href="/leave_erp?scope=today{% if q %}&q={{ q }}{% endif %}"
+                       class="btn btn-{% if scope == 'today' %}primary{% else %}outline-primary{% endif %}">
+                        📅 오늘 휴가자 <span class="badge bg-light text-dark ms-1">{{ today_cnt }}</span>
+                    </a>
+                    <a href="/leave_erp?scope=week{% if q %}&q={{ q }}{% endif %}"
+                       class="btn btn-{% if scope == 'week' %}primary{% else %}outline-primary{% endif %}">이번주</a>
+                    <a href="/leave_erp{% if q %}?q={{ q }}{% endif %}"
+                       class="btn btn-{% if scope == 'all' %}primary{% else %}outline-primary{% endif %}">
+                        전체 <span class="badge bg-light text-dark ms-1">{{ rows_all_cnt }}</span>
+                    </a>
+                </div>
+                <span class="text-muted">|</span>
+                <input type="hidden" name="scope" value="{{ scope }}">
+                <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm"
+                       style="width:200px;" placeholder="이름 또는 사번 검색" autofocus>
+                <button type="submit" class="btn btn-sm btn-secondary">🔍 검색</button>
+                {% if q or scope != 'all' %}
+                <a href="/leave_erp" class="btn btn-sm btn-outline-secondary">✕ 초기화</a>
+                {% endif %}
+                <span class="ms-auto small text-muted">
+                    {% if q %}"<b>{{ q }}</b>" 검색 · {% endif %}
+                    {% if scope == 'today' %}오늘({{ today }}) · {% elif scope == 'week' %}향후 7일 · {% endif %}
+                    <b class="text-danger">{{ rows|length }}건</b> 표시
+                </span>
+            </form>
+        </div>
+    </div>
+
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
         <button class="btn btn-success btn-sm" onclick="copyCol('name')">① 📋 사원</button>
         <button class="btn btn-success btn-sm" onclick="copyCol('type')">② 📋 휴가항목</button>
@@ -90,7 +123,12 @@
             </tr>
             {% else %}
             <tr><td colspan="8" class="text-center text-muted py-4">
+                {% if q or scope != 'all' %}
+                🔍 조건에 맞는 건이 없습니다.
+                <a href="/leave_erp" class="ms-2">전체 보기 ({{ rows_all_cnt }}건)</a>
+                {% else %}
                 ✅ ERP 미입력 건이 없습니다. (모두 이관 완료)
+                {% endif %}
             </td></tr>
             {% endfor %}
         </tbody>

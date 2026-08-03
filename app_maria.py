@@ -6994,7 +6994,27 @@ def leave_erp():
     if session.get("role") != "admin" and not _has_perm("leave_erp") and not _has_perm("leave"):
         flash("접근 권한이 없습니다.", "danger")
         return redirect(url_for("dashboard"))
+    from datetime import date as _date
     d = _leave_erp_pending()
+    # ── 검색/필터 ──
+    q = (request.args.get("q") or "").strip()
+    scope = (request.args.get("scope") or "all").strip()   # all | today | week
+    today_str = _date.today().strftime("%Y%m%d")
+    rows = d["rows"]
+    if scope == "today":
+        rows = [r for r in rows if r["fr"] <= today_str <= r["to"]]
+    elif scope == "week":
+        from datetime import timedelta as _td2
+        wk_end = (_date.today() + _td2(days=7)).strftime("%Y%m%d")
+        rows = [r for r in rows if r["fr"] <= wk_end and r["to"] >= today_str]
+    if q:
+        rows = [r for r in rows
+                if q in (r["name"] or "") or q in (r["emp_no"] or "")]
+    d["rows_all_cnt"] = len(d["rows"])
+    d["today_cnt"] = len([r for r in d["rows"] if r["fr"] <= today_str <= r["to"]])
+    d["rows"] = rows
+    d["q"] = q
+    d["scope"] = scope
     return render_template("leave_erp.html", **d)
 
 
