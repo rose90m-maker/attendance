@@ -23,6 +23,7 @@
             <form method="post" action="{{ url_for('leave_plan_import') }}"
                   enctype="multipart/form-data" class="d-flex gap-1 align-items-center"
                   id="planForm">
+                <!-- 연도는 엑셀(시트명·파일명)에서 자동 인식한다. 이 값은 인식 실패 시 대비책 -->
                 <input type="hidden" name="year" value="{{ frm[:4] }}">
                 <input type="file" name="files" accept=".xlsx" multiple
                        class="form-control form-control-sm" style="width:230px;"

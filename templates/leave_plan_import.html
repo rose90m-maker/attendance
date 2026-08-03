@@ -18,13 +18,13 @@
 
   <div class="d-flex align-items-center gap-2 mb-3">
     <h5 class="mb-0">📄 연차휴가사용계획서 읽기 — 미리보기</h5>
-    <span class="badge bg-secondary">{{ year }}년</span>
     <a href="{{ url_for('leave_erp') }}" class="btn btn-sm btn-outline-secondary ms-auto">← 휴가 ERP 이관</a>
   </div>
 
   <div class="alert alert-info py-2 px-3" style="font-size:.84rem;">
     달력의 <b>동그라미</b>는 <b>연차(1일)</b>, <b>삼각형</b>은 <b>반차(0.5일)</b>로 읽습니다.
     달력 칸 밖의 도형은 범례라 세지 않습니다.
+    <b>연도는 엑셀에서 자동 인식</b>합니다(시트명 → 파일명). 사람 이름 옆의 연도가 맞는지 확인하세요.
     <b>이미 등록된 날짜는 건너뜁니다.</b> 아래를 확인하고 [등록]을 눌러야 저장됩니다.
   </div>
 
@@ -35,7 +35,9 @@
     <div class="card-header d-flex align-items-center gap-2 py-2" style="font-size:.88rem;">
       <b>{{ p.name or '(성명 없음)' }}</b>
       {% if p.dept %}<span class="text-muted">{{ p.dept }}</span>{% endif %}
+      <span class="badge bg-dark">{{ p.year }}년</span>
       <span class="text-muted small">· {{ p.file }}</span>
+      {% if p.year_src %}<span class="text-muted" style="font-size:.72rem;">({{ p.year_src }})</span>{% endif %}
       {% if not p.err %}
       <span class="ms-auto">
         계획 <b>{{ '%g'|format(p.total) }}</b>일

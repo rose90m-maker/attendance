@@ -7010,10 +7010,12 @@ _PLAN_SHAPE = {"ellipse": "연차", "triangle": "반차"}
 _PLAN_UNIT = {"연차": 1.0, "반차": 0.5}
 
 
-def _parse_leave_plan(src, year):
-    """계획서 엑셀 → {name, dept, rows:[{date,type,days}], total, warn[...]}
+def _parse_leave_plan(src, year=None, filename=""):
+    """계획서 엑셀 → {name, dept, year, rows:[{date,type,days}], total, warn[...]}
 
-    시트가 스스로 가진 검산표(월별 사용계획·사용연차 ⓐ)와 대조해,
+    연도는 자동 인식한다 — 시트명('사무기술 2026') → 파일명('…20260223.xlsx') 순.
+    달력 칸에는 '일' 숫자만 있어서 연도를 못 붙이면 작년 계획서가 올해로 들어간다.
+    시트가 스스로 가진 검산표(월별 사용계획·사용연차 ⓐ)와도 대조해,
     도형을 잘못 읽으면 조용히 넘어가지 않고 warn 에 남긴다."""
     import re as _re
     import zipfile as _zip
@@ -7045,6 +7047,30 @@ def _parse_leave_plan(src, year):
     name = dept = ""
     marks, warn = set(), []
     plan_m, plan_total = {}, None
+
+    # ── 연도 자동 인식 (날짜를 만들기 전에 정해야 한다) ──
+    year_src = ""
+    sheet_year = None
+    for sn in wb.sheetnames:
+        my = _re.search(r"(20\d{2})", sn)
+        if my:
+            sheet_year = int(my.group(1)); year_src = f"시트명 '{sn}'"
+            break
+    file_year = None
+    mf = _re.search(r"(20\d{2})", filename or "")
+    if mf:
+        file_year = int(mf.group(1))
+    if sheet_year:
+        year = sheet_year
+    elif file_year:
+        year = file_year; year_src = f"파일명 '{filename}'"
+    else:
+        year = year or datetime.now().year
+        year_src = "자동 인식 실패 — 올해로 처리"
+        warn.append("엑셀에서 연도를 찾지 못해 올해로 읽었습니다. 날짜를 꼭 확인하세요.")
+    if sheet_year and file_year and sheet_year != file_year:
+        warn.append(f"시트명은 {sheet_year}년, 파일명은 {file_year}년입니다 "
+                    f"— 시트명 기준 {sheet_year}년으로 읽었습니다")
 
     for sn in wb.sheetnames:
         if "계획서" not in sn:
@@ -7135,6 +7161,7 @@ def _parse_leave_plan(src, year):
         warn.append(f"사용연차 합계 {plan_total:g}일 ≠ 도형 {total:g}일")
 
     return {"name": name, "dept": dept, "total": total, "warn": warn,
+            "year": year, "year_src": year_src,
             "rows": [{"date": d, "type": k, "days": _PLAN_UNIT[k]}
                      for d, k in sorted(marks)]}
 
@@ -7150,7 +7177,8 @@ def leave_plan_import():
     if not _leave_plan_guard():
         flash("접근 권한이 없습니다.", "danger")
         return redirect(url_for("dashboard"))
-    year = int(request.form.get("year") or datetime.now().year)
+    # 연도는 파일마다 엑셀에서 자동 인식한다. 폼 값은 인식 실패 시 대비책일 뿐
+    fallback_year = int(request.form.get("year") or datetime.now().year)
     files = [f for f in request.files.getlist("files") if f and f.filename]
     if not files:
         flash("파일을 선택하세요.", "warning")
@@ -7160,14 +7188,16 @@ def leave_plan_import():
     people = []
     for f in files:
         item = {"file": f.filename, "rows": [], "warn": [], "err": "",
-                "name": "", "dept": "", "total": 0, "e_id": None}
+                "name": "", "dept": "", "total": 0, "e_id": None,
+                "year": fallback_year, "year_src": ""}
         try:
-            p = _parse_leave_plan(f, year)
+            p = _parse_leave_plan(f, fallback_year, f.filename)
         except Exception as ex:
             item["err"] = f"엑셀을 읽지 못했습니다: {str(ex)[:120]}"
             people.append(item); continue
-        item.update({"name": p["name"], "dept": p["dept"],
-                     "total": p["total"], "warn": p["warn"]})
+        year = p["year"]
+        item.update({"name": p["name"], "dept": p["dept"], "total": p["total"],
+                     "warn": p["warn"], "year": year, "year_src": p["year_src"]})
         if not p["name"]:
             item["err"] = "계획서에서 성명을 찾지 못했습니다."
             people.append(item); continue
@@ -7194,7 +7224,7 @@ def leave_plan_import():
     conn.close()
 
     return render_template("leave_plan_import.html", active_page="leave_erp",
-                           year=year, people=people,
+                           people=people,
                            payload=json.dumps(people, ensure_ascii=False))
 
 
