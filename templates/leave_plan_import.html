@@ -43,6 +43,7 @@
         계획 <b>{{ '%g'|format(p.total) }}</b>일
         · 등록대상 <b class="text-primary">{{ p.rows|rejectattr('skip')|list|length }}</b>건
         · 건너뜀 <b class="text-muted">{{ p.rows|selectattr('skip')|list|length }}</b>건
+        {% if p.off_cnt %}· <b class="text-danger">휴일 {{ p.off_cnt }}건</b>{% endif %}
       </span>
       {% endif %}
     </div>
@@ -60,17 +61,20 @@
         <div class="table-responsive">
           <table class="table table-sm table-bordered mb-0 pl-tbl">
             <thead class="table-light">
-              <tr><th style="width:120px;">날짜</th><th style="width:80px;">구분</th>
+              <tr><th style="width:120px;">날짜</th><th style="width:60px;">요일</th>
+                  <th style="width:80px;">구분</th>
                   <th style="width:70px;">일수</th><th>상태</th></tr>
             </thead>
             <tbody>
               {% for x in p.rows %}
-              <tr class="{{ 'text-muted' if x.skip }}">
+              <tr class="{{ 'text-muted' if x.skip }}{{ ' table-warning' if x.off and not x.skip }}">
                 <td>{{ x.date[:4] }}-{{ x.date[4:6] }}-{{ x.date[6:] }}</td>
+                <td class="{{ 'text-danger fw-bold' if x.off }}">{{ x.dow }}</td>
                 <td>{% if x.type == '반차' %}<span class="badge bg-warning text-dark">반차</span>
                     {% else %}<span class="badge bg-primary">연차</span>{% endif %}</td>
                 <td>{{ '%g'|format(x.days) }}</td>
                 <td>{% if x.skip %}이미 등록됨 ({{ x.exist }}) — 건너뜀
+                    {% elif x.off %}<span class="text-danger">⚠ {{ x.hol or ('토요일' if x.dow == '토' else '일요일') }}인데 연차 — 확인 필요</span>
                     {% else %}<span class="text-primary">등록 예정</span>{% endif %}</td>
               </tr>
               {% endfor %}

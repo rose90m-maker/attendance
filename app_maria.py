@@ -7222,11 +7222,19 @@ def leave_plan_import():
         cur.execute("""SELECT leave_date, leave_type FROM leave_records
                         WHERE e_id=%s AND LEFT(leave_date,4)=%s""", (item["e_id"], str(year)))
         exist = {r[0]: r[1] for r in cur.fetchall()}
+        # 요일·휴일 표시 — 양식을 다른 해에서 복사해 쓰면 요일 배치가 어긋나
+        # 토·일·공휴일에 동그라미가 남는다. 미리보기에서 눈에 띄어야 잡을 수 있다.
+        DOWK = ["월", "화", "수", "목", "금", "토", "일"]
         for x in p["rows"]:
             x = dict(x)
             x["exist"] = exist.get(x["date"], "")
             x["skip"] = bool(x["exist"])
+            _d = datetime.strptime(x["date"], "%Y%m%d").date()
+            x["dow"] = DOWK[_d.weekday()]
+            x["hol"] = KR_HOLIDAYS.get(_d) or ""
+            x["off"] = bool(x["hol"]) or _d.weekday() >= 5
             item["rows"].append(x)
+        item["off_cnt"] = len([x for x in item["rows"] if x["off"] and not x["skip"]])
         people.append(item)
     conn.close()
 
