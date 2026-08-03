@@ -414,7 +414,9 @@ function loadOverview() {
                          + '<td class="num">' + fmt(x.reading, 0) + '</td>'
                          + '<td class="num ' + cls + '">'
                          + (x.usage === null || x.usage === undefined ? '-' : fmt(x.usage, 0)) + '</td>'
-                         + '<td class="text-muted">' + (x.memo || '') + '</td>'
+                         + '<td class="' + (x.memo === '지침 확인' ? 'bad-cell'
+                              : (x.memo === '확인 필요' || x.memo === '주의') ? 'warn-cell'
+                              : 'text-muted') + '">' + (x.memo || '') + '</td>'
                          + '</tr>';
                   }).join('')
                 : '<tr><td colspan="5" class="cc-empty">검침 자료가 없습니다.</td></tr>';

@@ -10206,12 +10206,31 @@ def api_cc_overview():
         for rd, diff in cur.fetchall():
             prev_map[rd] = float(diff or 0)
         DOWK = ["월","화","수","목","금","토","일"]
-        table = [{"date": rd.strftime("%Y-%m-%d"),
-                  "md": rd.strftime("%m/%d"),
-                  "dow": DOWK[rd.weekday()],
-                  "reading": float(rg or 0),
-                  "usage": prev_map.get(rd),
-                  "memo": mo or ""} for rd, rg, mo in recs]
+
+        def _water_state(u):
+            """검침량으로 상태 판정. 원본 엑셀(경비실)이 쓰던 구분과 같은 기준.
+            2026-08 실적: 정상 13~37 · 확인 필요 47~59 · 지침 확인 음수.
+            '주의'는 평균 대비 증감률로 매기던 것이라 검침량만으로는 재현할 수 없어
+            자동 판정에서는 쓰지 않는다 — 대신 저장된 비고가 있으면 그쪽을 우선한다."""
+            if u is None:
+                return ""
+            if u < 0:
+                return "지침 확인"        # 지침이 줄었다 = 입력 오류
+            if u >= 45:
+                return "확인 필요"        # 평소의 1.5배 이상
+            return "정상"
+
+        table = []
+        for rd, rg, mo in recs:
+            u = prev_map.get(rd)
+            table.append({"date": rd.strftime("%Y-%m-%d"),
+                          "md": rd.strftime("%m/%d"),
+                          "dow": DOWK[rd.weekday()],
+                          "reading": float(rg or 0),
+                          "usage": u,
+                          # 경비일지 앱으로 들어온 건 memo 가 비어 있다 → 자동 판정으로 채움
+                          "memo": (mo or "").strip() or _water_state(u),
+                          "auto": not (mo or "").strip()})
 
         out["water"] = {
             "days": water_days[-7:],
