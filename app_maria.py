@@ -7023,9 +7023,13 @@ def leave_erp():
     if scope == "today":
         rows = [r for r in rows if r["fr"] <= today_str <= r["to"]]
     elif scope == "week":
+        # 지난 7일 ~ 향후 7일. 휴가는 지나간 날짜를 소급 입력하는 일이 잦아
+        # 오늘 이후만 보면 어제·그제 미입력분이 목록에서 빠진다
+        # (2026-08-04: 미입력 9건이 전부 전날 것이라 목록이 비어 보였다).
         from datetime import timedelta as _td2
-        wk_end = (_date.today() + _td2(days=7)).strftime("%Y%m%d")
-        rows = [r for r in rows if r["fr"] <= wk_end and r["to"] >= today_str]
+        wk_fr = (_date.today() - _td2(days=7)).strftime("%Y%m%d")
+        wk_to = (_date.today() + _td2(days=7)).strftime("%Y%m%d")
+        rows = [r for r in rows if r["fr"] <= wk_to and r["to"] >= wk_fr]
     if q:
         rows = [r for r in rows
                 if q in (r["name"] or "") or q in (r["emp_no"] or "")]

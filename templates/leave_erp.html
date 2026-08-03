@@ -59,7 +59,8 @@
                         📅 오늘 <span class="badge bg-light text-dark ms-1">{{ today_cnt }}</span>
                     </a>
                     <a href="/leave_erp?scope=week{{ qs }}"
-                       class="btn btn-{% if scope == 'week' %}primary{% else %}outline-primary{% endif %}">이번주</a>
+                       class="btn btn-{% if scope == 'week' %}primary{% else %}outline-primary{% endif %}"
+                       title="지난 7일 ~ 향후 7일 (소급 입력분까지 보이도록)">±7일</a>
                     <a href="/leave_erp?scope=all{{ qs }}"
                        class="btn btn-{% if scope == 'all' %}primary{% else %}outline-primary{% endif %}">
                         전체 <span class="badge bg-light text-dark ms-1">{{ rows_all_cnt }}</span>
@@ -95,7 +96,7 @@
                 {% endif %}
                 <span class="ms-auto small text-muted">
                     {% if q %}"<b>{{ q }}</b>" · {% endif %}
-                    {% if scope == 'today' %}오늘({{ today }}) · {% elif scope == 'week' %}향후 7일 · {% endif %}
+                    {% if scope == 'today' %}오늘({{ today }}) · {% elif scope == 'week' %}지난 7일 ~ 향후 7일 · {% endif %}
                     <b class="text-danger">미등록 {{ view_pending }}</b> / <span class="text-success">완료 {{ view_done }}</span>
                 </span>
             </form>
