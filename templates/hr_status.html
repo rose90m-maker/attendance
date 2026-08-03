@@ -64,6 +64,31 @@
         .bar-num { text-align:right; color:var(--faint); font-size:.76rem; white-space:nowrap; font-variant-numeric:tabular-nums; }
         .bar-num b { color:var(--ink); font-size:.85rem; margin-left:3px; }
 
+        /* 근속 구간 클릭 → 명단 */
+        .band-row { cursor:pointer; border-radius:8px; padding-left:6px; padding-right:6px;
+                    margin-left:-6px; margin-right:-6px; transition:background .12s; }
+        .band-row:hover { background:#f0fdfa; }
+        .band-row.empty { cursor:default; opacity:.55; }
+        .band-row.empty:hover { background:transparent; }
+        .bm-back { display:none; position:fixed; inset:0; background:rgba(15,23,42,.45);
+                   z-index:1080; align-items:center; justify-content:center; padding:16px; }
+        .bm-back.on { display:flex; }
+        .bm-box { background:#fff; border-radius:16px; width:100%; max-width:520px;
+                  max-height:82vh; display:flex; flex-direction:column; overflow:hidden;
+                  box-shadow:0 20px 60px -20px rgba(15,23,42,.5); }
+        .bm-head { display:flex; align-items:center; justify-content:space-between;
+                   padding:14px 18px; border-bottom:1px solid var(--line); }
+        .bm-head b { font-size:.95rem; color:var(--ink); }
+        .bm-head .cnt { font-size:.78rem; color:var(--faint); margin-left:6px; }
+        .bm-x { border:0; background:transparent; font-size:1.4rem; line-height:1;
+                color:var(--faint); cursor:pointer; padding:0 4px; }
+        .bm-body { overflow:auto; padding:6px 0 10px; }
+        .bm-body table { width:100%; font-size:.82rem; border-collapse:collapse; }
+        .bm-body th { text-align:left; font-weight:600; color:var(--sub); font-size:.74rem;
+                      padding:6px 18px; background:#f8fafc; position:sticky; top:0; }
+        .bm-body td { padding:7px 18px; border-top:1px solid #f1f5f9; color:var(--ink); }
+        .bm-body td.num { text-align:right; font-variant-numeric:tabular-nums; color:var(--sub); }
+
         .tbar-wrap { display:flex; align-items:flex-end; gap:12px; height:150px; padding-top:4px; }
         .tbar { flex:1; display:flex; flex-direction:column; justify-content:flex-end; height:100%; text-align:center; }
         .tbar .pair { display:flex; align-items:flex-end; justify-content:center; gap:3px; height:100%; }
@@ -204,7 +229,9 @@
             <div class="panel">
                 <h6>⏳ 근속 분포 <span class="tag">재직자 {{ s.active }}명</span></h6>
                 {% for b in bands %}
-                <div class="bar-row">
+                <div class="bar-row band-row{% if not b.n %} empty{% endif %}"
+                     {% if b.n %}onclick="showBand({{ loop.index0 }})"
+                     title="{{ b.name }} {{ b.n }}명 — 눌러서 명단 보기"{% endif %}>
                     <div class="who">{{ b.name }}</div>
                     <div class="track">
                         <i style="width:{{ (b.n / band_max * 100) if band_max else 0 }}%;
@@ -356,6 +383,51 @@
     </div>
 
 </div>
+
+<!-- 근속 구간 명단 -->
+<div class="bm-back" id="bandModal" onclick="if(event.target===this)closeBand()">
+    <div class="bm-box">
+        <div class="bm-head">
+            <div><b id="bmTitle"></b><span class="cnt" id="bmCnt"></span></div>
+            <button class="bm-x" onclick="closeBand()" aria-label="닫기">&times;</button>
+        </div>
+        <div class="bm-body" id="bmBody"></div>
+    </div>
+</div>
+
+<script>
+var BANDS = {{ bands|tojson }};
+
+function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+}
+function fmtDate(d) {
+    return (d && d.length === 8) ? d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8) : (d || '-');
+}
+function showBand(i) {
+    var b = BANDS[i];
+    if (!b || !b.n) return;
+    document.getElementById('bmTitle').textContent = '근속 ' + b.name;
+    document.getElementById('bmCnt').textContent = b.n + '명';
+    var h = '<table><thead><tr><th>이름</th><th>부서</th><th>입사일</th>'
+          + '<th style="text-align:right;">근속</th></tr></thead><tbody>';
+    b.members.forEach(function(m) {
+        h += '<tr><td>' + esc(m.name) + '</td><td>' + esc(m.dept) + '</td>'
+           + '<td class="num">' + fmtDate(m.ent) + '</td>'
+           + '<td class="num">' + m.years + '년</td></tr>';
+    });
+    document.getElementById('bmBody').innerHTML = h + '</tbody></table>';
+    document.getElementById('bandModal').classList.add('on');
+}
+function closeBand() {
+    document.getElementById('bandModal').classList.remove('on');
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeBand();
+});
+</script>
 
 </body>
 </html>

@@ -5929,9 +5929,15 @@ def hr_status():
              ("5~10년", 5, 10), ("10~20년", 10, 20), ("20년 이상", 20, 999)]
     bands = []
     for label, lo, hi in BANDS:
-        n = len([e for e in act_emps if e["years"] is not None and lo <= e["years"] < hi])
-        bands.append({"name": label, "n": n,
-                      "rate": (n / len(act_emps) * 100) if act_emps else 0})
+        # 막대를 누르면 명단이 뜨도록 구간별 인원을 같이 넘긴다 (입사일 오름차순)
+        mem = sorted([e for e in act_emps
+                      if e["years"] is not None and lo <= e["years"] < hi],
+                     key=lambda e: (e["ent"] or "", e["name"]))
+        bands.append({"name": label, "n": len(mem),
+                      "rate": (len(mem) / len(act_emps) * 100) if act_emps else 0,
+                      "members": [{"name": e["name"], "dept": e["dept"],
+                                   "ent": e["ent"], "years": e["years"]}
+                                  for e in mem]})
     band_max = max([b["n"] for b in bands], default=0)
 
     # 부서별 인원
