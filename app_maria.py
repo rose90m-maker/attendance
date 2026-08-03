@@ -6910,6 +6910,7 @@ def _leave_erp_pending(days_back=45, days_fwd=60):
                           DATE(lr.created_at)
                    FROM leave_records lr LEFT JOIN tuser u ON lr.e_id=u.id
                    WHERE lr.status='승인' AND lr.leave_date BETWEEN %s AND %s
+                     AND IFNULL(lr.memo,'') <> '테스트제외'
                    ORDER BY u.name, lr.leave_type, lr.leave_date""", (frm, to))
     ours = cur.fetchall()
     conn.close()
