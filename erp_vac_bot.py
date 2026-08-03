@@ -542,6 +542,36 @@ def main():
             browser.close()
             return 0
 
+        if step == "open":
+            prog = sys.argv[sys.argv.index("--prog") + 1] if "--prog" in sys.argv else "휴가신청확정"
+            skw = sys.argv[sys.argv.index("--kw") + 1] if "--kw" in sys.argv else None
+            if not open_program(page, prog, search_kw=skw):
+                browser.close()
+                return 1
+            time.sleep(3)
+            shot(page, "50_" + prog.replace("(", "_").replace(")", ""))
+            print(f"\n=== '{prog}' 화면 요소 ===")
+            for fi, f in enumerate(page.frames):
+                try:
+                    els = f.evaluate("""
+                    () => Array.from(document.querySelectorAll('input,button,select,a'))
+                      .map(el => { const r = el.getBoundingClientRect();
+                        return {tag: el.tagName, type: el.type||'', id: el.id||'',
+                                t:(el.textContent||el.value||'').trim().slice(0,14),
+                                ro: el.readOnly||false,
+                                x: Math.round(r.x), y: Math.round(r.y),
+                                vis: r.width>0 && r.height>0};
+                      }).filter(o => o.vis && (o.id || o.t))
+                    """)
+                except Exception:
+                    continue
+                if len(els) > 4:
+                    print(f"  [frame {fi}]")
+                    for e in els[:30]:
+                        print("    ", e)
+            browser.close()
+            return 0
+
         if step == "paste":
             if not open_program(page, "휴가신청(일괄)"):
                 browser.close()
