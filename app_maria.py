@@ -6932,28 +6932,33 @@ def _leave_erp_pending(days_back=45, days_fwd=60):
         erp_ok = False; erp_err = str(e)[:150]
 
     DOW = ["월", "화", "수", "목", "금", "토", "일"]
-    missing = []; matched = 0; nomap = 0
+    recs = []; matched = 0; missing_n = 0; nomap = 0
     app_of = {}          # (사번, 휴가일) → 신청일(휴가 신청 등록일)
     for e_id, name, idno, company, ldate, ltype, cdate in ours:
         app_of[(idno, ldate)] = cdate
         empseq = by_empid.get(str(idno).strip()) if idno else None
+        in_erp = False
         if erp_ok:
             if empseq is None:
                 nomap += 1
             elif (empseq, ldate) in erp_set:
-                matched += 1
-                continue
-        missing.append((name or f"ID-{e_id}", idno or "", ldate, ltype))
+                in_erp = True
+        if in_erp:
+            matched += 1
+        else:
+            missing_n += 1
+        recs.append((name or f"ID-{e_id}", idno or "", ldate, ltype, in_erp))
 
+    # 사원·휴가항목·ERP등록여부가 같은 것끼리 묶어야 상태가 섞이지 않는다
     grp = _dd(list)
-    for name, idno, ldate, ltype in missing:
-        grp[(name, idno, ltype)].append(ldate)
+    for name, idno, ldate, ltype, in_erp in recs:
+        grp[(name, idno, ltype, in_erp)].append(ldate)
 
     def _dow(d):
         return DOW[_dt.strptime(d, "%Y%m%d").weekday()]
 
     rows = []
-    for (name, idno, ltype), dates in grp.items():
+    for (name, idno, ltype, in_erp), dates in grp.items():
         dates = sorted(set(dates))
         seg = [dates[0]]; segs = []
         for prev, cur_d in zip(dates, dates[1:]):
@@ -6977,11 +6982,13 @@ def _leave_erp_pending(days_back=45, days_fwd=60):
                 "days": len(s),
                 "dow": _dow(st) if st == en else f"{_dow(st)}~{_dow(en)}",
                 "same": st == en,
+                "in_erp": in_erp,
             })
-    rows.sort(key=lambda r: (r["fr"], r["name"]))
+    # 미등록을 위로, 그 다음 날짜순
+    rows.sort(key=lambda r: (r["in_erp"], r["fr"], r["name"]))
     return {"rows": rows, "erp_ok": erp_ok, "erp_err": erp_err,
             "total_ours": len(ours), "matched": matched,
-            "missing_cnt": len(missing), "nomap": nomap,
+            "missing_cnt": missing_n, "nomap": nomap,
             "frm": frm, "to": to, "today": today.isoformat()}
 
 
@@ -7003,10 +7010,13 @@ def leave_erp():
         flash("접근 권한이 없습니다.", "danger")
         return redirect(url_for("dashboard"))
     from datetime import date as _date
-    d = _leave_erp_pending()
+    # 조회기간: 기본 45일 전 ~ 60일 후 / year=1년치 (누락분 소급 등록용)
+    rng = (request.args.get("range") or "").strip()
+    d = _leave_erp_pending(days_back=365 if rng == "year" else 45)
     # ── 검색/필터 ──
     q = (request.args.get("q") or "").strip()
-    scope = (request.args.get("scope") or "all").strip()   # all | today | week
+    scope = (request.args.get("scope") or "today").strip()    # all | today | week
+    stat = (request.args.get("stat") or "all").strip()        # all | pending | done
     today_str = _date.today().strftime("%Y%m%d")
     rows = d["rows"]
     if scope == "today":
@@ -7018,11 +7028,21 @@ def leave_erp():
     if q:
         rows = [r for r in rows
                 if q in (r["name"] or "") or q in (r["emp_no"] or "")]
+    if stat == "pending":
+        rows = [r for r in rows if not r["in_erp"]]
+    elif stat == "done":
+        rows = [r for r in rows if r["in_erp"]]
     d["rows_all_cnt"] = len(d["rows"])
-    d["today_cnt"] = len([r for r in d["rows"] if r["fr"] <= today_str <= r["to"]])
+    today_rows = [r for r in d["rows"] if r["fr"] <= today_str <= r["to"]]
+    d["today_cnt"] = len(today_rows)
+    d["today_pending"] = len([r for r in today_rows if not r["in_erp"]])
+    d["view_pending"] = len([r for r in rows if not r["in_erp"]])
+    d["view_done"] = len([r for r in rows if r["in_erp"]])
     d["rows"] = rows
     d["q"] = q
     d["scope"] = scope
+    d["stat"] = stat
+    d["rng"] = rng
     return render_template("leave_erp.html", **d)
 
 

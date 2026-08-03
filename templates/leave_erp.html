@@ -52,30 +52,51 @@
     <div class="card shadow-sm mb-3">
         <div class="card-body py-2">
             <form method="get" class="d-flex align-items-center gap-2 flex-wrap">
+                {% set qs = (('&q=' ~ q) if q else '') ~ (('&stat=' ~ stat) if stat != 'all' else '') ~ (('&range=' ~ rng) if rng else '') %}
                 <div class="btn-group btn-group-sm" role="group">
-                    <a href="/leave_erp?scope=today{% if q %}&q={{ q }}{% endif %}"
+                    <a href="/leave_erp?scope=today{{ qs }}"
                        class="btn btn-{% if scope == 'today' %}primary{% else %}outline-primary{% endif %}">
-                        📅 오늘 휴가자 <span class="badge bg-light text-dark ms-1">{{ today_cnt }}</span>
+                        📅 오늘 <span class="badge bg-light text-dark ms-1">{{ today_cnt }}</span>
                     </a>
-                    <a href="/leave_erp?scope=week{% if q %}&q={{ q }}{% endif %}"
+                    <a href="/leave_erp?scope=week{{ qs }}"
                        class="btn btn-{% if scope == 'week' %}primary{% else %}outline-primary{% endif %}">이번주</a>
-                    <a href="/leave_erp{% if q %}?q={{ q }}{% endif %}"
+                    <a href="/leave_erp?scope=all{{ qs }}"
                        class="btn btn-{% if scope == 'all' %}primary{% else %}outline-primary{% endif %}">
                         전체 <span class="badge bg-light text-dark ms-1">{{ rows_all_cnt }}</span>
                     </a>
                 </div>
+                {% set qs2 = ('&scope=' ~ scope) ~ (('&q=' ~ q) if q else '') ~ (('&range=' ~ rng) if rng else '') %}
+                <div class="btn-group btn-group-sm" role="group">
+                    <a href="/leave_erp?stat=all{{ qs2 }}"
+                       class="btn btn-{% if stat == 'all' %}dark{% else %}outline-dark{% endif %}">전체상태</a>
+                    <a href="/leave_erp?stat=pending{{ qs2 }}"
+                       class="btn btn-{% if stat == 'pending' %}danger{% else %}outline-danger{% endif %}">
+                        ⚠ 미등록 {% if stat != 'pending' %}<span class="badge bg-light text-dark ms-1">{{ view_pending }}</span>{% endif %}
+                    </a>
+                    <a href="/leave_erp?stat=done{{ qs2 }}"
+                       class="btn btn-{% if stat == 'done' %}success{% else %}outline-success{% endif %}">
+                        ✓ 등록완료 {% if stat != 'done' %}<span class="badge bg-light text-dark ms-1">{{ view_done }}</span>{% endif %}
+                    </a>
+                </div>
                 <span class="text-muted">|</span>
                 <input type="hidden" name="scope" value="{{ scope }}">
+                <input type="hidden" name="stat" value="{{ stat }}">
+                {% if rng %}<input type="hidden" name="range" value="{{ rng }}">{% endif %}
                 <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm"
-                       style="width:200px;" placeholder="이름 또는 사번 검색" autofocus>
+                       style="width:180px;" placeholder="이름 또는 사번 검색" autofocus>
                 <button type="submit" class="btn btn-sm btn-secondary">🔍 검색</button>
-                {% if q or scope != 'all' %}
+                <a href="/leave_erp?scope=all&range={% if rng == 'year' %}{% else %}year{% endif %}{% if q %}&q={{ q }}{% endif %}"
+                   class="btn btn-sm btn-{% if rng == 'year' %}warning{% else %}outline-warning{% endif %}"
+                   title="누락분 소급 등록용 — 지난 1년치를 모두 조회">
+                    🗓 {% if rng == 'year' %}1년치 조회중{% else %}지난 1년{% endif %}
+                </a>
+                {% if q or scope != 'today' or stat != 'all' or rng %}
                 <a href="/leave_erp" class="btn btn-sm btn-outline-secondary">✕ 초기화</a>
                 {% endif %}
                 <span class="ms-auto small text-muted">
-                    {% if q %}"<b>{{ q }}</b>" 검색 · {% endif %}
+                    {% if q %}"<b>{{ q }}</b>" · {% endif %}
                     {% if scope == 'today' %}오늘({{ today }}) · {% elif scope == 'week' %}향후 7일 · {% endif %}
-                    <b class="text-danger">{{ rows|length }}건</b> 표시
+                    <b class="text-danger">미등록 {{ view_pending }}</b> / <span class="text-success">완료 {{ view_done }}</span>
                 </span>
             </form>
         </div>
@@ -104,6 +125,7 @@
         <thead class="table-light">
             <tr>
                 <th style="width:36px;">#</th>
+                <th style="width:90px;">ERP 상태</th>
                 <th class="table-info">사원</th><th>사번</th>
                 <th class="table-primary">신청일</th>
                 <th class="table-warning">휴가항목</th>
@@ -113,8 +135,16 @@
         </thead>
         <tbody>
             {% for r in rows %}
-            <tr>
+            <tr class="{% if r.in_erp %}erp-done{% else %}erp-pending{% endif %}"
+                {% if r.in_erp %}style="background:#f8fdf9;"{% endif %}>
                 <td class="text-muted">{{ loop.index }}</td>
+                <td>
+                    {% if r.in_erp %}
+                    <span class="badge bg-success">✓ 등록완료</span>
+                    {% else %}
+                    <span class="badge bg-danger">⚠ 미등록</span>
+                    {% endif %}
+                </td>
                 <td class="fw-bold" data-col="name">{{ r.name }}</td>
                 <td data-col="emp_no">{{ r.emp_no }}</td>
                 <td data-col="app">{{ r.app_date }}</td>
@@ -125,7 +155,7 @@
                 <td class="text-muted">{{ r.dow }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="9" class="text-center text-muted py-4">
+            <tr><td colspan="10" class="text-center text-muted py-4">
                 {% if q or scope != 'all' %}
                 🔍 조건에 맞는 건이 없습니다.
                 <a href="/leave_erp" class="ms-2">전체 보기 ({{ rows_all_cnt }}건)</a>
@@ -142,12 +172,14 @@
 <script>
 function _msg(t){ var m=document.getElementById('copyMsg'); m.textContent=t; setTimeout(function(){m.textContent='';},2000); }
 function copyCol(col){
-    var cells=document.querySelectorAll('#erpTbl td[data-col="'+col+'"]');
+    // ERP 미등록 행만 복사 (등록완료 건을 다시 넣으면 중복되므로)
+    var cells=document.querySelectorAll('#erpTbl tr.erp-pending td[data-col="'+col+'"]');
+    if(!cells.length){ _msg('⚠ 복사할 미등록 건이 없습니다'); return; }
     var txt=Array.from(cells).map(function(c){return c.textContent.trim();}).join('\n');
     navigator.clipboard.writeText(txt).then(function(){_msg('✅ '+cells.length+'행 복사됨 → ERP에 붙여넣기');});
 }
 function copyTable(){
-    var rows=document.querySelectorAll('#erpTbl tbody tr');
+    var rows=document.querySelectorAll("#erpTbl tbody tr.erp-pending");
     var out=Array.from(rows).map(function(tr){
         var t=tr.querySelectorAll('td[data-col]');
         return Array.from(t).map(function(c){return c.textContent.trim();}).join('\t');
