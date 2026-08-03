@@ -109,15 +109,16 @@
         <button class="btn btn-success btn-sm" onclick="copyCol('fr')">④ 📋 휴가시작일</button>
         <button class="btn btn-success btn-sm" onclick="copyCol('to')">⑤ 📋 휴가종료일</button>
         <span class="mx-1 text-muted">|</span>
-        <button class="btn btn-outline-success btn-sm" onclick="copyTable()">📋 전체 표</button>
+        <button class="btn btn-primary btn-sm" onclick="copyTable()">⚡ 한번에 (사원~종료일)</button>
         <span id="copyMsg" class="small text-success fw-bold"></span>
     </div>
     <div class="alert alert-primary py-2 mb-2" style="font-size:0.82rem;">
         <b>🔗 영림원 [휴가신청(일괄)] 화면에 붙여넣는 순서</b><br>
         ERP에서 <span class="badge bg-secondary">급여 → 근태신청 → 휴가신청(일괄)</span> 화면을 연 뒤,
-        그리드 <b>첫 행</b>의 해당 열 첫 칸을 클릭하고 <b>Ctrl+V</b> 하세요.
-        <span class="text-muted">(사번·부서는 사원을 넣으면 자동으로 채워집니다)</span><br>
-        <span class="fw-bold">①사원 → ②신청일 → ③휴가항목 → ④휴가시작일 → ⑤휴가종료일</span> 순서로 5번 붙여넣고 <b>저장</b>.<br>
+        그리드 <b>첫 행 「사원」 칸</b>을 클릭하고 <b>Ctrl+V</b> → <b>저장</b>.<br>
+        <b class="text-primary">⚡ 한번에</b> 버튼이면 <b>붙여넣기 1번</b>으로 끝납니다
+        <span class="text-muted">(부서·파견기관은 빈 칸으로 자리만 맞춰 보내고, 사원을 넣으면 ERP가 자동으로 채웁니다)</span>.
+        열이 밀리면 ①~⑤ 버튼으로 한 열씩 나눠 붙여넣으세요.<br>
         <span class="text-danger fw-bold">⚠ 저장 후 반드시 확정까지</span> —
         <span class="badge bg-secondary">급여 → 근태신청 → 휴가신청확정</span> 화면에서
         <b>조회</b> → <b>일괄확정처리</b> 클릭.
@@ -182,13 +183,22 @@ function copyCol(col){
     var txt=Array.from(cells).map(function(c){return c.textContent.trim();}).join('\n');
     navigator.clipboard.writeText(txt).then(function(){_msg('✅ '+cells.length+'행 복사됨 → ERP에 붙여넣기');});
 }
+// ERP [휴가신청(일괄)] 그리드의 '사원' 열부터의 실제 컬럼 순서.
+// 부서·파견기관은 사원 입력 시 ERP가 자동으로 채우므로 빈 칸으로 자리만 맞춘다.
+var ERP_ORDER = ['name', 'emp_no', '', '', 'app', 'type', 'fr', 'to'];
 function copyTable(){
     var rows=document.querySelectorAll("#erpTbl tbody tr.erp-pending");
+    if(!rows.length){ _msg('⚠ 복사할 미등록 건이 없습니다'); return; }
     var out=Array.from(rows).map(function(tr){
-        var t=tr.querySelectorAll('td[data-col]');
-        return Array.from(t).map(function(c){return c.textContent.trim();}).join('\t');
+        return ERP_ORDER.map(function(col){
+            if(!col) return '';                    // 부서·파견기관 자리(빈칸)
+            var c=tr.querySelector('td[data-col="'+col+'"]');
+            return c ? c.textContent.trim() : '';
+        }).join('\t');
     }).join('\n');
-    navigator.clipboard.writeText(out).then(function(){_msg('✅ 전체 표 복사됨');});
+    navigator.clipboard.writeText(out).then(function(){
+        _msg('✅ '+rows.length+'행 복사됨 → ERP 사원 칸에 한 번에 붙여넣기');
+    });
 }
 </script>
 </body>
