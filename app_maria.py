@@ -10286,8 +10286,19 @@ def api_cc_overview():
         pw_year = [x for x in pw_cost if x[0] == today.year and x[2] > 0]
         bill = pw_year[-1] if pw_year else None
 
+        # 한전 스마트뷰 실시간 요금 (kepco 수집분) — 우리가 단가를 추정하지 않고
+        # 한전이 계산한 값을 그대로 쓴다. 청구기간 기준이라 달력월 누적과 범위가 다르다.
+        cur.execute("""SELECT rt_kwh, rt_bill, bill_start, bill_end, updated_at
+                         FROM power_smartview WHERE cust_no=%s
+                        ORDER BY updated_at DESC LIMIT 1""", (KEPCO_CUST,))
+        sv = cur.fetchone()
+
         out["power"] = {"today_kwh": round(power_today, 1),
                         "yday_kwh": round(power_yday, 1),
+                        "rt_kwh": float(sv[0] or 0) if sv else None,
+                        "rt_bill": int(sv[1] or 0) if sv else None,
+                        "rt_period": (f"{sv[2]}~{sv[3]}" if sv and sv[2] and sv[3] else ""),
+                        "rt_at": sv[4].strftime("%m/%d %H:%M") if sv and sv[4] else "",
                         "series": power_series,
                         "month_kwh": round(float(mon_kwh or 0), 1),
                         "month_peak": round(float(mon_peak or 0), 1),

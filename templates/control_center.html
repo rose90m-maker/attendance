@@ -122,6 +122,18 @@
             <div><span class="cc-val" id="pYday">-</span><span class="cc-unit">kWh</span></div>
           </div>
         </div>
+        <!-- 한전 스마트뷰 실시간 요금 (청구기간 기준) -->
+        <div class="row g-2 mb-2 pt-2" id="pRtRow" style="border-top:1px solid #f2f2f2; display:none;">
+          <div class="col-7">
+            <div class="cc-lbl">⚡ 실시간 요금 <span class="text-muted" id="pRtAt" style="font-weight:400;"></span></div>
+            <div><span class="cc-val" style="font-size:1.25rem;color:#ca8a04;" id="pRtBill">-</span><span class="cc-unit">원</span></div>
+            <div class="cc-sub text-muted" id="pRtPeriod">&nbsp;</div>
+          </div>
+          <div class="col-5">
+            <div class="cc-lbl">청구기간 누적</div>
+            <div><span class="cc-val" style="font-size:1.25rem;" id="pRtKwh">-</span><span class="cc-unit">kWh</span></div>
+          </div>
+        </div>
         <div class="row g-2 mb-2 pt-2" style="border-top:1px solid #f2f2f2;">
           <div class="col-4">
             <div class="cc-lbl">이번달 누적</div>
@@ -452,6 +464,19 @@ function loadOverview() {
             };
             if (pChart) { pChart.data = pData; pChart.update(); }
             else { pChart = new Chart(document.getElementById('pChart'), {type: 'line', data: pData, options: chartOpts()}); }
+
+            // 실시간 요금 (한전 스마트뷰) — 청구기간 기준이라 달력월 누적과 범위가 다르다
+            var rtRow = document.getElementById('pRtRow');
+            if (p.rt_bill) {
+                rtRow.style.display = '';
+                document.getElementById('pRtBill').textContent = fmt(p.rt_bill, 0);
+                document.getElementById('pRtKwh').textContent  = fmt(p.rt_kwh, 0);
+                document.getElementById('pRtAt').textContent   = p.rt_at ? '· ' + p.rt_at + ' 기준' : '';
+                document.getElementById('pRtPeriod').textContent = p.rt_period
+                    ? '청구기간 ' + p.rt_period : '';
+            } else {
+                rtRow.style.display = 'none';
+            }
 
             // 이번달 누적 · 최대 수요전력 · 전기요금
             document.getElementById('pMonth').textContent = fmt((p.month_kwh || 0) / 1000, 1);
