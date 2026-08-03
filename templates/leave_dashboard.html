@@ -169,6 +169,8 @@
         .pill:hover { background:#e2e8f0; color:var(--ink); }
         .pill b { color:var(--bad); font-weight:700; margin-left:3px; }
         .pill i { font-style:normal; color:var(--faint); margin-left:3px; }
+        .pill i.ptag { background:#e0e7ff; color:#3730a3; border-radius:6px;
+                       padding:1px 5px; font-size:.68rem; font-weight:600; margin-left:4px; }
 
         /* ── 표 ── */
         .lv-table { width:100%; border-collapse:separate; border-spacing:0; font-size:.86rem; }
@@ -357,7 +359,7 @@
                 <div class="t">⚠ 연차보다 많이 씀</div>
                 <div class="n">{{ negatives|length }}<small>명</small></div>
                 <div class="d">
-                    {% for p in negatives[:6] %}<a class="pill" href="/annual_leave?search={{ p.name }}">{{ p.name }}<b>{{ '%.1f'|format(-p.rest) }}일</b></a>{% endfor %}
+                    {% for p in negatives[:6] %}<a class="pill" href="/annual_leave?search={{ p.name }}">{{ p.name }}{% if p.tag %}<i class="ptag">{{ p.tag }}</i>{% endif %}<b>{{ '%.1f'|format(-p.rest) }}일</b></a>{% endfor %}
                     {% if negatives|length > 6 %}<span class="pill">외 {{ negatives|length - 6 }}명</span>{% endif %}
                     {% if not negatives %}없음{% else %}<span class="hint">쓸 수 있는 연차보다 더 쓴 사람입니다</span>{% endif %}
                 </div>
@@ -368,8 +370,9 @@
                 <div class="t">⚠ 발생연차 없이 사용</div>
                 <div class="n">{{ no_grant|length }}<small>명</small></div>
                 <div class="d">
-                    {% for p in no_grant[:8] %}<a class="pill" href="/annual_leave?search={{ p.name }}">{{ p.name }}</a>{% endfor %}
+                    {% for p in no_grant[:8] %}<a class="pill" href="/annual_leave?search={{ p.name }}">{{ p.name }}{% if p.tag %}<i class="ptag">{{ p.tag }}</i>{% endif %}</a>{% endfor %}
                     {% if not no_grant %}없음{% else %}<span class="hint">ERP에 올해 발생연차를 넣어야 합니다</span>{% endif %}
+                    <div class="hint mt-1">퇴사자·임원·당해년도 입사자는 제외</div>
                 </div>
             </div>
         </div>

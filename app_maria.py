@@ -6362,6 +6362,61 @@ def hr_employee(emp_seq):
                            active_page="hr_status")
 
 
+def _leave_no_grant_exempt(cur, year):
+    """발생연차가 없어도 정상인 사람 → {이름: 사유}  (2026-08-03 사용자 기준)
+
+      퇴사자        — hr_employees 에 재직 레코드가 없음
+      임원          — 부서가 '임원'. ERP 에서 연차 발생을 관리하지 않는다
+      계약직        — 정년퇴직 후 재입사. 만 58세↑ + 이전 퇴사 이력 + 그 뒤 재입사
+      당해년도 입사자 — 1년 미만이라 1개월 개근당 1일씩만 붙는다
+
+    계약직 판정에 생년월일 일치를 쓰면 안 된다. ERP 는 재입사자를 '이름2' 로 남기는데
+    최호림(1965-08-15) / 최호림2(1965-07-28) 처럼 음력·양력 차이로 며칠 어긋나는 경우가
+    있어 동명이인으로 오판한다. 나이(정년 근접)와 퇴사 이력으로 가른다.
+    40대 재입사자(강민규·박정민 등 8명)와는 나이로 확실히 갈린다.
+    """
+    import re as _re
+    cur.execute("""SELECT name, dept_name, ent_date, retire_date, birth_date, is_active
+                     FROM hr_employees""")
+    rows = cur.fetchall()
+    ymd = datetime.now().strftime("%Y%m%d")
+
+    def _age(b):
+        if not b or len(b) != 8:
+            return None
+        a = int(ymd[:4]) - int(b[:4])
+        return a - 1 if ymd[4:8] < b[4:8] else a
+
+    by_base = {}
+    for r in rows:
+        by_base.setdefault(_re.sub(r"\d+$", "", r[0] or ""), []).append(r)
+
+    active = {}
+    for r in rows:
+        if r[5]:
+            active[r[0]] = r
+
+    out = {}
+    for nm in {r[0] for r in rows}:
+        a = active.get(nm)
+        if a is None:
+            out[nm] = "퇴사자"
+            continue
+        _, dept, ent, _ret, birth, _ = a
+        if (dept or "") == "임원":
+            out[nm] = "임원"
+            continue
+        age = _age(birth)
+        prev = [p for p in by_base.get(_re.sub(r"\d+$", "", nm), [])
+                if not p[5] and p[3] and p[3] != "99991231" and p[3] < (ent or "")]
+        if age is not None and age >= 58 and prev:
+            out[nm] = "계약직"
+            continue
+        if (ent or "")[:4] == str(year):
+            out[nm] = "당해년도 입사자"
+    return out
+
+
 @app.route("/leave_dashboard")
 @_login_required
 def leave_dashboard():
@@ -6445,13 +6500,29 @@ def leave_dashboard():
                      "total": t2, "used": u2, "rest": rest,
                      "rate": (u2 / t2 * 100) if t2 else 0.0})
 
-    negatives = sorted([r for r in rows if r["rest"] < 0], key=lambda r: r["rest"])
+    # ── 발생연차가 없어도 정상인 사유 (2026-08-03 사용자 기준) ──
+    #   퇴사자 / 임원 / 계약직(정년퇴직 후 재입사) / 당해년도 입사자
+    # 이 중 계약직만 '계약직' 표시를 달아 목록에 남기고, 나머지는 경고에서 뺀다.
+    exempt = _leave_no_grant_exempt(cur, year)
+
+    def _keep(r):
+        """경고 목록에 남길지 — 면제 사유가 없거나, 계약직(표시 대상)이면 남긴다"""
+        why = exempt.get(r["name"])
+        return why is None or why == "계약직"
+
+    for r in rows:
+        r["tag"] = exempt.get(r["name"]) if exempt.get(r["name"]) == "계약직" else ""
+
+    negatives = sorted([r for r in rows if r["rest"] < 0 and _keep(r)],
+                       key=lambda r: r["rest"])
     unused = [r for r in rows if r["used"] == 0 and r["total"] > 0]
     cur.execute("""SELECT a.e_name FROM annual_leave a LEFT JOIN tuser t ON t.id=a.e_id
                     WHERE a.year=%%s AND IFNULL(a.generated,0)=0 AND a.used>0
                       AND IFNULL(t.company,'') NOT IN (%s)
                     ORDER BY a.e_name""" % exc0, [year] + list(LEAVE_EXCLUDE_COMPANIES))
-    no_grant = [{"name": r[0]} for r in cur.fetchall()]
+    no_grant = [{"name": r[0], "tag": exempt.get(r[0], "")}
+                for r in cur.fetchall()
+                if exempt.get(r[0]) in (None, "계약직")]
 
     # 종류별(연차/반차/경조) — 날짜별 기록에서 센다. 반차는 하루의 절반이다.
     LEAVE_UNIT = {"연차": 1.0, "반차": 0.5, "반반차": 0.25, "경조": 1.0}
