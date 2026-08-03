@@ -6906,7 +6906,8 @@ def _leave_erp_pending(days_back=45, days_fwd=60):
     to = (today + _tdelta(days=days_fwd)).strftime("%Y%m%d")
 
     conn = _conn(); cur = conn.cursor()
-    cur.execute("""SELECT lr.e_id, u.name, u.idno, u.company, lr.leave_date, lr.leave_type
+    cur.execute("""SELECT lr.e_id, u.name, u.idno, u.company, lr.leave_date, lr.leave_type,
+                          DATE(lr.created_at)
                    FROM leave_records lr LEFT JOIN tuser u ON lr.e_id=u.id
                    WHERE lr.status='승인' AND lr.leave_date BETWEEN %s AND %s
                    ORDER BY u.name, lr.leave_type, lr.leave_date""", (frm, to))
@@ -6932,7 +6933,9 @@ def _leave_erp_pending(days_back=45, days_fwd=60):
 
     DOW = ["월", "화", "수", "목", "금", "토", "일"]
     missing = []; matched = 0; nomap = 0
-    for e_id, name, idno, company, ldate, ltype in ours:
+    app_of = {}          # (사번, 휴가일) → 신청일(휴가 신청 등록일)
+    for e_id, name, idno, company, ldate, ltype, cdate in ours:
+        app_of[(idno, ldate)] = cdate
         empseq = by_empid.get(str(idno).strip()) if idno else None
         if erp_ok:
             if empseq is None:
@@ -6961,11 +6964,16 @@ def _leave_erp_pending(days_back=45, days_fwd=60):
         segs.append(seg)
         for s in segs:
             st, en = s[0], s[-1]
+            # 신청일 = 해당 구간 휴가들의 가장 이른 등록일 (없으면 시작일로 대체)
+            cands = [app_of.get((idno, d)) for d in s]
+            cands = [c for c in cands if c]
+            app_dt = min(cands).isoformat() if cands else f"{st[:4]}-{st[4:6]}-{st[6:]}"
             rows.append({
                 "name": name, "emp_no": idno, "leave_type": ltype,
                 "wkitem": _ERP_VAC_WKITEM.get(ltype, ""),
                 "fr": st, "to": en,
                 "fr_fmt": f"{st[:4]}-{st[4:6]}-{st[6:]}", "to_fmt": f"{en[:4]}-{en[4:6]}-{en[6:]}",
+                "app_date": app_dt,
                 "days": len(s),
                 "dow": _dow(st) if st == en else f"{_dow(st)}~{_dow(en)}",
                 "same": st == en,
@@ -7016,95 +7024,6 @@ def leave_erp():
     d["q"] = q
     d["scope"] = scope
     return render_template("leave_erp.html", **d)
-
-
-def _leave_erp_old():
-    from datetime import date as _date, datetime as _dt, timedelta as _tdelta
-    from collections import defaultdict as _dd
-
-    # 조회 범위: 기본 최근 45일 ~ 향후 60일 (미래 신청 포함)
-    today = _date.today()
-    frm = (today - _tdelta(days=45)).strftime("%Y%m%d")
-    to = (today + _tdelta(days=60)).strftime("%Y%m%d")
-
-    # 1) 우리 승인 휴가 + 사번
-    conn = _conn(); cur = conn.cursor()
-    cur.execute("""SELECT lr.e_id, u.name, u.idno, u.company, lr.leave_date, lr.leave_type
-                   FROM leave_records lr LEFT JOIN tuser u ON lr.e_id=u.id
-                   WHERE lr.status='승인' AND lr.leave_date BETWEEN %s AND %s
-                   ORDER BY u.name, lr.leave_type, lr.leave_date""", (frm, to))
-    ours = cur.fetchall()
-    conn.close()
-
-    # 2) ERP 접속 → EmpSeq↔사번 매핑 + 이미 입력된 (EmpSeq, VacDate)
-    erp_ok = True; erp_err = ""
-    by_empid = {}; erp_set = set()
-    try:
-        ec = _erp_conn(); ecur = ec.cursor()
-        ecur.execute("SELECT EmpSeq, Empid FROM _TDAEmp")
-        for seq, empid in ecur.fetchall():
-            if empid:
-                by_empid[str(empid).strip()] = seq
-        ecur.execute("""SELECT d.EmpSeq, d.VacDate FROM _TXPRWkVactionAppDtl d
-                        JOIN _TXPRWkVactionApp m ON d.VacAppSeq=m.VacAppSeq
-                        WHERE (m.IsCancel IS NULL OR m.IsCancel<>'1') AND d.VacDate BETWEEN %s AND %s""",
-                     (frm, to))
-        erp_set = {(r[0], str(r[1]).strip()) for r in ecur.fetchall()}
-        ec.close()
-    except Exception as e:
-        erp_ok = False; erp_err = str(e)[:150]
-
-    # 3) 대조 → ERP 미입력분만 남김
-    DOW = ["월", "화", "수", "목", "금", "토", "일"]
-    missing = []           # (name, idno, leave_date, leave_type)
-    total_ours = len(ours); matched = 0; nomap = 0
-    for e_id, name, idno, company, ldate, ltype in ours:
-        empseq = by_empid.get(str(idno).strip()) if idno else None
-        if erp_ok:
-            if empseq is None:
-                nomap += 1
-            elif (empseq, ldate) in erp_set:
-                matched += 1
-                continue
-        # ERP 미입력(또는 ERP 조회 실패 시 전체) → 목록에 포함
-        missing.append((name or f"ID-{e_id}", idno or "", ldate, ltype))
-
-    # 4) 사원별 + 휴가항목별로 묶고 연속 날짜는 기간으로
-    grp = _dd(list); meta = {}
-    for name, idno, ldate, ltype in missing:
-        grp[(name, idno, ltype)].append(ldate)
-        meta[(name, idno, ltype)] = (name, idno, ltype)
-
-    def _dow(d):
-        return DOW[_dt.strptime(d, "%Y%m%d").weekday()]
-
-    rows = []
-    for key, dates in grp.items():
-        name, idno, ltype = key
-        dates = sorted(set(dates))
-        seg = [dates[0]]; segs = []
-        for prev, cur_d in zip(dates, dates[1:]):
-            if _dt.strptime(cur_d, "%Y%m%d") - _dt.strptime(prev, "%Y%m%d") == _tdelta(days=1):
-                seg.append(cur_d)
-            else:
-                segs.append(seg); seg = [cur_d]
-        segs.append(seg)
-        for s in segs:
-            st, en = s[0], s[-1]
-            rows.append({
-                "name": name, "emp_no": idno, "leave_type": ltype,
-                "wkitem": _ERP_VAC_WKITEM.get(ltype, ""),
-                "fr": st, "to": en,
-                "fr_fmt": f"{st[:4]}-{st[4:6]}-{st[6:]}", "to_fmt": f"{en[:4]}-{en[4:6]}-{en[6:]}",
-                "days": len(s),
-                "dow": _dow(st) if st == en else f"{_dow(st)}~{_dow(en)}",
-                "same": st == en,
-            })
-    rows.sort(key=lambda r: (r["fr"], r["name"]))
-
-    return render_template("leave_erp.html", rows=rows, erp_ok=erp_ok, erp_err=erp_err,
-                           total_ours=total_ours, matched=matched, missing_cnt=len(missing),
-                           nomap=nomap, frm=frm, to=to, today=today.isoformat())
 
 
 @app.route("/leave_approval")

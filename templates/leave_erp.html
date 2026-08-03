@@ -83,9 +83,10 @@
 
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
         <button class="btn btn-success btn-sm" onclick="copyCol('name')">① 📋 사원</button>
-        <button class="btn btn-success btn-sm" onclick="copyCol('type')">② 📋 휴가항목</button>
-        <button class="btn btn-success btn-sm" onclick="copyCol('fr')">③ 📋 휴가시작일</button>
-        <button class="btn btn-success btn-sm" onclick="copyCol('to')">④ 📋 휴가종료일</button>
+        <button class="btn btn-success btn-sm" onclick="copyCol('app')">② 📋 신청일</button>
+        <button class="btn btn-success btn-sm" onclick="copyCol('type')">③ 📋 휴가항목</button>
+        <button class="btn btn-success btn-sm" onclick="copyCol('fr')">④ 📋 휴가시작일</button>
+        <button class="btn btn-success btn-sm" onclick="copyCol('to')">⑤ 📋 휴가종료일</button>
         <span class="mx-1 text-muted">|</span>
         <button class="btn btn-outline-success btn-sm" onclick="copyTable()">📋 전체 표</button>
         <span id="copyMsg" class="small text-success fw-bold"></span>
@@ -95,7 +96,7 @@
         ERP에서 <span class="badge bg-secondary">급여 → 근태신청 → 휴가신청(일괄)</span> 화면을 연 뒤,
         그리드 <b>첫 행</b>의 해당 열 첫 칸을 클릭하고 <b>Ctrl+V</b> 하세요.
         <span class="text-muted">(사번·부서는 사원을 넣으면 자동으로 채워집니다)</span><br>
-        <span class="fw-bold">①사원 → ②휴가항목 → ③휴가시작일 → ④휴가종료일</span> 순서로 4번 붙여넣고 <b>저장</b>.
+        <span class="fw-bold">①사원 → ②신청일 → ③휴가항목 → ④휴가시작일 → ⑤휴가종료일</span> 순서로 5번 붙여넣고 <b>저장</b>.
     </div>
 
     <div style="overflow-x:auto;">
@@ -104,6 +105,7 @@
             <tr>
                 <th style="width:36px;">#</th>
                 <th class="table-info">사원</th><th>사번</th>
+                <th class="table-primary">신청일</th>
                 <th class="table-warning">휴가항목</th>
                 <th class="table-success">시작일</th><th class="table-success">종료일</th>
                 <th>일수</th><th>요일</th>
@@ -115,6 +117,7 @@
                 <td class="text-muted">{{ loop.index }}</td>
                 <td class="fw-bold" data-col="name">{{ r.name }}</td>
                 <td data-col="emp_no">{{ r.emp_no }}</td>
+                <td data-col="app">{{ r.app_date }}</td>
                 <td data-col="type"><span class="badge bg-secondary">{{ r.leave_type }}</span></td>
                 <td class="fw-bold" data-col="fr">{{ r.fr_fmt }}</td>
                 <td data-col="to">{{ r.to_fmt }}</td>
@@ -122,7 +125,7 @@
                 <td class="text-muted">{{ r.dow }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="8" class="text-center text-muted py-4">
+            <tr><td colspan="9" class="text-center text-muted py-4">
                 {% if q or scope != 'all' %}
                 🔍 조건에 맞는 건이 없습니다.
                 <a href="/leave_erp" class="ms-2">전체 보기 ({{ rows_all_cnt }}건)</a>
