@@ -10517,6 +10517,17 @@ def api_source_verify_all():
         acc_n, acc_at = cur.fetchone()
         compared = bool(acc_n)
         compared_at = acc_at.strftime("%Y-%m-%d %H:%M") if acc_at else ""
+
+        # 그달 근무보고서가 한 건도 없는 그룹.
+        # 대조는 schedule_record 에 이름이 있는 사람만 보므로, 보고서를 아예 안 쓰는
+        # 그룹은 '미작성'으로도 안 잡히고 통째로 사각지대가 된다
+        # (2026-08 전기생기·전기품질 — 근무표에는 있는데 보고서 0건).
+        cur.execute("""SELECT g.group_name FROM wr_groups g
+                        WHERE NOT EXISTS (SELECT 1 FROM wr_reports r
+                                           WHERE r.group_id=g.id
+                                             AND r.report_date LIKE %s)
+                        ORDER BY g.group_name""", (ym + "%",))
+        no_report_groups = [r[0] for r in cur.fetchall()]
     finally:
         conn.close()
 
@@ -10543,7 +10554,8 @@ def api_source_verify_all():
                     "total_people": len(rows),
                     "total_errors": sum(r["errors"] for r in rows),
                     "clean": sum(1 for r in rows if r["errors"] == 0),
-                    "compared": compared, "compared_at": compared_at})
+                    "compared": compared, "compared_at": compared_at,
+                    "no_report_groups": no_report_groups})
 
 
 @app.route("/api/source_verify")

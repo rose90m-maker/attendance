@@ -105,6 +105,11 @@
                 <span class="me-3"><span class="dot" style="background:#0f5132;"></span>수정보고서</span>
                 <span class="me-3"><span class="dot" style="background:#6c757d;"></span>근태기록 (출입 · 보조 검증)</span>
                 <span>인원을 클릭하면 일자별 상세가 열립니다</span>
+                <div class="mt-1" style="color:#6c757d;">
+                    ※ <b>당일분은 대조에서 제외</b>됩니다 (아직 작성 중이라 오류로 보지 않음).
+                    그날치만 있는 그룹은 목록에 나오지 않습니다 — 다음 날 대조부터 포함됩니다.
+                </div>
+                <div id="ppNoRepGrp" class="mt-1" style="display:none; color:#b45309;"></div>
             </div>
             <div id="ppNotRun" class="alert alert-warning py-2 px-3 mb-0 mt-2"
                  style="display:none; font-size:.82rem;"></div>
@@ -216,6 +221,18 @@ function ppRender() {
       : ('대상 <b>' + ppData.total_people + '</b>명 · '
          + '<b class="text-warning">아직 대조하지 않았습니다</b>'
          + ' <span class="text-muted" style="font-size:.78rem;">· 근무표 미등록</span>');
+
+    // 그달 보고서가 0건인 그룹 — 대조는 근무보고서에 이름이 있는 사람만 보므로
+    // 이런 그룹은 '미작성'으로도 안 잡히고 통째로 빠진다.
+    var ng = document.getElementById('ppNoRepGrp');
+    var nrg = ppData.no_report_groups || [];
+    if (ng) {
+        ng.style.display = nrg.length ? '' : 'none';
+        ng.innerHTML = nrg.length
+            ? '※ <b>' + nrg.join(' · ') + '</b> 그룹은 이번 달 근무보고서가 없어 '
+              + '<b>검증 대상에서 빠져 있습니다.</b> 근무표에 인원이 있어도 대조되지 않습니다.'
+            : '';
+    }
 
     var warn = document.getElementById('ppNotRun');
     if (warn) {
