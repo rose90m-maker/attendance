@@ -208,13 +208,22 @@ def load_next_out(cur, ym):
 
 
 def load_system(cur, ym):
-    """→ ({(이름, 일): (basic, ot, night, source_type)}, {이름: 그룹(sheet_name)})"""
-    cur.execute("""SELECT emp_name, work_date, basic_h, ot_h, night_h, source_type, sheet_name
+    """→ ({(이름, 일): (기본, 연장, 야간, source_type)}, {이름: 그룹(sheet_name)})
+
+    기본시간은 **조퇴/외출 공제를 뺀 실근무**로 돌려준다.
+    반차를 근무표는 '기본 4', 보고서는 '기본 8 + 공제 4' 로 적어 표기만 다르고
+    실질이 같은데 값불일치로 잡히던 것을 없앤다 (2026-08-03).
+    근무표 쪽도 같은 식으로 '기본 - 기타' 를 쓴다. 표준 표기(기본8+기타4)와
+    예외 표기(기본4)가 모두 4로 수렴해 양쪽 다 맞는다.
+    etc 가 '연차'·'무급'·'스킵' 같은 문자면 num() 이 0 이라 영향 없다."""
+    cur.execute("""SELECT emp_name, work_date, basic_h, ot_h, night_h, source_type,
+                          sheet_name, etc
                    FROM schedule_record WHERE work_date LIKE %s""", (ym + "%",))
     tmp = defaultdict(dict)
     sheet_of = {}
-    for nm, wd, b, o, n, st, sh in cur.fetchall():
-        tmp[(nm, int(wd[6:8]))][st] = (float(b or 0), float(o or 0), float(n or 0))
+    for nm, wd, b, o, n, st, sh, etc in cur.fetchall():
+        eff = max(0.0, float(b or 0) - num(etc))
+        tmp[(nm, int(wd[6:8]))][st] = (eff, float(o or 0), float(n or 0))
         sheet_of.setdefault(nm, sh)
     out = {}
     for key, srcs in tmp.items():
@@ -351,7 +360,9 @@ def process_month(cur, ym, args):
     for (nm, day), xv in xl.items():
         if nm not in sys_names or _pending(day):
             continue                      # 인원 미등록·당일분은 대조 제외
-        xb, xo, xn = num(xv.get("basic")), num(xv.get("ot")), num(xv.get("night"))
+        # 기본시간은 조퇴/외출 공제를 뺀 실근무로 본다 (load_system 주석 참조)
+        xb = max(0.0, num(xv.get("basic")) - num(xv.get("etc")))
+        xo, xn = num(xv.get("ot")), num(xv.get("night"))
         etc = xv.get("etc")
         etc_txt = etc.strip() if isinstance(etc, str) and etc.strip() else ""
         rec = sysd.get((nm, day))

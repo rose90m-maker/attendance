@@ -10507,6 +10507,16 @@ def api_source_verify_all():
                        WHERE e_date LIKE %s AND e_date < %s AND e_id>=0
                        GROUP BY e_name""", (ym + "%", cutoff))
         tag_days = {r[0]: int(r[1] or 0) for r in cur.fetchall()}
+
+        # 이 달에 근무표 대조가 실제로 돌았는지.
+        # 근무표는 보통 그달 중순에 올라오는데, 그 전에는 대조가 통째로 건너뛰어진다.
+        # 그때 오류 0건을 '이상 없음'으로 보여주면 검증이 끝난 것으로 오해한다.
+        # schedule_accuracy 는 대조가 성공한 달만 행이 생기므로 수행 여부의 근거가 된다.
+        cur.execute("SELECT COUNT(*), MAX(updated_at) FROM schedule_accuracy WHERE ym=%s",
+                    (ym,))
+        acc_n, acc_at = cur.fetchone()
+        compared = bool(acc_n)
+        compared_at = acc_at.strftime("%Y-%m-%d %H:%M") if acc_at else ""
     finally:
         conn.close()
 
@@ -10532,7 +10542,8 @@ def api_source_verify_all():
     return jsonify({"ok": True, "month": month, "rows": rows, "groups": groups,
                     "total_people": len(rows),
                     "total_errors": sum(r["errors"] for r in rows),
-                    "clean": sum(1 for r in rows if r["errors"] == 0)})
+                    "clean": sum(1 for r in rows if r["errors"] == 0),
+                    "compared": compared, "compared_at": compared_at})
 
 
 @app.route("/api/source_verify")

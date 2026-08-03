@@ -106,6 +106,8 @@
                 <span class="me-3"><span class="dot" style="background:#6c757d;"></span>근태기록 (출입 · 보조 검증)</span>
                 <span>인원을 클릭하면 일자별 상세가 열립니다</span>
             </div>
+            <div id="ppNotRun" class="alert alert-warning py-2 px-3 mb-0 mt-2"
+                 style="display:none; font-size:.82rem;"></div>
         </div>
     </div>
 
@@ -202,11 +204,25 @@ function ppFiltered() {
 function ppRender() {
     if (!ppData) return;
     var rows = ppFiltered();
-    document.getElementById('ppKpi').innerHTML =
-        '대상 <b>' + ppData.total_people + '</b>명 · 오류 <b class="'
-        + (ppData.total_errors ? 'text-danger' : 'text-success') + '">'
-        + ppData.total_errors + '</b>건 · 이상없음 <b class="text-success">'
-        + ppData.clean + '</b>명';
+    // 근무표가 아직 안 올라온 달은 대조 자체가 안 돈다.
+    // 그때 '오류 0건 · 이상없음'으로 보이면 검증이 끝난 것으로 오해한다.
+    document.getElementById('ppKpi').innerHTML = ppData.compared
+      ? ('대상 <b>' + ppData.total_people + '</b>명 · 오류 <b class="'
+         + (ppData.total_errors ? 'text-danger' : 'text-success') + '">'
+         + ppData.total_errors + '</b>건 · 이상없음 <b class="text-success">'
+         + ppData.clean + '</b>명'
+         + (ppData.compared_at ? ' <span class="text-muted" style="font-size:.78rem;">· 대조 '
+                                 + ppData.compared_at + '</span>' : ''))
+      : ('대상 <b>' + ppData.total_people + '</b>명 · '
+         + '<b class="text-warning">아직 대조하지 않았습니다</b>'
+         + ' <span class="text-muted" style="font-size:.78rem;">· 근무표 미등록</span>');
+
+    var warn = document.getElementById('ppNotRun');
+    if (warn) {
+        warn.style.display = ppData.compared ? 'none' : '';
+        warn.textContent = '이 달은 근무표(정본)가 아직 올라오지 않아 대조가 수행되지 않았습니다. '
+                         + '아래 목록은 근무보고서 기준일 뿐, 오류 0건은 「이상 없음」이 아닙니다.';
+    }
 
     document.getElementById('ppRows').innerHTML = rows.length
       ? rows.map(function(r){
