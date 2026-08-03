@@ -5940,16 +5940,22 @@ def hr_status():
                                   for e in mem]})
     band_max = max([b["n"] for b in bands], default=0)
 
-    # 부서별 인원
+    # 부서별 인원 — 막대를 누르면 명단이 뜨도록 인원도 같이 넘긴다 (근속 긴 순)
     agg = {}
     for e in act_emps:
-        d = agg.setdefault(e["dept"], {"name": e["dept"], "n": 0, "yrs": []})
+        d = agg.setdefault(e["dept"], {"name": e["dept"], "n": 0, "yrs": [], "mem": []})
         d["n"] += 1
+        d["mem"].append(e)
         if e["years"] is not None:
             d["yrs"].append(e["years"])
     depts = sorted(agg.values(), key=lambda d: -d["n"])
     for d in depts:
         d["avg"] = (sum(d["yrs"]) / len(d["yrs"])) if d["yrs"] else 0
+        d["members"] = [{"name": e["name"], "dept": e["dept"],
+                         "ent": e["ent"], "years": e["years"]}
+                        for e in sorted(d.pop("mem"),
+                                        key=lambda e: (e["ent"] or "9999", e["name"]))]
+        d.pop("yrs", None)
     dept_max = max([d["n"] for d in depts], default=0)
 
     # 올해·내년 근속 도래자 (10·15·20·25·30년)

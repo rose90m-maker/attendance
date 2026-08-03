@@ -68,6 +68,7 @@
         .band-row { cursor:pointer; border-radius:8px; padding-left:6px; padding-right:6px;
                     margin-left:-6px; margin-right:-6px; transition:background .12s; }
         .band-row:hover { background:#f0fdfa; }
+        .dept-row:hover { background:#eff6ff; }
         .band-row.empty { cursor:default; opacity:.55; }
         .band-row.empty:hover { background:transparent; }
         .bm-back { display:none; position:fixed; inset:0; background:rgba(15,23,42,.45);
@@ -316,7 +317,9 @@
                 <h6>🏢 부서별 인원 <span class="tag">평균 근속</span></h6>
                 <div style="max-height:340px;overflow-y:auto">
                 {% for d in depts %}
-                <div class="bar-row">
+                <div class="bar-row band-row dept-row"
+                     onclick="showDept({{ loop.index0 }})"
+                     title="{{ d.name }} {{ d.n }}명 — 눌러서 명단 보기">
                     <div class="who">{{ d.name }}</div>
                     <div class="track">
                         <i style="width:{{ (d.n / dept_max * 100) if dept_max else 0 }}%;
@@ -397,6 +400,7 @@
 
 <script>
 var BANDS = {{ bands|tojson }};
+var DEPTS = {{ depts|tojson }};
 
 function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
@@ -406,20 +410,31 @@ function esc(s) {
 function fmtDate(d) {
     return (d && d.length === 8) ? d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8) : (d || '-');
 }
-function showBand(i) {
-    var b = BANDS[i];
-    if (!b || !b.n) return;
-    document.getElementById('bmTitle').textContent = '근속 ' + b.name;
-    document.getElementById('bmCnt').textContent = b.n + '명';
-    var h = '<table><thead><tr><th>이름</th><th>부서</th><th>입사일</th>'
-          + '<th style="text-align:right;">근속</th></tr></thead><tbody>';
-    b.members.forEach(function(m) {
-        h += '<tr><td>' + esc(m.name) + '</td><td>' + esc(m.dept) + '</td>'
+/* withDept=false 면 부서 열을 뺀다 (부서별 명단은 전원 같은 부서라 중복) */
+function openList(title, members, withDept) {
+    document.getElementById('bmTitle').textContent = title;
+    document.getElementById('bmCnt').textContent = members.length + '명';
+    var h = '<table><thead><tr><th>이름</th>'
+          + (withDept ? '<th>부서</th>' : '')
+          + '<th>입사일</th><th style="text-align:right;">근속</th></tr></thead><tbody>';
+    members.forEach(function(m) {
+        h += '<tr><td>' + esc(m.name) + '</td>'
+           + (withDept ? '<td>' + esc(m.dept) + '</td>' : '')
            + '<td class="num">' + fmtDate(m.ent) + '</td>'
-           + '<td class="num">' + m.years + '년</td></tr>';
+           + '<td class="num">' + (m.years == null ? '-' : m.years + '년') + '</td></tr>';
     });
     document.getElementById('bmBody').innerHTML = h + '</tbody></table>';
     document.getElementById('bandModal').classList.add('on');
+}
+function showBand(i) {
+    var b = BANDS[i];
+    if (!b || !b.n) return;
+    openList('근속 ' + b.name, b.members, true);
+}
+function showDept(i) {
+    var d = DEPTS[i];
+    if (!d || !d.n) return;
+    openList(d.name, d.members, false);
 }
 function closeBand() {
     document.getElementById('bandModal').classList.remove('on');
