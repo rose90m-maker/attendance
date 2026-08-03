@@ -164,9 +164,12 @@ def _sync_leave_from_other(cur, e_id, e_date, value):
     cur.execute("SELECT name FROM tuser WHERE id=%s", (e_id,))
     row = cur.fetchone()
     e_name = row[0] if row else ""
+    # total 을 반드시 명시한다 — 컬럼 기본값이 15 라서 생략하면 새로 생기는 행에
+    # 발생연차 15일이 저절로 붙는다. 실제로 2026-08-03 박승규(7/2 입사)가 무급 결재만으로
+    # 15일을 받았다. 이미 있는 행의 total 은 건드리면 안 되므로 UPDATE 절에는 넣지 않는다.
     cur.execute("""
-        INSERT INTO annual_leave (e_id, e_name, year, used)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO annual_leave (e_id, e_name, year, used, total)
+        VALUES (%s, %s, %s, %s, 0)
         ON DUPLICATE KEY UPDATE used=%s, e_name=%s, updated_at=NOW()
     """, (e_id, e_name, year_val, total_used, total_used, e_name))
 
@@ -6775,8 +6778,8 @@ def save_leave_record():
         row = cur.fetchone()
         e_name = row[0] if row else ""
         cur.execute("""
-            INSERT INTO annual_leave (e_id, e_name, year, used, m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
-            VALUES (%s, %s, %s, %s, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO annual_leave (e_id, e_name, year, used, total, m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
+            VALUES (%s, %s, %s, %s, 0, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON DUPLICATE KEY UPDATE used=%s, e_name=%s,
                 m1=%s,m2=%s,m3=%s,m4=%s,m5=%s,m6=%s,m7=%s,m8=%s,m9=%s,m10=%s,m11=%s,m12=%s,
                 updated_at=NOW()
@@ -7206,8 +7209,8 @@ def process_leave_request():
             m_idx = int(ld[4:6]) - 1
             month_used[m_idx] += v
         cur.execute("""
-            INSERT INTO annual_leave (e_id, e_name, year, used, m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
-            VALUES (%s, %s, %s, %s, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO annual_leave (e_id, e_name, year, used, total, m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
+            VALUES (%s, %s, %s, %s, 0, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON DUPLICATE KEY UPDATE used=%s, e_name=%s,
                 m1=%s,m2=%s,m3=%s,m4=%s,m5=%s,m6=%s,m7=%s,m8=%s,m9=%s,m10=%s,m11=%s,m12=%s,
                 updated_at=NOW()
@@ -7300,14 +7303,14 @@ def save_annual_leave():
             """, (e_id, e_name, year, float(value), float(value), e_name))
         elif field == "used":
             cur.execute("""
-                INSERT INTO annual_leave (e_id, e_name, year, used)
-                VALUES (%s,%s,%s,%s)
+                INSERT INTO annual_leave (e_id, e_name, year, used, total)
+                VALUES (%s,%s,%s,%s,0)
                 ON DUPLICATE KEY UPDATE used=%s, e_name=%s, updated_at=NOW()
             """, (e_id, e_name, year, float(value), float(value), e_name))
         elif field == "memo":
             cur.execute("""
-                INSERT INTO annual_leave (e_id, e_name, year, memo)
-                VALUES (%s,%s,%s,%s)
+                INSERT INTO annual_leave (e_id, e_name, year, memo, total)
+                VALUES (%s,%s,%s,%s,0)
                 ON DUPLICATE KEY UPDATE memo=%s, e_name=%s, updated_at=NOW()
             """, (e_id, e_name, year, str(value), str(value), e_name))
         else:
@@ -9860,8 +9863,8 @@ def process_leave_plan():
                 total_used += v
                 m_idx = int(ld[4:6]) - 1
                 month_used[m_idx] += v
-            cur.execute("""INSERT INTO annual_leave (e_id, e_name, year, used, m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
-                           VALUES (%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            cur.execute("""INSERT INTO annual_leave (e_id, e_name, year, used, total, m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
+                           VALUES (%s,%s,%s,%s, 0, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                            ON DUPLICATE KEY UPDATE used=%s, e_name=%s,
                                m1=%s,m2=%s,m3=%s,m4=%s,m5=%s,m6=%s,m7=%s,m8=%s,m9=%s,m10=%s,m11=%s,m12=%s,
                                updated_at=NOW()""",
