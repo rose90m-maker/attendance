@@ -1545,6 +1545,7 @@ MENU_STRUCTURE = [
     ("cat_leave", None, "연차관리 대시보드", ["view"]),
     ("annual_leave", "cat_leave", "연차관리", ["view", "create"]),
     ("leave_plan", "cat_leave", "연차사용계획 (개발중)", ["view", "create", "update", "delete"]),
+    ("leave_calc", "cat_leave", "연차 산정표", ["view"]),
     ("leave_erp", "cat_leave", "휴가 ERP 이관", ["view"]),
 
     ("cat_hr", None, "인사관리", []),
@@ -7188,6 +7189,89 @@ def _parse_leave_plan(src, year=None, filename=""):
             "year": year, "year_src": year_src,
             "rows": [{"date": d, "type": k, "days": _PLAN_UNIT[k]}
                      for d, k in sorted(marks)]}
+
+
+def _leave_grant_calc(ent, year):
+    """회사 연차 기준으로 그 해 부여일수를 산정한다 (2026-08-04 사용자 제시 기준).
+
+    회계연도(1/1) 기준. 3년치 ERP 402건으로 검증(2025·2026 구간 93~96% 일치).
+      ① 입사 당해연도  → 0. 회사는 ERP 에 입사연도 발생을 등록하지 않는다(18명 전원 0)
+      ② 입사 다음 해   → 전년 월할발생 + 회계연도 비례분
+      ③ 그 이후        → 15 + (근속연수-1)//2, 최대 25 (근속연수 = 전년 12/31 기준)
+    이월 = 11 - 월할발생. 1년 미만 11일 중 그 해에 도래하지 못한 몫이다.
+    """
+    if not ent or len(ent) != 8:
+        return None
+    ey, em, ed = int(ent[:4]), int(ent[4:6]), int(ent[6:8])
+    if ey > year:
+        return None
+    monthly = min(11, max(0, 12 - em))
+    carry = 11 - monthly
+    if ey in (year, year - 1):
+        # 1년 미만 산정 — 월할발생 + 회계연도 비례분. 두 해 모두 '입사연도' 기준으로 센다.
+        # 입사 당해연도(①)는 ERP 에 등록되지 않고 다음 회계연도 1/1 에 지급되지만,
+        # 총무부가 참고하는 표라 '얼마가 산정되는지'를 보여준다.
+        try:
+            days = (date(ey, 12, 31) - date(ey, em, ed)).days + 1
+        except ValueError:
+            return None
+        fiscal = round(15 * days / 365)
+        return {"tag": "①입사년" if ey == year else "②2년차",
+                "monthly": monthly, "fiscal": fiscal,
+                "grant": float(monthly + fiscal), "carry": carry,
+                "years": 0 if ey == year else 1,
+                "next_year": ey == year}
+    n = (year - 1) - ey
+    return {"tag": "③이후", "monthly": 0, "fiscal": 0,
+            "grant": float(min(25, 15 + max(0, (n - 1) // 2))), "carry": 0, "years": n}
+
+
+@app.route("/leave_calc")
+@_login_required
+def leave_calc():
+    """전사원 연차 산정표 — 회사 기준으로 계산한 값과 시스템 실제값을 나란히 본다.
+    총무부가 연차를 계산할 때 참고하는 화면이라 '왜 이 숫자인지'가 보이게 만든다."""
+    if not (session.get("role") == "admin" or _has_perm("leave")):
+        flash("접근 권한이 없습니다.", "danger")
+        return redirect(url_for("dashboard"))
+    year = int(request.args.get("year") or datetime.now().year)
+    q = (request.args.get("q") or "").strip()
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT h.name, h.dept_name, h.ent_date
+                     FROM hr_employees h WHERE h.is_active=1 AND h.ent_date<>''
+                    ORDER BY h.ent_date, h.name""")
+    hr = cur.fetchall()
+    cur.execute("""SELECT u.name, a.total, a.used, a.generated, a.deduct_prev, IFNULL(a.memo,'')
+                     FROM annual_leave a JOIN tuser u ON u.id=a.e_id WHERE a.year=%s""", (year,))
+    db = {r[0]: r[1:] for r in cur.fetchall()}
+    conn.close()
+
+    rows, s = [], {"n": 0, "grant": 0.0, "used": 0.0, "carry": 0}
+    for nm, dept, ent in hr:
+        if q and q not in (nm or "") and q not in (dept or ""):
+            continue
+        c = _leave_grant_calc(ent, year)
+        if c is None:
+            continue
+        d = db.get(nm)
+        cur_total = float(d[0] or 0) if d else None
+        used = float(d[1] or 0) if d else 0.0
+        gen = float(d[2] or 0) if d else 0.0
+        memo = d[4] if d else ""
+        rows.append({
+            "name": nm, "dept": dept or "", "ent": ent, **c,
+            "used": used, "remain": c["grant"] - used,
+            "cur_total": cur_total, "generated": gen, "memo": memo,
+            "diff": (None if cur_total is None else round(cur_total - c["grant"], 1)),
+        })
+        s["n"] += 1; s["grant"] += c["grant"]; s["used"] += used; s["carry"] += c["carry"]
+    s["remain"] = s["grant"] - s["used"]
+    s["gap"] = len([r for r in rows if r["diff"] not in (None, 0)])
+
+    return render_template("leave_calc.html", active_page="leave_calc",
+                           rows=rows, year=year, q=q, s=s,
+                           years=[year + 1, year, year - 1, year - 2])
 
 
 def _leave_plan_guard():

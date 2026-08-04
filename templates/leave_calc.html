@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>연차 산정표</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        .lc-tbl th, .lc-tbl td { font-size:.8rem; white-space:nowrap; vertical-align:middle; }
+        .lc-tbl thead th { position:sticky; top:0; background:#f8f9fa; z-index:2; }
+        .lc-wrap { max-height:calc(100vh - 320px); overflow:auto; }
+        .tag-1 { background:#fee2e2; color:#991b1b; }
+        .tag-2 { background:#fef3c7; color:#92400e; }
+        .tag-3 { background:#dcfce7; color:#166534; }
+        .tag  { padding:1px 6px; border-radius:6px; font-size:.68rem; font-weight:700; }
+        .kpi { background:#fff; border:1px solid #e8edf4; border-radius:10px; padding:9px 14px; }
+        .kpi b { font-size:1.15rem; }
+        .diff-x { color:#dc2626; font-weight:700; }
+        @media print { .no-print { display:none; } .lc-wrap { max-height:none; overflow:visible; } }
+    </style>
+</head>
+<body>
+{% set active_page = 'leave_calc' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <div class="page-title mb-0"><span class="title-icon">🧮</span><span>연차 산정표</span></div>
+    <form class="d-flex gap-1 ms-3 no-print" method="get">
+      <select name="year" class="form-select form-select-sm" style="width:100px;" onchange="this.form.submit()">
+        {% for y in years %}<option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}년</option>{% endfor %}
+      </select>
+      <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm"
+             style="width:170px;" placeholder="이름 또는 부서">
+      <button class="btn btn-primary btn-sm">조회</button>
+      {% if q %}<a href="{{ url_for('leave_calc', year=year) }}" class="btn btn-outline-secondary btn-sm">초기화</a>{% endif %}
+    </form>
+    <button class="btn btn-outline-dark btn-sm no-print ms-auto" onclick="window.print()">🖨️ 인쇄</button>
+    <button class="btn btn-outline-success btn-sm no-print" onclick="dlCsv()">⬇ CSV</button>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <div class="kpi">대상 <b>{{ s.n }}</b>명</div>
+    <div class="kpi">산정 부여 <b>{{ '%g'|format(s.grant) }}</b>일</div>
+    <div class="kpi">사용 <b>{{ '%g'|format(s.used) }}</b>일</div>
+    <div class="kpi">잔여 <b>{{ '%g'|format(s.remain) }}</b>일</div>
+    <div class="kpi">다음해 이월 <b>{{ s.carry }}</b>일</div>
+    <div class="kpi">시스템값과 차이 <b class="{{ 'diff-x' if s.gap }}">{{ s.gap }}</b>명</div>
+  </div>
+
+  <div class="alert alert-light border py-2 px-3 mb-2" style="font-size:.8rem;">
+    <b>회계연도(1/1) 기준</b>으로 산정합니다.
+    <span class="tag tag-1">①입사년</span><span class="tag tag-2">②2년차</span>
+    1년 미만은 <b>월할발생 + 회계연도분</b> · 월할 = min(11, 12−입사월), 회계연도분 = 15 × 입사연도 재직일 ÷ 365 (반올림).
+    ①은 <b>ERP에 등록되지 않고 다음 회계연도 1/1에 지급</b>됩니다(회사 운영 확인 — 3년치 18명 전원).
+    <span class="tag tag-3">③이후</span> <b>15 + (근속−1)÷2</b>, 최대 25일 · 근속은 전년 12/31 기준.
+    <br><b>이월</b>은 1년 미만 11일 중 그 해에 도래하지 못한 몫으로, 다음 회계연도에 지급됩니다.
+  </div>
+
+  <div class="lc-wrap border rounded">
+    <table class="table table-sm table-hover mb-0 lc-tbl" id="lcTbl">
+      <thead>
+        <tr>
+          <th>#</th><th>이름</th><th>부서</th><th>입사일</th><th>구분</th><th class="text-end">근속</th>
+          <th class="text-end">월할</th><th class="text-end">회계연도분</th>
+          <th class="text-end">부여</th><th class="text-end">사용</th><th class="text-end">잔여</th>
+          <th class="text-end">이월</th>
+          <th class="text-end">시스템 부여</th><th class="text-end">차이</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td class="fw-bold"><a href="/annual_leave?search={{ r.name }}" style="text-decoration:none;">{{ r.name }}</a></td>
+          <td class="text-muted">{{ r.dept }}</td>
+          <td>{{ r.ent[:4] }}-{{ r.ent[4:6] }}-{{ r.ent[6:] }}</td>
+          <td><span class="tag tag-{{ r.tag[1] if r.tag[1] in '123' else '3' }}"
+                    {% if r.next_year %}title="입사 당해연도라 ERP에는 등록되지 않고 다음 회계연도 1/1에 지급됩니다"{% endif %}>{{ r.tag }}</span>
+              {% if r.next_year %}<span class="text-muted" style="font-size:.66rem;">익년지급</span>{% endif %}</td>
+          <td class="text-end">{{ r.years }}년</td>
+          <td class="text-end text-muted">{{ r.monthly or '' }}</td>
+          <td class="text-end text-muted">{{ r.fiscal or '' }}</td>
+          <td class="text-end fw-bold">{{ '%g'|format(r.grant) }}</td>
+          <td class="text-end">{{ '%g'|format(r.used) }}</td>
+          <td class="text-end">{{ '%g'|format(r.remain) }}</td>
+          <td class="text-end">{{ r.carry or '' }}</td>
+          <td class="text-end text-muted">{{ '-' if r.cur_total is none else '%g'|format(r.cur_total) }}</td>
+          <td class="text-end {{ 'diff-x' if r.diff }}">{{ '' if not r.diff else '%+g'|format(r.diff) }}</td>
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr><td colspan="14" class="text-center text-muted py-3">조건에 맞는 인원이 없습니다.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function dlCsv() {
+    var rows = [], t = document.getElementById('lcTbl');
+    t.querySelectorAll('tr').forEach(function(tr) {
+        var c = [];
+        tr.querySelectorAll('th,td').forEach(function(x) {
+            c.push('"' + (x.textContent || '').trim().replace(/"/g, '""') + '"');
+        });
+        rows.push(c.join(','));
+    });
+    // 엑셀이 한글을 깨뜨리지 않도록 BOM 을 붙인다
+    var blob = new Blob(['﻿' + rows.join('\r\n')], {type: 'text/csv;charset=utf-8;'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '연차산정표_{{ year }}.csv';
+    a.click();
+}
+</script>
+</body>
+</html>
