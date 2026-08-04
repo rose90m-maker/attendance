@@ -175,6 +175,7 @@ files = [
     ("templates/control_center.html", "templates/control_center.html"),
     ("templates/document_management.html", "templates/document_management.html"),
     ("templates/_sidebar.html", "templates/_sidebar.html"),
+    ("templates/erp_api_test.html", "templates/erp_api_test.html"),
     ("templates/leave_approval.html", "templates/leave_approval.html"),
     ("templates/leave_erp.html", "templates/leave_erp.html"),
     ("templates/leave_plan_import.html", "templates/leave_plan_import.html"),
