@@ -9,7 +9,7 @@
     "approvals": 0,
     "rejections": 0,
     "modifications": 0,
-    "destructiveBlocked": 1,
+    "destructiveBlocked": 2,
     "checkpointsCreated": 0,
     "rollbacksPerformed": 0
   },
