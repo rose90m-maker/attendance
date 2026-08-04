@@ -7221,9 +7221,19 @@ def _leave_grant_calc(ent, year):
                 "grant": float(monthly + fiscal), "carry": carry,
                 "years": 0 if ey == year else 1,
                 "next_year": ey == year}
+    # ③ 1년 이상 — 근속 가산 + '1년 미만 11일' 중 아직 못 준 이월분
+    # 11일은 입사 다음달부터 11개월에 걸쳐 도래하는데, 회계연도 도래시까지만 지급하고
+    # 남은 몫을 다음 회계연도에 준다. 그래서 2024년 입사자가 2026년에 15가 아니라
+    # 20~26 을 받는다 (3년치 검증에서 이 이월을 빼면 +8~+11 씩 어긋났다).
+    def _acc(upto):
+        return max(0, min(11, (upto - ey) * 12 + (12 - em)))
+
     n = (year - 1) - ey
-    return {"tag": "③이후", "monthly": 0, "fiscal": 0,
-            "grant": float(min(25, 15 + max(0, (n - 1) // 2))), "carry": 0, "years": n}
+    fiscal = min(25, 15 + max(0, (n - 1) // 2))
+    monthly = _acc(year - 1) - _acc(year - 2)
+    return {"tag": "③이후", "monthly": monthly, "fiscal": fiscal,
+            "grant": float(monthly + fiscal), "carry": 11 - _acc(year - 1),
+            "years": n}
 
 
 @app.route("/leave_calc")
