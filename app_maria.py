@@ -8154,6 +8154,73 @@ def delete_meal_notice():
         return jsonify({"ok": False, "error": str(ex)}), 500
 
 
+@app.route("/erp_api_test")
+@_login_required
+def erp_api_test():
+    """ERP K-System OpenAPI 호출 테스트 화면.
+
+    영림원 [Ksystem API 등록] 에 공개한 호출ID / OpenApi명을 여기서 직접 두드려 본다.
+    운영 로직에 붙이기 전에 규격·응답을 확인하는 용도라 관리자만 연다.
+    """
+    if session.get("role") != "admin":
+        flash("접근 권한이 없습니다.", "danger"); return redirect("/")
+    return render_template("erp_api_test.html", active_page="erp_api_test")
+
+
+@app.route("/api/erp_api_call", methods=["POST"])
+@_login_required
+def api_erp_api_call():
+    """테스트 화면에서 넘어온 값으로 ERP OpenAPI 를 호출하고 원문을 그대로 돌려준다."""
+    if session.get("role") != "admin":
+        return jsonify({"ok": False, "error": "권한 없음"}), 403
+    import json as _json
+
+    import requests as _requests
+
+    d = request.get_json(silent=True) or {}
+    mode = (d.get("mode") or "sp").strip()          # sp | service
+    name = (d.get("name") or "").strip()            # 호출ID 또는 OpenApi명
+    if not name:
+        return jsonify({"ok": False, "error": "호출ID(또는 OpenApi명)를 입력하세요"}), 400
+    try:
+        blocks = _json.loads(d.get("datablocks") or "{}")
+    except Exception as ex:
+        return jsonify({"ok": False, "error": f"DataBlock JSON 오류: {ex}"}), 400
+
+    base = os.environ.get("ERP_API_BASE", "")
+    cert_id = os.environ.get("ERP_API_CERT_ID", "")
+    cert_key = os.environ.get("ERP_API_CERT_KEY", "")
+    if not base or not cert_id or not cert_key:
+        return jsonify({"ok": False, "error": ".env 에 ERP_API_BASE / CERT_ID / CERT_KEY 가 필요합니다"}), 500
+
+    # SP 방식은 IsStoredProcedure, 서비스 방식은 세그먼트가 다르다(확인되면 고정한다).
+    seg = "IsStoredProcedure" if mode == "sp" else (d.get("segment") or "IsService").strip()
+    url = f"{base}/OpenApi/{seg}/{name}"
+    payload = {"ROOT": {
+        "certId": cert_id, "certKey": cert_key,
+        "dsnOper": os.environ.get("ERP_API_DSN_OPER", "taein_oper"),
+        "dsnBis": os.environ.get("ERP_API_DSN_BIS", "taein_bis"),
+        "companySeq": os.environ.get("ERP_API_COMPANY_SEQ", "1"),
+        "languageSeq": 1, "securityType": 0,
+        "userId": (d.get("user_id") or "").strip(),
+        "data": {"ROOT": blocks or {"DataBlock1": [{}]}},
+    }}
+    try:
+        r = _requests.post(url, headers={"Content-Type": "application/json"},
+                           json=payload, timeout=60)
+        try:
+            body = r.json()
+        except Exception:
+            body = r.text
+        # 자격증명은 화면으로 돌려보내지 않는다
+        shown = _json.loads(_json.dumps(payload))
+        shown["ROOT"]["certKey"] = "***"
+        return jsonify({"ok": True, "url": url, "status": r.status_code,
+                        "request": shown, "response": body})
+    except Exception as ex:
+        return jsonify({"ok": False, "url": url, "error": str(ex)}), 500
+
+
 @app.route("/dev_history")
 @_login_required
 def dev_history():
