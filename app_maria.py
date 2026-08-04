@@ -1448,6 +1448,12 @@ def _init_db():
                 UNIQUE KEY `uq_water_date` (`read_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+        # 검침 시각 (없으면 추가) — 경비일지 양식이 16:00 검침 기준이라 기본값을 그렇게 둔다
+        try:
+            cur.execute("ALTER TABLE water_meter ADD COLUMN `read_time` VARCHAR(5) "
+                        "NOT NULL DEFAULT '' AFTER `read_date`")
+        except Exception:
+            pass
         # it_requests 사용장소(위치) 컬럼 추가 (없으면)
         try:
             cur.execute("ALTER TABLE it_requests ADD COLUMN `location` VARCHAR(100) NOT NULL DEFAULT '' AFTER `category`")
@@ -10493,7 +10499,7 @@ def api_cc_overview():
         today_reading = float(r[0]) if r else None
 
         # 표에 뿌릴 최근 검침 목록 (일자 · 지침 · 사용량) — 최신순
-        cur.execute("""SELECT read_date, reading, memo FROM water_meter
+        cur.execute("""SELECT read_date, reading, memo, read_time FROM water_meter
                        ORDER BY read_date DESC LIMIT 31""")
         recs = cur.fetchall()
         prev_map = {}
@@ -10519,11 +10525,12 @@ def api_cc_overview():
             return "정상"
 
         table = []
-        for rd, rg, mo in recs:
+        for rd, rg, mo, rt in recs:
             u = prev_map.get(rd)
             table.append({"date": rd.strftime("%Y-%m-%d"),
                           "md": rd.strftime("%m/%d"),
                           "dow": DOWK[rd.weekday()],
+                          "time": (rt or "").strip(),
                           "reading": float(rg or 0),
                           "usage": u,
                           # 경비일지 앱으로 들어온 건 memo 가 비어 있다 → 자동 판정으로 채움
@@ -11252,10 +11259,13 @@ def api_cc_water_save():
     """수도 일일 검침 저장 (같은 날짜는 덮어쓰기)"""
     d = request.get_json(silent=True) or {}
     read_date = (d.get("read_date") or "").strip()
+    read_time = (d.get("read_time") or "").strip()[:5]
     reading   = d.get("reading")
     memo      = (d.get("memo") or "").strip()[:200]
     if not read_date:
         return jsonify({"ok": False, "msg": "날짜를 입력하세요."})
+    if read_time and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", read_time):
+        return jsonify({"ok": False, "msg": "검침 시각은 HH:MM 형식으로 입력하세요. (예: 16:00)"})
     try:
         reading = float(reading)
     except (TypeError, ValueError):
@@ -11272,10 +11282,11 @@ def api_cc_water_save():
         warn = ""
         if prev and reading < float(prev[0]):
             warn = f"직전 검침({float(prev[0]):,.2f})보다 작습니다. 확인해 주세요."
-        cur.execute("""INSERT INTO water_meter (read_date, reading, memo, created_by)
-                       VALUES (%s,%s,%s,%s)
-                       ON DUPLICATE KEY UPDATE reading=VALUES(reading), memo=VALUES(memo)""",
-                    (read_date, reading, memo, session.get("user_name", "")))
+        cur.execute("""INSERT INTO water_meter (read_date, read_time, reading, memo, created_by)
+                       VALUES (%s,%s,%s,%s,%s)
+                       ON DUPLICATE KEY UPDATE reading=VALUES(reading), memo=VALUES(memo),
+                                               read_time=VALUES(read_time)""",
+                    (read_date, read_time, reading, memo, session.get("user_name", "")))
         conn.commit()
     finally:
         conn.close()

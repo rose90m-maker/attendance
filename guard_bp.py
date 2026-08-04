@@ -337,6 +337,10 @@ def _instruction_for(cur, d):
 
 WATER_SRC = "경비일지"
 
+# 경비일지 양식이 '16:00분 검침' 기준이라 앱으로 들어온 지침의 검침 시각은 이 값으로 남긴다.
+# (관리자가 통합관제에서 다른 시각으로 고치면 그 값이 그대로 유지된다)
+WATER_READ_TIME = "16:00"
+
 
 def _to_reading(raw):
     """자유 입력 문자열 → 검침값. 숫자가 아니거나 음수면 None."""
@@ -355,12 +359,14 @@ def _write_water_meter(cur, d, reading, guard_name):
     누가 마지막으로 적었는지는 created_by 로 남는다.
     """
     cur.execute("""
-        INSERT INTO water_meter (read_date, reading, memo, created_by)
-        VALUES (%s,%s,'',%s)
+        INSERT INTO water_meter (read_date, read_time, reading, memo, created_by)
+        VALUES (%s,%s,%s,'',%s)
         ON DUPLICATE KEY UPDATE
             reading    = VALUES(reading),
+            -- 관리자가 통합관제에서 넣어둔 시각은 덮어쓰지 않는다
+            read_time  = IF(read_time = '', VALUES(read_time), read_time),
             created_by = VALUES(created_by)
-    """, (d, reading,
+    """, (d, WATER_READ_TIME, reading,
           # created_by 는 VARCHAR(30), STRICT 모드라 초과 시 저장 전체가 실패한다
           ("%s %s" % (WATER_SRC, guard_name)).strip()[:30]))
 
@@ -685,7 +691,7 @@ def api_guard_water():
 
     conn = _conn(); cur = conn.cursor()
     cur.execute("""
-        SELECT a.read_date, a.reading, a.memo,
+        SELECT a.read_date, a.reading, a.memo, a.read_time,
                (SELECT b.reading FROM water_meter b
                  WHERE b.read_date = a.read_date - INTERVAL 1 DAY)
           FROM water_meter a
@@ -696,12 +702,13 @@ def api_guard_water():
     conn.close()
 
     readings = []
-    for rd, rg, memo, prev in rows:
+    for rd, rg, memo, rt, prev in rows:
         reading = float(rg or 0)
         readings.append({
             "date": rd.strftime("%Y-%m-%d"),
             "md": rd.strftime("%m/%d"),
             "weekday": _weekday_kr(rd),
+            "time": (rt or "").strip(),
             "reading": reading,
             "usage": round(reading - float(prev), 2) if prev is not None else None,
             "memo": memo or "",
