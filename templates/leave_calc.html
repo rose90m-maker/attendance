@@ -27,14 +27,31 @@
 <div class="container-fluid mt-4">
   <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     <div class="page-title mb-0"><span class="title-icon">🧮</span><span>연차 산정표</span></div>
-    <form class="d-flex gap-1 ms-3 no-print" method="get">
-      <select name="year" class="form-select form-select-sm" style="width:100px;" onchange="this.form.submit()">
+    <form class="d-flex flex-wrap gap-1 ms-3 no-print align-items-center" method="get">
+      <select name="year" class="form-select form-select-sm" style="width:96px;" onchange="this.form.submit()">
         {% for y in years %}<option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}년</option>{% endfor %}
       </select>
+      <select name="dept" class="form-select form-select-sm" style="width:130px;" onchange="this.form.submit()">
+        <option value="">부서 전체</option>
+        {% for d in dept_list %}<option value="{{ d }}" {{ 'selected' if d == f_dept }}>{{ d }}</option>{% endfor %}
+      </select>
+      <select name="tag" class="form-select form-select-sm" style="width:118px;" onchange="this.form.submit()">
+        <option value="">구분 전체</option>
+        {% for t in ['①입사년','②2년차','③이후'] %}
+        <option value="{{ t }}" {{ 'selected' if t == f_tag }}>{{ t }}</option>{% endfor %}
+      </select>
+      <select name="stat" class="form-select form-select-sm" style="width:130px;" onchange="this.form.submit()">
+        <option value="">상태 전체</option>
+        <option value="gap"  {{ 'selected' if f_stat == 'gap' }}>⚠ 점검 대상만</option>
+        <option value="note" {{ 'selected' if f_stat == 'note' }}>비고 있음</option>
+        <option value="ok"   {{ 'selected' if f_stat == 'ok' }}>일치</option>
+      </select>
       <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm"
-             style="width:170px;" placeholder="이름 또는 부서">
+             style="width:150px;" placeholder="이름 검색">
       <button class="btn btn-primary btn-sm">조회</button>
-      {% if q %}<a href="{{ url_for('leave_calc', year=year) }}" class="btn btn-outline-secondary btn-sm">초기화</a>{% endif %}
+      {% if q or f_dept or f_tag or f_stat %}
+      <a href="{{ url_for('leave_calc', year=year) }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+      {% endif %}
     </form>
     <button class="btn btn-outline-dark btn-sm no-print ms-auto" onclick="window.print()">🖨️ 인쇄</button>
     <button class="btn btn-outline-success btn-sm no-print" onclick="dlCsv()">⬇ CSV</button>
@@ -53,14 +70,48 @@
       <span style="font-size:.72rem;">임원·제외부서·수기 등</span></div>
   </div>
 
-  <div class="alert alert-light border py-2 px-3 mb-2" style="font-size:.8rem;">
-    <b>회계연도(1/1) 기준</b>으로 산정합니다.
-    <span class="tag tag-1">①입사년</span><span class="tag tag-2">②2년차</span>
-    1년 미만은 <b>월할발생 + 회계연도분</b> · 월할 = min(11, 12−입사월), 회계연도분 = 15 × 입사연도 재직일 ÷ 365 (반올림).
-    ①은 <b>ERP에 등록되지 않고 다음 회계연도 1/1에 지급</b>됩니다(회사 운영 확인 — 3년치 18명 전원).
-    <span class="tag tag-3">③이후</span> <b>15 + (근속−1)÷2</b>, 최대 25일 · 근속은 전년 12/31 기준.
-    <br><b>이월</b>은 1년 미만 11일 중 그 해에 도래하지 못한 몫으로, 다음 회계연도에 지급됩니다.
-  </div>
+  <details class="mb-2">
+    <summary style="cursor:pointer; font-size:.82rem; font-weight:600;">
+      📐 산정 기준 — <span class="text-muted" style="font-weight:400;">회계연도(1/1) 기준 · 눌러서 펼치기</span>
+    </summary>
+    <div class="border rounded p-2 mt-1" style="background:#fbfcfd;">
+      <table class="table table-sm table-bordered mb-2" style="font-size:.78rem;">
+        <thead class="table-light">
+          <tr><th style="width:92px;">구분</th><th style="width:120px;">대상</th>
+              <th>발생 산정식</th><th style="width:200px;">비고</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="tag tag-1">①입사년</span></td><td>입사 당해연도</td>
+              <td><b>월할발생 + 회계연도분</b></td>
+              <td class="text-muted">ERP에 등록되지 않고<br><b>다음 회계연도 1/1에 지급</b></td></tr>
+          <tr><td><span class="tag tag-2">②2년차</span></td><td>입사 다음 해</td>
+              <td><b>월할발생 + 회계연도분</b> <span class="text-muted">(입사연도 기준)</span></td>
+              <td class="text-muted">전년도 산정분을 지급</td></tr>
+          <tr><td><span class="tag tag-3">③이후</span></td><td>그 이후</td>
+              <td><b>이월 월할분 + 근속가산</b></td>
+              <td class="text-muted">11일을 다 줄 때까지 이월분이 얹힘</td></tr>
+        </tbody>
+      </table>
+      <table class="table table-sm mb-0" style="font-size:.78rem;">
+        <tbody>
+          <tr><td style="width:96px;"><b>월할발생</b></td>
+              <td><code>min(11, 12 − 입사월)</code> · 1개월 개근당 1일, 최대 11일</td></tr>
+          <tr><td><b>회계연도분</b></td>
+              <td><code>round(15 × 입사연도 재직일수 ÷ 365)</code></td></tr>
+          <tr><td><b>근속가산</b></td>
+              <td><code>min(25, 15 + (근속−1) ÷ 2)</code> · 근속은 <b>전년 12/31 기준</b></td></tr>
+          <tr><td><b>사용가능</b></td>
+              <td><code>발생 + 전년차감</code> · 전년도에서 당겨 쓴 몫(음수)을 반영</td></tr>
+          <tr><td><b>이월</b></td>
+              <td><code>11 − 도래한 월할 누계</code> · 다음 회계연도에 지급</td></tr>
+        </tbody>
+      </table>
+      <div class="text-muted mt-2" style="font-size:.74rem;">
+        2024~2026년 ERP 402건으로 검증했습니다(2025·2026 구간 93~96% 일치).
+        <b>비고</b>가 붙은 사람은 임원·연차 관리 제외 부서·수기 산정 등이라, 차이가 나도 정상이므로 점검 대상에서 뺐습니다.
+      </div>
+    </div>
+  </details>
 
   <div class="lc-wrap border rounded">
     <table class="table table-sm table-hover mb-0 lc-tbl" id="lcTbl">

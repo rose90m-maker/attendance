@@ -7246,6 +7246,9 @@ def leave_calc():
         return redirect(url_for("dashboard"))
     year = int(request.args.get("year") or datetime.now().year)
     q = (request.args.get("q") or "").strip()
+    f_dept = (request.args.get("dept") or "").strip()
+    f_tag = (request.args.get("tag") or "").strip()      # ①입사년 | ②2년차 | ③이후
+    f_stat = (request.args.get("stat") or "").strip()    # gap(점검) | note(비고) | ok(일치)
 
     conn = _conn(); cur = conn.cursor()
     cur.execute("""SELECT h.name, h.dept_name, h.ent_date
@@ -7262,12 +7265,17 @@ def leave_calc():
     excluded = {r[0] for r in cur.fetchall()}
     conn.close()
 
+    dept_list = sorted({(d or "미지정") for _, d, _ in hr})
     rows, s = [], {"n": 0, "grant": 0.0, "used": 0.0, "carry": 0}
     for nm, dept, ent in hr:
         if q and q not in (nm or "") and q not in (dept or ""):
             continue
+        if f_dept and (dept or "미지정") != f_dept:
+            continue
         c = _leave_grant_calc(ent, year)
         if c is None:
+            continue
+        if f_tag and c["tag"] != f_tag:
             continue
         d = db.get(nm)
         cur_total = float(d[0] or 0) if d else None
@@ -7289,12 +7297,19 @@ def leave_calc():
             note = "ERP 발생 미등록"
         else:
             note = ""
+        diff = None if cur_total is None else round(cur_total - avail, 1)
+        if f_stat == "gap" and not (diff and not note):
+            continue
+        if f_stat == "note" and not note:
+            continue
+        if f_stat == "ok" and (diff or note):
+            continue
         rows.append({
             "name": nm, "dept": dept or "", "ent": ent, **c,
             "deduct": deduct, "avail": avail,
             "used": used, "remain": avail - used,
             "cur_total": cur_total, "generated": gen, "memo": memo, "note": note,
-            "diff": (None if cur_total is None else round(cur_total - avail, 1)),
+            "diff": diff,
         })
         s["n"] += 1; s["grant"] += c["grant"]; s["used"] += used; s["carry"] += c["carry"]
         s["avail"] = s.get("avail", 0.0) + avail
@@ -7304,6 +7319,8 @@ def leave_calc():
 
     return render_template("leave_calc.html", active_page="leave_calc",
                            rows=rows, year=year, q=q, s=s,
+                           dept_list=dept_list, f_dept=f_dept,
+                           f_tag=f_tag, f_stat=f_stat,
                            years=[year + 1, year, year - 1, year - 2])
 
 
