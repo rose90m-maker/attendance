@@ -42,11 +42,15 @@
 
   <div class="d-flex flex-wrap gap-2 mb-3">
     <div class="kpi">대상 <b>{{ s.n }}</b>명</div>
-    <div class="kpi">산정 부여 <b>{{ '%g'|format(s.grant) }}</b>일</div>
+    <div class="kpi">산정 발생 <b>{{ '%g'|format(s.grant) }}</b>일</div>
+    <div class="kpi">사용가능 <b>{{ '%g'|format(s.avail) }}</b>일</div>
     <div class="kpi">사용 <b>{{ '%g'|format(s.used) }}</b>일</div>
     <div class="kpi">잔여 <b>{{ '%g'|format(s.remain) }}</b>일</div>
     <div class="kpi">다음해 이월 <b>{{ s.carry }}</b>일</div>
-    <div class="kpi">시스템값과 차이 <b class="{{ 'diff-x' if s.gap }}">{{ s.gap }}</b>명</div>
+    <div class="kpi">점검 대상 <b class="{{ 'diff-x' if s.gap }}">{{ s.gap }}</b>명
+      <span class="text-muted" style="font-size:.72rem;">시스템값과 차이</span></div>
+    <div class="kpi text-muted">비고 있음 <b>{{ s.noted }}</b>명
+      <span style="font-size:.72rem;">임원·제외부서·수기 등</span></div>
   </div>
 
   <div class="alert alert-light border py-2 px-3 mb-2" style="font-size:.8rem;">
@@ -64,9 +68,10 @@
         <tr>
           <th>#</th><th>이름</th><th>부서</th><th>입사일</th><th>구분</th><th class="text-end">근속</th>
           <th class="text-end">월할</th><th class="text-end">회계연도분</th>
-          <th class="text-end">부여</th><th class="text-end">사용</th><th class="text-end">잔여</th>
+          <th class="text-end">산정 발생</th><th class="text-end">전년차감</th>
+          <th class="text-end">사용가능</th><th class="text-end">사용</th><th class="text-end">잔여</th>
           <th class="text-end">이월</th>
-          <th class="text-end">시스템 부여</th><th class="text-end">차이</th>
+          <th class="text-end">시스템 부여</th><th class="text-end">차이</th><th>비고</th>
         </tr>
       </thead>
       <tbody>
@@ -82,16 +87,19 @@
           <td class="text-end">{{ r.years }}년</td>
           <td class="text-end text-muted">{{ r.monthly or '' }}</td>
           <td class="text-end text-muted">{{ r.fiscal or '' }}</td>
-          <td class="text-end fw-bold">{{ '%g'|format(r.grant) }}</td>
+          <td class="text-end">{{ '%g'|format(r.grant) }}</td>
+          <td class="text-end {{ 'text-danger' if r.deduct }}">{{ '' if not r.deduct else '%g'|format(r.deduct) }}</td>
+          <td class="text-end fw-bold">{{ '%g'|format(r.avail) }}</td>
           <td class="text-end">{{ '%g'|format(r.used) }}</td>
           <td class="text-end">{{ '%g'|format(r.remain) }}</td>
           <td class="text-end">{{ r.carry or '' }}</td>
           <td class="text-end text-muted">{{ '-' if r.cur_total is none else '%g'|format(r.cur_total) }}</td>
-          <td class="text-end {{ 'diff-x' if r.diff }}">{{ '' if not r.diff else '%+g'|format(r.diff) }}</td>
+          <td class="text-end {{ 'diff-x' if r.diff and not r.note }}">{{ '' if not r.diff else '%+g'|format(r.diff) }}</td>
+          <td class="text-muted" style="font-size:.72rem;">{{ r.note }}</td>
         </tr>
         {% endfor %}
         {% if not rows %}
-        <tr><td colspan="14" class="text-center text-muted py-3">조건에 맞는 인원이 없습니다.</td></tr>
+        <tr><td colspan="15" class="text-center text-muted py-3">조건에 맞는 인원이 없습니다.</td></tr>
         {% endif %}
       </tbody>
     </table>

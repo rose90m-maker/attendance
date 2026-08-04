@@ -7245,6 +7245,11 @@ def leave_calc():
     cur.execute("""SELECT u.name, a.total, a.used, a.generated, a.deduct_prev, IFNULL(a.memo,'')
                      FROM annual_leave a JOIN tuser u ON u.id=a.e_id WHERE a.year=%s""", (year,))
     db = {r[0]: r[1:] for r in cur.fetchall()}
+    # 연차 관리 대상이 아닌 부서 (다른 연차 화면과 같은 기준)
+    ph = ",".join(["%s"] * len(LEAVE_EXCLUDE_COMPANIES))
+    cur.execute("SELECT name FROM tuser WHERE IFNULL(company,'') IN (%s)" % ph,
+                LEAVE_EXCLUDE_COMPANIES)
+    excluded = {r[0] for r in cur.fetchall()}
     conn.close()
 
     rows, s = [], {"n": 0, "grant": 0.0, "used": 0.0, "carry": 0}
@@ -7258,16 +7263,34 @@ def leave_calc():
         cur_total = float(d[0] or 0) if d else None
         used = float(d[1] or 0) if d else 0.0
         gen = float(d[2] or 0) if d else 0.0
+        deduct = float(d[3] or 0) if d else 0.0   # 전년도에서 당겨 쓴 양 (음수)
         memo = d[4] if d else ""
+        # 시스템 '사용가능' = 발생 + 전년차감. 산정값도 같은 식으로 맞춰야 비교가 된다.
+        avail = c["grant"] + deduct
+        # 차이가 나도 이상한 게 아닌 사람들 — 이유를 적어 두고 '점검 대상' 집계에서 뺀다.
+        # 안 그러면 차이 62명처럼 부풀려져 진짜 볼 것을 못 찾는다.
+        if nm in excluded:
+            note = "연차 관리 제외 부서"
+        elif (dept or "") == "임원":
+            note = "임원 · ERP 연차 미관리"
+        elif str(memo or "").startswith("수기"):
+            note = "수기 산정"
+        elif gen == 0 and c["tag"] != "①입사년":
+            note = "ERP 발생 미등록"
+        else:
+            note = ""
         rows.append({
             "name": nm, "dept": dept or "", "ent": ent, **c,
-            "used": used, "remain": c["grant"] - used,
-            "cur_total": cur_total, "generated": gen, "memo": memo,
-            "diff": (None if cur_total is None else round(cur_total - c["grant"], 1)),
+            "deduct": deduct, "avail": avail,
+            "used": used, "remain": avail - used,
+            "cur_total": cur_total, "generated": gen, "memo": memo, "note": note,
+            "diff": (None if cur_total is None else round(cur_total - avail, 1)),
         })
         s["n"] += 1; s["grant"] += c["grant"]; s["used"] += used; s["carry"] += c["carry"]
-    s["remain"] = s["grant"] - s["used"]
-    s["gap"] = len([r for r in rows if r["diff"] not in (None, 0)])
+        s["avail"] = s.get("avail", 0.0) + avail
+    s["remain"] = s.get("avail", 0.0) - s["used"]
+    s["gap"] = len([r for r in rows if r["diff"] not in (None, 0) and not r["note"]])
+    s["noted"] = len([r for r in rows if r["note"]])
 
     return render_template("leave_calc.html", active_page="leave_calc",
                            rows=rows, year=year, q=q, s=s,
