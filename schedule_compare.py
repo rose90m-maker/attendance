@@ -278,6 +278,12 @@ def save_accuracy(cur, ym, xl, sysd, sheet_of, cutoff_day):
     year, month = int(ym[:4]), int(ym[4:6])
     sys_names = {nm for nm, _ in sysd}
     stat = defaultdict(lambda: {"cmp": 0, "ok": 0, "mismatch": 0, "miss": 0})
+    # 대조 대상이 0건인 그룹도 행을 남긴다. 안 그러면 화면에서 통째로 사라져
+    # '문제 없음'과 '아직 볼 게 없음'이 구분되지 않는다.
+    # (2026-08 전기제조: 월초 주말이 껴서 cutoff 안에 근무일이 하나도 없었다)
+    for _g in set(sheet_of.values()):
+        if _g:
+            stat[_g]
 
     for (nm, day), xv in xl.items():
         if nm not in sys_names or day > cutoff_day:

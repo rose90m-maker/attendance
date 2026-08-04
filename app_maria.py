@@ -11193,7 +11193,10 @@ def api_schedule_accuracy():
                 "group": g, "writers": w or "", "cmp": int(c or 0), "ok": int(o or 0),
                 "mismatch": int(mm or 0), "missing": int(ms or 0),
                 "accuracy": a, "calc_day": int(cd or 0),
-                "level": ("ready" if a >= 99 else "near" if a >= 95
+                # 대조 대상이 0건이면 정확도 0%가 아니라 '볼 게 없음'이다.
+                # 월초 주말이 끼면 평일만 근무하는 그룹이 여기 걸린다.
+                "level": ("none" if not int(c or 0) else
+                          "ready" if a >= 99 else "near" if a >= 95
                           else "improve" if a >= 85 else "low"),
                 "updated": up.strftime("%m-%d %H:%M") if up else "",
             })
@@ -11212,8 +11215,13 @@ def api_schedule_accuracy():
                  for r in cur.fetchall()][::-1]
     finally:
         conn.close()
+    # 계산 기준 기간 — 근무표는 며칠 뒤에야 채워지므로 최근 2일은 빼고 센다.
+    # 화면에 안 적어두면 "왜 우리 그룹이 없냐"는 오해가 생긴다.
+    cut = max((g["calc_day"] for g in groups), default=0)
     return jsonify({"ok": True, "month": month, "groups": groups,
-                    "total": total, "trend": trend})
+                    "total": total, "trend": trend,
+                    "calc_day": cut,
+                    "calc_range": (f"{int(ym[4:6])}/1~{int(ym[4:6])}/{cut}" if cut else "")})
 
 
 @app.route("/api/wr_my_missing")

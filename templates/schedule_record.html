@@ -128,6 +128,7 @@
                 </div>
                 <div class="text-muted" style="font-size:0.72rem;">
                     근무표(이민영 사원 작성)가 기준입니다. 정확도 99% 이상이면 해당 그룹은 근무표 자동생성 전환 후보입니다.
+                    <b>근무표는 며칠 뒤에 채워지므로 최근 2일은 계산에서 뺍니다</b> — 월초 주말이 끼면 평일만 근무하는 그룹은 대조 대상이 0건일 수 있습니다.
                     <span id="acTrend" class="ms-2"></span>
                 </div>
             </div>
@@ -718,7 +719,9 @@ var AC_LEVEL = {
     ready:   {bar: 'bg-success', txt: '🟢 자동화 가능'},
     near:    {bar: 'bg-info',    txt: '🟡 근접'},
     improve: {bar: 'bg-warning', txt: '🟠 개선 필요'},
-    low:     {bar: 'bg-danger',  txt: '🔴 미흡'}
+    low:     {bar: 'bg-danger',  txt: '🔴 미흡'},
+    // 대조 대상 0건 — 정확도 0%가 아니라 '아직 볼 게 없음'
+    none:    {bar: 'bg-light',   txt: '⚪ 대조 대상 없음'}
 };
 
 function acLoad() {
@@ -732,23 +735,27 @@ function acLoad() {
         document.getElementById('acTotal').textContent =
             (t.accuracy != null ? t.accuracy.toFixed(1) : '-') + '%';
         document.getElementById('acTotalSub').textContent =
-            t.cmp ? ' (' + t.ok + '/' + t.cmp + ')' : '';
+            (t.cmp ? ' (' + t.ok + '/' + t.cmp + ')' : '')
+            + (d.calc_range ? ' · ' + d.calc_range + ' 기준' : '');
         document.getElementById('acRows').innerHTML = gs.length
           ? gs.map(function(g){
               var lv = AC_LEVEL[g.level] || AC_LEVEL.low;
-              return '<tr>'
+              var empty = (g.level === 'none');
+              return '<tr' + (empty ? ' class="text-muted"' : '') + '>'
                 + '<td class="fw-bold">' + g.group + '</td>'
                 + '<td class="text-muted">' + (g.writers || '-') + '</td>'
                 + '<td class="text-end">' + g.cmp + '</td>'
                 + '<td class="text-end' + (g.mismatch ? ' text-danger' : '') + '">' + g.mismatch + '</td>'
                 + '<td class="text-end' + (g.missing ? ' text-danger' : '') + '">' + g.missing + '</td>'
-                + '<td><div class="d-flex align-items-center">'
-                +   '<div class="progress flex-grow-1" style="height:8px;">'
-                +     '<div class="progress-bar ' + lv.bar + '" style="width:' + g.accuracy + '%;"></div>'
-                +   '</div>'
-                +   '<span class="ms-2" style="min-width:46px;text-align:right;">'
-                +     g.accuracy.toFixed(1) + '%</span>'
-                + '</div></td>'
+                + '<td>' + (empty
+                    ? '<span class="text-muted" style="font-size:.72rem;">기준 기간에 근무일 없음</span>'
+                    : '<div class="d-flex align-items-center">'
+                      +   '<div class="progress flex-grow-1" style="height:8px;">'
+                      +     '<div class="progress-bar ' + lv.bar + '" style="width:' + g.accuracy + '%;"></div>'
+                      +   '</div>'
+                      +   '<span class="ms-2" style="min-width:46px;text-align:right;">'
+                      +     g.accuracy.toFixed(1) + '%</span>'
+                      + '</div>') + '</td>'
                 + '<td>' + lv.txt + '</td></tr>';
             }).join('')
           : '<tr><td colspan="7" class="text-center text-muted py-2">정확도 데이터가 아직 없습니다.</td></tr>';
