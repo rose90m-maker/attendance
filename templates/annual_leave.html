@@ -49,6 +49,10 @@
         @media (max-width: 767.98px) { .sel-dates-list { max-width: 45%; font-size: 0.72rem; } }
         .remain-ok { color: var(--c-success); font-weight: 600; }
         .remain-warn { color: var(--c-danger); font-weight: 600; }
+        /* ERP 미등록 → 회계연도 기준 수기 산정 표시 */
+        .mg-badge { display:inline-block; margin-left:4px; padding:1px 5px; border-radius:6px;
+                    background:#e0e7ff; color:#3730a3; font-size:.66rem; font-weight:700;
+                    vertical-align:middle; cursor:help; }
         @media (max-width: 767.98px) {
             .cal-table { font-size: 0.65rem; }
             .cal-table th { font-size: 0.65rem; padding: 4px 1px; }
@@ -164,7 +168,11 @@
                         <td><a href="javascript:void(0)" onclick="toggleCal({{ emp.id }})" style="text-decoration:none; cursor:pointer;">{{ emp.name }}</a></td>
                         <td>{{ emp.dept }}</td>
                         <td class="text-center">{{ emp.deduct_prev }}</td>
-                        <td class="text-center">{{ emp.generated }}</td>
+                        <td class="text-center">
+                            {{ emp.generated }}
+                            {% if emp.manual_grant %}<span class="mg-badge"
+                                title="ERP에 발생연차가 없어 회계연도 기준으로 수기 산정했습니다.&#10;사용가능연차 = 월할발생 + 회계연도분">수기산정</span>{% endif %}
+                        </td>
                         <td class="text-center fw-bold">{{ emp.total }}</td>
                         <td class="text-center text-primary fw-bold">{{ emp.used }}</td>
                         <td class="text-center {% if emp.remain >= 0 %}remain-ok{% else %}remain-warn{% endif %}">{{ emp.remain }}</td>

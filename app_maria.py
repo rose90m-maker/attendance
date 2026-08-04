@@ -6715,6 +6715,12 @@ def annual_leave():
             "id": uid, "name": uname, "dept": dept,
             "total": total, "used": used_final, "remain": remain, "memo": memo,
             "deduct_prev": deduct_prev, "generated": generated,
+            # ERP 에 발생이 없어(generated=0) 회계연도 기준으로 수기 산정한 사람.
+            # 그대로 두면 '발생 0 + 차감 0 인데 사용가능 19' 로 셈이 안 맞아 보인다.
+            # memo 가 '수기' 여도 ERP 발생이 정상인 사람(계획서 등록분)은 대상이 아니다.
+            "manual_grant": (str(memo or "").startswith("수기")
+                             and float(generated or 0) == 0
+                             and float(total or 0) > 0),
             "months": sm.get("months", [0]*12),
             "days": days,
         })
