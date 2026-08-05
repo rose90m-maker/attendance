@@ -248,10 +248,20 @@ def ensure_table(cur):
             `first_seen` DATETIME DEFAULT CURRENT_TIMESTAMP,
             `last_seen` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             `resolved` TINYINT NOT NULL DEFAULT 0,
+            `notified` TINYINT NOT NULL DEFAULT 0,
             UNIQUE KEY `uq_diff` (`work_date`, `emp_name`, `diff_type`),
             KEY `idx_ym` (`ym`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
+    # 기존 설치분에 notified 추가 (기록 시점과 통보 시점을 분리하기 위해)
+    cur.execute("""SELECT COUNT(*) FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='schedule_diff'
+                      AND COLUMN_NAME='notified'""")
+    if not cur.fetchone()[0]:
+        cur.execute("ALTER TABLE schedule_diff ADD COLUMN `notified` TINYINT NOT NULL DEFAULT 0")
+        # 이미 있던 건은 통보된 것으로 본다 (도입 즉시 과거분이 쏟아지지 않게)
+        cur.execute("UPDATE schedule_diff SET notified=1")
+        cur.connection.commit()
     # 그룹(작성자)별 보고서 정확도 = 근무표 재현율. 자동화 전환 준비도 지표.
     cur.execute("""
         CREATE TABLE IF NOT EXISTS `schedule_accuracy` (
@@ -469,12 +479,18 @@ def process_month(cur, ym, args):
                   f" vs 시스템 {d[7]:g}/{d[8]:g}/{d[9]:g}")
         return set(), diffs, len(diffs), 0
 
-    # ── 기존 미해소 차이 (신규 판정 기준) ──
+    # ── 아직 통보하지 않은 차이가 '신규' 다 ──
+    # 기록(08·13·17시)과 통보(10:30)를 분리하려면 resolved 만으로는 안 된다.
+    # 08시에 기록되는 순간 '기존'이 되어 10:30 알림이 0건이 되기 때문.
+    # notified 로 판정해야, 08시에 잡혔다가 09시 결재로 해소된 건은 아예 통보되지 않는다.
+    cur.execute("""SELECT work_date, emp_name, diff_type FROM schedule_diff
+                   WHERE ym=%s AND resolved=0 AND notified=1""", (ym,))
+    known = {(r[0], r[1], r[2]) for r in cur.fetchall()}
     cur.execute("""SELECT work_date, emp_name, diff_type FROM schedule_diff
                    WHERE ym=%s AND resolved=0""", (ym,))
-    known = {(r[0], r[1], r[2]) for r in cur.fetchall()}
+    open_known = {(r[0], r[1], r[2]) for r in cur.fetchall()}
     current = {(d[0], d[1], d[3]) for d in diffs}
-    new_keys = current - known
+    new_keys = current - known          # 통보 대상 (미통보분)
 
     # 저장 (신규 insert / 기존 last_seen 갱신)
     for d in diffs:
@@ -489,14 +505,14 @@ def process_month(cur, ym, args):
               sys_ot=VALUES(sys_ot), sys_night=VALUES(sys_night),
               source_type=VALUES(source_type), resolved=0""",
                     (ym, d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9], d[10]))
-    # 이번에 사라진 차이는 해소 처리
-    for k in known - current:
+    # 이번에 사라진 차이는 해소 처리 (통보 여부와 무관하게 미해소 전체 기준)
+    for k in open_known - current:
         cur.execute("""UPDATE schedule_diff SET resolved=1
                        WHERE ym=%s AND work_date=%s AND emp_name=%s AND diff_type=%s""",
                     (ym, k[0], k[1], k[2]))
     cur.connection.commit()
 
-    resolved_cnt = len(known - current)
+    resolved_cnt = len(open_known - current)
     print(f"   신규 {len(new_keys)}건 · 해소 {resolved_cnt}건 · 기존유지 {len(current & known)}건")
     return new_keys, diffs, len(current), resolved_cnt
 
@@ -507,6 +523,9 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="저장·발송 없이 결과만 출력")
     ap.add_argument("--baseline", action="store_true",
                     help="현재 차이를 기준선으로 저장하고 알림은 보내지 않음 (최초 1회)")
+    ap.add_argument("--silent", action="store_true",
+                    help="기록만 하고 알림은 보내지 않음. 통보 대상은 그대로 남겨 다음 알림 실행 때 나간다. "
+                         "(08·13·17시용 — 알림은 10:30 실행분에서만 나가게 하기 위함)")
     args = ap.parse_args()
 
     today = date.today()
@@ -544,13 +563,34 @@ def main():
 
     if args.dry_run:
         return 0
+
+    def _mark_notified(only_new=True):
+        """통보 완료 표시. 이 표시가 있어야 다음 실행에서 '기존'으로 넘어간다."""
+        conn2 = conn_db(); cur2 = conn2.cursor()
+        for ym, new_keys, _d, _o, _r in results:
+            if only_new:
+                for k in new_keys:
+                    cur2.execute("""UPDATE schedule_diff SET notified=1
+                                     WHERE ym=%s AND work_date=%s AND emp_name=%s
+                                       AND diff_type=%s""", (ym, k[0], k[1], k[2]))
+            else:
+                cur2.execute("UPDATE schedule_diff SET notified=1 WHERE ym=%s", (ym,))
+        conn2.commit(); conn2.close()
+
     if args.baseline:
         tot = sum(r[3] for r in results)
+        _mark_notified(only_new=False)
         print(f"  ℹ️  기준선 저장 완료 (총 {tot}건) — 알림 생략."
               f" 다음 실행부터 신규 차이만 통보합니다.")
         return 0
 
-    # ── 신규 차이만 알림 (여러 달을 한 통에 정리) ──
+    if args.silent:
+        pend = sum(len(r[1]) for r in results)
+        print(f"  ℹ️  기록만 완료 — 알림 생략 (통보 대기 {pend}건). "
+              f"알림은 10:30 실행분에서 나갑니다.")
+        return 0
+
+    # ── 아직 통보하지 않은 차이만 알림 (여러 달을 한 통에 정리) ──
     total_new = sum(len(r[1]) for r in results)
     if not total_new:
         print("  ℹ️  신규 차이 없음 — 알림 생략")
@@ -595,6 +635,7 @@ def main():
         lines.append(f"📊 보고서 정확도 {acc_line}")
     lines.append("👉 https://app.taein.biz/schedule_record")
     send_telegram("\n".join(lines))
+    _mark_notified()          # 보낸 건만 통보 완료 처리
     return 0
 
 
