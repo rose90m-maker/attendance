@@ -337,10 +337,6 @@ def _instruction_for(cur, d):
 
 WATER_SRC = "경비일지"
 
-# 경비일지 양식이 '16:00분 검침' 기준이라 앱으로 들어온 지침의 검침 시각은 이 값으로 남긴다.
-# (관리자가 통합관제에서 다른 시각으로 고치면 그 값이 그대로 유지된다)
-WATER_READ_TIME = "16:00"
-
 
 def _to_reading(raw):
     """자유 입력 문자열 → 검침값. 숫자가 아니거나 음수면 None."""
@@ -351,8 +347,12 @@ def _to_reading(raw):
     return v if v >= 0 else None
 
 
-def _write_water_meter(cur, d, reading, guard_name):
+def _write_water_meter(cur, d, reading, guard_name, read_time=None):
     """경비원이 현장에서 계량기를 보고 적은 값이므로 기존 값이 있어도 덮어쓴다.
+
+    검침 시각은 **일지를 적은 실제 시각**을 남긴다(기본값 = 지금).
+    예전에는 '16:00' 을 고정으로 박았는데, 같은 날 근무자 둘이 새벽·아침에 각각 적어도
+    둘 다 16:00 으로 저장돼 하루 사용량이 실제와 다르게 튀었다 (2026-08-04 사고).
 
     비고(memo)는 건드리지 않는다 — 통합관제의 '정상 / 확인 필요 / 지침 확인' 판정이
     거기 들어 있고, 그걸 지우면 통합관제와 앱의 검침 표에서 비고가 사라진다.
@@ -363,12 +363,16 @@ def _write_water_meter(cur, d, reading, guard_name):
         VALUES (%s,%s,%s,'',%s)
         ON DUPLICATE KEY UPDATE
             reading    = VALUES(reading),
-            -- 관리자가 통합관제에서 넣어둔 시각은 덮어쓰지 않는다
-            read_time  = IF(read_time = '', VALUES(read_time), read_time),
+            -- 비어 있거나 앞서도 경비일지가 적은 시각이면 실제 시각으로 갱신하고,
+            -- 관리자가 통합관제에서 손으로 넣은 시각은 그대로 둔다.
+            -- (created_by 대입이 아래에 있어야 여기서 '이전 값'으로 평가된다 — 순서 주의)
+            read_time  = IF(read_time = '' OR created_by LIKE %s,
+                            VALUES(read_time), read_time),
             created_by = VALUES(created_by)
-    """, (d, WATER_READ_TIME, reading,
+    """, (d, read_time or datetime.now().strftime("%H:%M"), reading,
           # created_by 는 VARCHAR(30), STRICT 모드라 초과 시 저장 전체가 실패한다
-          ("%s %s" % (WATER_SRC, guard_name)).strip()[:30]))
+          ("%s %s" % (WATER_SRC, guard_name)).strip()[:30],
+          WATER_SRC + "%"))
 
 
 def _reclaim_water_meter(cur, d):
@@ -380,11 +384,15 @@ def _reclaim_water_meter(cur, d):
     이 경로로 처음 만들어진 행(비고가 비어 있는 행)뿐이다.
     일일관리대장에서 취합된 행은 비고에 판정('정상' 등)이 있어 그대로 남는다.
     """
-    cur.execute("SELECT water_meter, guard_name FROM guard_logs WHERE log_date=%s ORDER BY id", (d,))
-    for raw, name in cur.fetchall():
+    # 되살릴 때는 '지금'이 아니라 그 일지를 적은 시각을 검침 시각으로 쓴다
+    cur.execute("""SELECT water_meter, guard_name,
+                          COALESCE(submitted_at, updated_at, created_at)
+                     FROM guard_logs WHERE log_date=%s ORDER BY id""", (d,))
+    for raw, name, wrote_at in cur.fetchall():
         reading = _to_reading(raw)
         if reading is not None:
-            _write_water_meter(cur, d, reading, name or "")
+            _write_water_meter(cur, d, reading, name or "",
+                               wrote_at.strftime("%H:%M") if wrote_at else None)
             return
     cur.execute("""
         DELETE FROM water_meter
@@ -1127,15 +1135,21 @@ def guard_list():
                (SELECT COUNT(*) FROM guard_patrol p WHERE p.log_id=l.id AND p.result<>'미점검'),
                (SELECT COUNT(*) FROM guard_patrol p WHERE p.log_id=l.id AND p.result='이상'),
                (SELECT COUNT(*) FROM guard_visitors v WHERE v.log_id=l.id),
-               (SELECT COUNT(*) FROM guard_photos g WHERE g.log_id=l.id)
+               (SELECT COUNT(*) FROM guard_photos g WHERE g.log_id=l.id),
+               DATEDIFF(DATE(l.created_at), l.log_date), DATE(l.created_at)
           FROM guard_logs l
          WHERE l.log_date BETWEEN %s AND %s
          ORDER BY l.log_date DESC, l.id DESC
     """, (first, last))
+    # 일지 날짜와 실제 작성일이 벌어지면 표시만 한다(막지는 않음).
+    # 앱이 날짜를 잘못 보내도 서버는 그대로 저장하므로, 눈에 띄게 해서 사람이 잡게 한다.
+    # 야간 근무 후 다음날 아침 작성은 정상이라 차단하지 않는다. (2026-08-05 김호경 사례)
     logs = [{"id": r[0], "log_date": r[1], "weekday": r[2], "guard_name": r[3],
              "status": r[4], "submitted_at": r[5], "patrol_done": r[6],
              "patrol_total": total_slots, "abnormal_cnt": r[7],
-             "visitor_cnt": r[8], "photo_cnt": r[9]} for r in cur.fetchall()]
+             "visitor_cnt": r[8], "photo_cnt": r[9],
+             "date_gap": r[10] or 0,
+             "written_on": r[11].strftime("%m-%d") if r[11] else ""} for r in cur.fetchall()]
     conn.close()
 
     prev_ym = (first - timedelta(days=1)).strftime("%Y-%m")
