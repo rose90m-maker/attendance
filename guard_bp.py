@@ -464,9 +464,14 @@ def _load_log(cur, log_id):
         SELECT id, filename, orig_name, filesize, uploaded_at
           FROM guard_photos WHERE log_id=%s ORDER BY id
     """, (log_id,))
-    log["photos"] = [{"id": p[0], "filename": p[1], "orig_name": p[2] or "",
-                      "filesize": p[3], "uploaded_at": _fmt_dt(p[4]),
-                      "url": "/guard/photo/%d" % p[0]} for p in cur.fetchall()]
+    photos = [{"id": p[0], "filename": p[1], "orig_name": p[2] or "",
+               "filesize": p[3], "uploaded_at": _fmt_dt(p[4]),
+               "url": "/guard/photo/%d" % p[0]} for p in cur.fetchall()]
+    # 앱이 "water_시각.jpg" 이름으로 올리는 계량기 사진은 첨부 목록과 분리해
+    # 인쇄 화면의 상수도 칸 옆에 붙인다 (여러 장이면 마지막 것)
+    water = [p for p in photos if p["orig_name"].startswith("water_")]
+    log["photos"] = [p for p in photos if not p["orig_name"].startswith("water_")]
+    log["water_photo"] = water[-1] if water else None
     return log
 
 

@@ -161,7 +161,18 @@
             <td class="sh">전화　수발</td><td class="lf">{{ log.phone_memo }}</td>
             {# 검침 시각은 실제 입력된 값을 쓴다. 없으면 시각 줄을 빼서 빈 양식으로 인쇄된다 #}
             <td class="sh" rowspan="2">상수도 사용현황{% if water_time %}<br>{{ water_time }} 검침{% endif %}</td>
-            <td rowspan="2">{{ log.water_meter }}</td>
+            <td rowspan="2">
+                {% if log.water_photo %}
+                {# 앱에서 확정한 계량기 숫자 사진 — 지침 값과 나란히 놓아 대조할 수 있게 #}
+                <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
+                    <span>{{ log.water_meter }}</span>
+                    <img src="{{ log.water_photo.url }}" alt="계량기 사진"
+                         style="max-height:58px;max-width:55%;object-fit:contain;">
+                </div>
+                {% else %}
+                {{ log.water_meter }}
+                {% endif %}
+            </td>
         </tr>
         <tr><td class="sh">최종 퇴근자</td><td class="lf">{{ log.last_leaver }}</td></tr>
         <tr>
