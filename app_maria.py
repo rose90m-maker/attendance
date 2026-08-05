@@ -1808,6 +1808,9 @@ def _merge_night_shifts(day_emp):
                 # 새벽 퇴근을 전날 전날분으로 이동
                 morning_out = rec["out_time"]
                 morning_gate = rec.get("out_gate", "")
+                # 사번·부서를 같이 물고 가야 복원 행에서 빈칸으로 뜨지 않는다
+                morning_emp_no = rec.get("emp_no", "")
+                morning_er_dept = rec.get("er_dept", "")
                 rec["out_time"] = None
                 if "out_gate" in rec:
                     rec["out_gate"] = ""
@@ -1830,6 +1833,7 @@ def _merge_night_shifts(day_emp):
                     lost_morning_outs[prev_key] = {
                         "date": prev_date, "id": eid,
                         "name": rec["name"], "dept": rec.get("dept", ""),
+                        "emp_no": morning_emp_no, "er_dept": morning_er_dept,
                         "out_time": morning_out, "out_gate": morning_gate,
                     }
         # 2단계: 연속 미러링 - 전날 출근만+퇴근없음 / 다음날 출근없음+퇴근만
@@ -1864,7 +1868,11 @@ def _merge_night_shifts(day_emp):
         if key not in day_emp:
             day_emp[key] = {
                 "date": info["date"], "id": info["id"],
+                "date_fmt": _fmt_date(info["date"]),
                 "name": info["name"], "dept": info.get("dept", ""),
+                # 원본 행이 없어 새로 만드는 자리 — 사번/부서를 빠뜨리면 화면에 빈칸으로 뜬다
+                "emp_no": info.get("emp_no", "") or str(info["id"]),
+                "er_dept": info.get("er_dept", ""),
                 "in_time": None, "out_time": info["out_time"],
                 "in_gate": "", "out_gate": info.get("out_gate", ""),
                 "night_next_day": True,
@@ -1898,6 +1906,13 @@ def _merge_night_shifts(day_emp):
         rec["date"] = new_key[0]
         rec["night_next_day"] = True
         day_emp[new_key] = rec
+
+    # 3·4단계에서 새로 만들거나 옮긴 행은 dict 끝에 붙는다.
+    # 화면이 이 순서를 그대로 쓰기 때문에 7/5 행이 7/31 아래에 나오는 일이 생겼다(2026-08-05).
+    # 날짜순으로 되돌린다 — sorted 는 안정 정렬이라 같은 날 안의 기존 순서는 유지된다.
+    ordered = sorted(day_emp.items(), key=lambda kv: kv[1]["date"])
+    day_emp.clear()
+    day_emp.update(ordered)
 
 
 @app.route("/login", methods=["GET", "POST"])
