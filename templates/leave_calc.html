@@ -11,6 +11,9 @@
         .lc-tbl thead th { position:sticky; top:0; background:#f8f9fa; z-index:2; }
         .lc-wrap { max-height:calc(100vh - 320px); overflow:auto; }
         .tag-1 { background:#fee2e2; color:#991b1b; }
+        /* 설명문 안의 입사일 — ①입사년 태그와 같은 분홍으로 눈에 띄게 */
+        .ent-hl { background:#fee2e2; color:#991b1b; font-weight:700;
+                  padding:1px 6px; border-radius:4px; }
         .tag-2 { background:#fef3c7; color:#92400e; }
         .tag-3 { background:#dcfce7; color:#166534; }
         .tag  { padding:1px 6px; border-radius:6px; font-size:.68rem; font-weight:700; }
@@ -106,6 +109,48 @@
               <td><code>11 − 도래한 월할 누계</code> · 다음 회계연도에 지급</td></tr>
         </tbody>
       </table>
+      <div class="mt-3 mb-1" style="font-size:.8rem;"><b>📌 예시 — 문영인 (<span class="ent-hl">2026-02-26</span> 입사)</b></div>
+      <table class="table table-sm table-bordered mb-2" style="font-size:.78rem;">
+        <thead class="table-light">
+          <tr><th style="width:70px;">연도</th><th style="width:92px;">구분</th>
+              <th class="text-end" style="width:76px;">월할</th>
+              <th class="text-end" style="width:96px;">회계연도분<br>/근속가산</th>
+              <th class="text-end" style="width:76px;">발생</th>
+              <th class="text-end" style="width:64px;">이월</th>
+              <th>설명</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>2026</td><td><span class="tag tag-1">①입사년</span></td>
+              <td class="text-end">10</td><td class="text-end">13</td>
+              <td class="text-end"><b>23</b></td><td class="text-end">1</td>
+              <td class="text-muted">3~12월 개근 <b>10일</b> + 회계연도분 <code>round(15×309÷365)=13</code>.
+                  ERP엔 안 올라가고 <b>2027-01-01에 지급</b></td></tr>
+          <tr><td>2027</td><td><span class="tag tag-2">②2년차</span></td>
+              <td class="text-end">10</td><td class="text-end">13</td>
+              <td class="text-end"><b>23</b></td><td class="text-end">1</td>
+              <td class="text-muted">전년 산정분 23일을 실제로 받는 해.
+                  11일 중 <b>1일</b>은 아직 안 왔으므로 다음 해로 넘어감</td></tr>
+          <tr><td>2028</td><td><span class="tag tag-3">③이후</span></td>
+              <td class="text-end">1</td><td class="text-end">15</td>
+              <td class="text-end"><b>16</b></td><td class="text-end">0</td>
+              <td class="text-muted">근속가산 <b>15일</b> + 남았던 이월 <b>1일</b>.
+                  여기서 11일을 다 채워 이월이 끝남</td></tr>
+          <tr><td>2029</td><td><span class="tag tag-3">③이후</span></td>
+              <td class="text-end">0</td><td class="text-end">15</td>
+              <td class="text-end"><b>15</b></td><td class="text-end">0</td>
+              <td class="text-muted">이월이 끝나 근속가산만. 근속 2년이라 아직 15일</td></tr>
+          <tr><td>2030</td><td><span class="tag tag-3">③이후</span></td>
+              <td class="text-end">0</td><td class="text-end">16</td>
+              <td class="text-end"><b>16</b></td><td class="text-end">0</td>
+              <td class="text-muted">근속 3년 → <code>15+(3−1)÷2=16</code>. 이후 2년마다 1일씩,
+                  최대 25일까지 오름</td></tr>
+        </tbody>
+      </table>
+      <div class="text-muted mb-2" style="font-size:.74rem;">
+        ①과 ②의 숫자가 같은 이유는 <b>둘 다 입사연도(2026) 기준으로 산정</b>하기 때문입니다.
+        ①은 “얼마가 산정되는지”를 보여주는 것이고, 실제 지급은 ②에서 일어납니다.
+        <span class="ent-hl">2026-03-03</span> 입사(정태선)라면 한 달 늦어 월할이 9일이 되고, 이월은 2일이 됩니다.
+      </div>
       <div class="text-muted mt-2" style="font-size:.74rem;">
         2024~2026년 ERP 402건으로 검증했습니다(2025·2026 구간 93~96% 일치).
         <b>비고</b>가 붙은 사람은 임원·연차 관리 제외 부서·수기 산정 등이라, 차이가 나도 정상이므로 점검 대상에서 뺐습니다.
