@@ -7306,6 +7306,11 @@ def leave_calc():
             note = "연차 관리 제외 부서"
         elif (dept or "") == "임원":
             note = "임원 · ERP 연차 미관리"
+        elif "재입사" in str(memo or ""):
+            # 퇴사 후 재입사자 — ERP 는 이전 근속을 승계해 연차를 주는데
+            # 여기 산정은 명부의 (재)입사일만 보므로 차이가 나는 게 정상이다.
+            # 대상자는 annual_leave.memo 에 '재입사' 를 넣어 표시한다. (2026-08-05)
+            note = "재입사 · 근속 승계"
         elif str(memo or "").startswith("수기"):
             note = "수기 산정"
         elif gen == 0 and c["tag"] != "①입사년":
