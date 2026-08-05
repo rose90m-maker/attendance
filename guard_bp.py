@@ -702,10 +702,11 @@ def api_guard_instructions():
 
 
 # ── 계량기 사진 판독 (OCR) ─────────────────────────────────
-# AI 안전진단과 같은 Ollama 서버를 쓴다. 계량기 숫자 읽기는 단순해서 7b 로 충분하고,
-# 32b 는 안전진단과 GPU 를 나눠 쓰게 되어 서로 느려진다. 바꾸려면 .env 에 GUARD_OCR_MODEL 지정.
+# AI 안전진단과 같은 Ollama 서버를 쓴다. 7b 가 빨간 소수부를 붙여 읽는 오판이 잦아
+# 32b 로 올렸다 (2026-08-05). 안전진단과 GPU 를 나눠 쓰므로 콜드 로딩이 길 수 있다
+# — 앱 쪽 OCR 타임아웃을 넉넉히 둘 것. 바꾸려면 .env 에 GUARD_OCR_MODEL 지정.
 OCR_HOST = os.environ.get("OLLAMA_HOST", "http://192.168.100.6:11434")
-OCR_MODEL = os.environ.get("GUARD_OCR_MODEL", "qwen2.5vl:7b")
+OCR_MODEL = os.environ.get("GUARD_OCR_MODEL", "qwen2.5vl:32b")
 OCR_TIMEOUT = int(os.environ.get("GUARD_OCR_TIMEOUT", "120"))
 
 OCR_SYSTEM = """너는 상수도 계량기 사진에서 적산 지침(㎥)만 읽어내는 판독기다.
@@ -742,6 +743,8 @@ def _ocr_meter(b64: str) -> dict:
         ],
         "stream": False,
         "format": "json",
+        # 검침은 하루 여러 번 이어질 수 있다 — 모델을 바로 내리지 않아 콜드 로딩(약 10초)을 줄인다
+        "keep_alive": "30m",
         # 같은 사진엔 같은 값이 나와야 한다 (안전진단에서 검증된 설정)
         "options": {"temperature": 0, "top_k": 1, "top_p": 1.0, "seed": 42, "num_ctx": 4096},
         "think": False,
