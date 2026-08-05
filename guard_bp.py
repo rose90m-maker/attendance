@@ -1192,6 +1192,12 @@ def guard_print(log_id):
         SELECT id FROM guard_logs WHERE log_date > %s ORDER BY log_date ASC, id ASC LIMIT 1
     """, (log["log_date"],))
     r = cur.fetchone(); next_id = r[0] if r else None
+
+    # 상수도 검침 시각 — 양식에 '16:00분 검침'을 박아두면 실제와 달라진다.
+    # 통합관제에 반영된 실제 검침 시각을 그대로 인쇄한다. (2026-08-05)
+    cur.execute("SELECT read_time FROM water_meter WHERE read_date=%s", (log["log_date"],))
+    r = cur.fetchone()
+    water_time = (r[0] or "").strip() if r else ""
     conn.close()
 
     visitors = [v for v in log["visitors"] if v["block"] == "visitor"]
@@ -1201,6 +1207,7 @@ def guard_print(log_id):
     return render_template("guard_print.html", active_page="guard", log=log, rows=rows,
                            rounds=GUARD_ROUNDS, visitors=visitors, staff=staff,
                            blank_rows=blank, prev_id=prev_id, next_id=next_id,
+                           water_time=water_time,
                            result_ng=RESULT_NG, result_ok=RESULT_OK)
 
 
