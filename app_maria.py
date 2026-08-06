@@ -4204,7 +4204,11 @@ def api_schedule_events():
                 elif sr_basic > 0:
                     cat = "주간기본"
                 else:
-                    cat = "근무"
+                    # 0/0/0 에 기타표기도 없으면 근무가 없는 날이다.
+                    # 수정보고서에서 빠진 인원을 0/0/0 으로 확정한 기록이 여기 해당한다.
+                    # 예전엔 이걸 '근무' 배지로 띄워 취소된 날이 근무한 것처럼 보였다
+                    # (2026-08-01 지훈구).
+                    cat = None
                 sr_by_date.setdefault(formatted, {}).setdefault(sr_src, cat)
             _cat_colors = {
                 "주간기본": "#6366f1", "주간연장": "#3b82f6",
@@ -4229,6 +4233,8 @@ def api_schedule_events():
                     if _src in recs:
                         cat, picked = recs[_src], _src
                         break
+                # 고른 기록이 '근무 없음'이면 배지를 띄우지 않는다.
+                # 아래 순위로 내려가면 안 된다 — 취소된 근무의 원본이 되살아난다.
                 if cat is None:
                     continue
                 is_revision = picked == "수정근무보고서"
