@@ -147,6 +147,7 @@ files = [
     # 여기(NAS staging 전송 목록)에 없으면 애초에 NAS 까지 가지 않는다.
     ("static/table-sort.js", "static/table-sort.js"),
     ("static/LOGO.GIF", "static/LOGO.GIF"),
+    ("static/cert_stamp.png", "static/cert_stamp.png"),   # 증명서 직인
     ("static/manifest.json", "static/manifest.json"),
     ("templates/attendance.html", "templates/attendance.html"),
     ("templates/weekly52.html", "templates/weekly52.html"),
