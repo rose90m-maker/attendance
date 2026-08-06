@@ -9028,7 +9028,8 @@ def update_doc_request():
     auto_msg = ""
     if not file_name and status == "완료":
         try:
-            file_name, file_path = _make_cert_file(cur, req_id)
+            file_name, file_path = _make_cert_file(
+                cur, req_id, tax_year=request.form.get("tax_year", "").strip())
             if file_name:
                 auto_msg = f"{file_name} 자동 생성"
         except Exception as e:
@@ -9056,10 +9057,11 @@ def _next_issue_no(cur, ym=None):
     return f"{ym}{n:04d}"
 
 
-def _make_cert_file(cur, req_id):
-    """요청 건으로 증명서 docx 를 만들어 uploads/documents 에 저장
+def _make_cert_file(cur, req_id, tax_year=""):
+    """요청 건으로 증명서를 만들어 uploads/documents 에 저장
 
     → (원본파일명, 저장파일명). 자동 생성 대상이 아니면 ('', '')
+    tax_year: 원천징수영수증의 귀속연도 (담당자가 처리 모달에서 고른다)
     """
     from cert_pdf import AUTO_DOC_TYPES, build_certificate, safe_filename
 
@@ -9069,6 +9071,26 @@ def _make_cert_file(cur, req_id):
     if not row:
         raise ValueError("요청을 찾을 수 없습니다")
     emp_name, doc_type, purpose = row[0], row[1], row[2]
+
+    # 원천징수영수증 — ERP 연말정산 확정분으로 생성 (wht_receipt)
+    if doc_type == "원천징수영수증":
+        import wht_receipt
+        cur.execute("""SELECT emp_no FROM employee_roster WHERE name=%s LIMIT 1""",
+                    (emp_name,))
+        er = cur.fetchone()
+        if not er or not er[0]:
+            raise ValueError(f"사원명부에서 '{emp_name}' 의 사번을 찾을 수 없습니다")
+        emp_no = str(er[0]).strip()
+        years = wht_receipt.available_years(emp_no)
+        if not years:
+            raise ValueError(f"'{emp_name}' 의 연말정산 확정 자료가 ERP 에 없습니다")
+        yy = tax_year if tax_year in years else years[0]
+        data, orig = wht_receipt.generate(emp_no, yy)
+        save_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{req_id}.html"
+        with open(os.path.join(DOC_UPLOAD_DIR, save_name), "wb") as f:
+            f.write(data)
+        return orig, save_name
+
     if doc_type not in AUTO_DOC_TYPES:
         return "", ""      # 급여명세서 등은 담당자가 직접 첨부한다
 
@@ -9088,6 +9110,31 @@ def _make_cert_file(cur, req_id):
     with open(os.path.join(DOC_UPLOAD_DIR, save_name), "wb") as f:
         f.write(buf.getvalue())
     return orig, save_name
+
+
+@app.route("/api/doc_tax_years/<int:req_id>")
+@_login_required
+def api_doc_tax_years(req_id):
+    """원천징수영수증 처리 시 고를 수 있는 귀속연도 (ERP 연말정산 확정분)"""
+    if not _has_perm("document"):
+        return jsonify(ok=False, msg="권한이 없습니다"), 403
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT requester_name FROM doc_requests WHERE id=%s", (req_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify(ok=False, msg="요청을 찾을 수 없습니다")
+    cur.execute("SELECT emp_no FROM employee_roster WHERE name=%s LIMIT 1", (row[0],))
+    er = cur.fetchone()
+    conn.close()
+    if not er or not er[0]:
+        return jsonify(ok=False, msg="사원명부에서 사번을 찾을 수 없습니다")
+    try:
+        import wht_receipt
+        return jsonify(ok=True, years=wht_receipt.available_years(str(er[0]).strip()))
+    except Exception as e:
+        app.logger.exception("귀속연도 조회 실패")
+        return jsonify(ok=False, msg=f"ERP 조회 실패: {e}")
 
 
 @app.route("/get_doc_request/<int:req_id>")

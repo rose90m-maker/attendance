@@ -215,6 +215,11 @@
                         <label class="form-label">처리 메모</label>
                         <textarea name="reply_memo" id="procReply" class="form-control" rows="3" placeholder="처리 결과 또는 반려 사유"></textarea>
                     </div>
+                    <div class="mb-3" id="procTaxYearBox" style="display:none;">
+                        <label class="form-label">귀속연도 <span class="text-danger">*</span></label>
+                        <select name="tax_year" id="procTaxYear" class="form-select form-select-sm"></select>
+                        <small class="text-muted">ERP 연말정산 확정분 기준으로 생성됩니다.</small>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label">완성 문서 첨부</label>
                         <input type="file" name="file" id="procFile" class="form-control form-control-sm">
@@ -311,10 +316,31 @@ function openProcessModal(id) {
         } else {
             document.getElementById('procExistingFile').style.display = 'none';
         }
-        // 자동 생성이 되는 문서종류일 때만 안내를 띄운다 (cert_docx.AUTO_DOC_TYPES 와 같아야 한다)
-        const autoTypes = ['재직증명서', '경력증명서'];
+        // 자동 생성이 되는 문서종류일 때만 안내를 띄운다 (cert_pdf.AUTO_DOC_TYPES 와 같아야 한다)
+        const autoTypes = ['재직증명서', '경력증명서', '원천징수영수증'];
         document.getElementById('procAutoHint').style.display =
             (!r.file_name && autoTypes.includes(r.doc_type)) ? 'block' : 'none';
+
+        // 원천징수영수증은 귀속연도를 골라야 한다 — ERP 확정분만 목록에 나온다
+        const yearBox = document.getElementById('procTaxYearBox');
+        const yearSel = document.getElementById('procTaxYear');
+        if (r.doc_type === '원천징수영수증') {
+            yearSel.innerHTML = '<option>불러오는 중…</option>';
+            yearBox.style.display = 'block';
+            fetch('/api/doc_tax_years/' + r.id)
+            .then(x => x.json())
+            .then(y => {
+                if (y.ok && y.years && y.years.length) {
+                    yearSel.innerHTML = y.years
+                        .map(v => `<option value="${v}">${v}년 귀속</option>`).join('');
+                } else {
+                    yearSel.innerHTML = `<option value="">${y.msg || 'ERP 확정 자료 없음'}</option>`;
+                }
+            });
+        } else {
+            yearBox.style.display = 'none';
+            yearSel.innerHTML = '';
+        }
         processModal.show();
     });
 }
