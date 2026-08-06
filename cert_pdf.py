@@ -23,6 +23,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
@@ -38,38 +39,32 @@ COMPANY = {
 # 자동 생성이 가능한 문서종류 (나머지는 담당자가 직접 첨부한다)
 AUTO_DOC_TYPES = ("재직증명서", "경력증명서")
 
+# 한글 폰트는 reportlab 내장 CID 폰트(HYGothic-Medium)를 쓴다.
+# 시스템에 TTF 를 설치할 필요가 없어 컨테이너 이미지를 건드리지 않는다.
+# 다른 글꼴을 쓰고 싶으면 CERT_FONT_PATH 로 TTF 경로를 주면 그쪽이 우선한다.
 FONT_NAME = "CertKR"
-# 컨테이너(python:3.11-slim + fonts-nanum) → 나눔고딕, Mac 개발 → AppleGothic
-_FONT_CANDIDATES = (
-    os.environ.get("CERT_FONT_PATH", ""),
-    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-    "/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
-)
-_font_ready = False
+_CID_FONT = "HYGothic-Medium"
+_font_ready = None      # 실제로 등록된 폰트 이름
 
 
 def _ensure_font():
-    """한글 TTF 를 한 번만 등록한다. 없으면 어떤 경로를 찾았는지 알려 준다."""
+    """한글 폰트를 한 번만 등록하고 그 이름을 돌려준다."""
     global _font_ready
     if _font_ready:
-        return
-    for path in _FONT_CANDIDATES:
-        if path and os.path.exists(path):
-            pdfmetrics.registerFont(TTFont(FONT_NAME, path))
-            _font_ready = True
-            return
-    raise RuntimeError(
-        "증명서에 쓸 한글 폰트를 찾지 못했습니다. "
-        "컨테이너에 fonts-nanum 을 설치하거나 CERT_FONT_PATH 로 TTF 경로를 지정하세요. "
-        f"(확인한 경로: {[p for p in _FONT_CANDIDATES if p]})"
-    )
+        return _font_ready
+    ttf = os.environ.get("CERT_FONT_PATH", "")
+    if ttf and os.path.exists(ttf):
+        pdfmetrics.registerFont(TTFont(FONT_NAME, ttf))
+        _font_ready = FONT_NAME
+    else:
+        pdfmetrics.registerFont(UnicodeCIDFont(_CID_FONT))
+        _font_ready = _CID_FONT
+    return _font_ready
 
 
 def _style(size=10.5, align=TA_LEFT, leading=None):
     return ParagraphStyle(
-        f"c{size}{align}", fontName=FONT_NAME, fontSize=size,
+        f"c{size}{align}", fontName=_ensure_font(), fontSize=size,
         leading=leading or size * 1.5, alignment=align, wordWrap="CJK",
     )
 
