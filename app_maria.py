@@ -5081,10 +5081,13 @@ def work_schedule():
         cur = conn.cursor()
         # 1단계: e_id 조회 (부서 필터를 SQL에서 처리)
         params = []
-        sql = "SELECT DISTINCT t.e_id FROM tenter t"
+        # 근무표는 '리얼 데이터' 화면이라 ERP 출입기록(tenter_erp)만 본다. (2026-08-05)
+        # CAPS(tenter)는 인증실패·카드없음 로그가 섞여 있고, ERP 는 정상 출입만 남긴다.
+        # 근무보고서(schedule_record)는 여기서 쓰지 않는다 — 그건 근무표기록관리 화면 몫이다.
+        sql = "SELECT DISTINCT t.e_id FROM tenter_erp t"
         if sel_dept:
             sql += " LEFT JOIN employee_roster er ON t.e_name = er.name"
-        sql += " WHERE t.e_date >= %s AND t.e_date <= %s AND t.e_id <> -1"
+        sql += " WHERE t.e_date >= %s AND t.e_date <= %s AND t.e_id IS NOT NULL AND t.e_id <> -1"
         params += [q_start, q_end]
         if search:
             sql += " AND (t.e_name LIKE %s OR t.e_idno LIKE %s)"
@@ -5109,8 +5112,7 @@ def work_schedule():
             cur.execute(f"""
                 SELECT t.e_date, t.e_time, t.e_id, t.e_idno, t.e_name,
                                              t.e_mode, u.company, er.dept
-                FROM tenter t
-                     LEFT JOIN tgate g ON t.g_id = g.id
+                FROM tenter_erp t
                      LEFT JOIN tuser u ON t.e_id = u.id
                                          LEFT JOIN employee_roster er ON t.e_name = er.name
                 WHERE t.e_id IN ({ph})
@@ -5206,70 +5208,11 @@ def work_schedule():
                 "night": ni_h, "other": etc_h,
                 "is_holiday": is_hol,
             }
-        # ── schedule_record(보고서 결재분) 병합 ──
-        month_str_sr = f"{year}{mon:02d}"
-        # tuser name→id 매핑
-        cur.execute("SELECT id, name, idno, company FROM tuser WHERE name IS NOT NULL AND name <> ''")
-        name_to_eid = {}
-        for uid, uname, uidno, ucomp in cur.fetchall():
-            n = (uname or "").strip()
-            if n and n not in name_to_eid:
-                name_to_eid[n] = uid
-        # sel_dept 필터용 허용 이름 집합 (부서 필터 선택 시 다른 부서 결재분 제외)
-        dept_allowed_names = None
-        if sel_dept:
-            cur.execute("SELECT name FROM employee_roster WHERE dept = %s AND name IS NOT NULL AND name <> ''", (sel_dept,))
-            dept_allowed_names = {(r[0] or "").strip() for r in cur.fetchall()}
-        # 현재 페이지 eids 집합 (페이지네이션 정합성: 이 집합 외 직원은 emp_info에 추가하지 않음)
-        eids_set = set(eids)
-        cur.execute("""
-            SELECT emp_name, work_date, basic_h, ot_h, night_h, etc
-            FROM schedule_record
-            WHERE work_date LIKE %s AND source_type IN ('보고서','수정','수정근무보고서')
-            ORDER BY FIELD(source_type,'보고서','수정','수정근무보고서')
-        """, (f"{month_str_sr}%",))
-        for sr_name, sr_date, sr_basic, sr_ot, sr_night, sr_etc in cur.fetchall():
-            sr_name = (sr_name or "").strip()
-            if dept_allowed_names is not None and sr_name not in dept_allowed_names:
-                continue
-            sr_eid = name_to_eid.get(sr_name)
-            if not sr_eid:
-                continue
-            day_num_sr = int(str(sr_date)[6:8])
-            dt_sr = datetime(year, mon, day_num_sr)
-            wd_sr = dt_sr.weekday()
-            is_hol_sr = wd_sr >= 5 or bool(KR_HOLIDAYS.get(dt_sr.date(), ""))
-            # 보고서 결재 데이터가 출입기록보다 우선 적용
-            # (현재 페이지 eids에 없는 직원은 emp_info 추가 생략 → 페이지네이션 정합성 유지)
-            if sr_eid not in emp_info and sr_eid in eids_set:
-                cur.execute(
-                    """
-                    SELECT tu.id, tu.name, tu.idno, tu.company, er.dept
-                    FROM tuser tu
-                    LEFT JOIN employee_roster er ON er.name = tu.name
-                    WHERE tu.id=%s
-                    """,
-                    (sr_eid,),
-                )
-                tu = cur.fetchone()
-                if tu:
-                    emp_info[sr_eid] = {
-                        "name": (tu[1] or "").strip(),
-                        "emp_no": (tu[2] or "").strip() or str(tu[0]),
-                        "dept": (tu[4] or "").strip() or DEPT_MAP.get((tu[3] or "").strip(), ""),
-                    }
-            # emp_days 업데이트는 emp_info에 있는 직원(현재 페이지)만 처리
-            if sr_eid in emp_info:
-                other_val = sr_etc if sr_etc else 0
-                emp_days[sr_eid][day_num_sr] = {
-                    "basic": sr_basic or 0, "overtime": sr_ot or 0,
-                    "night": sr_night or 0, "other": other_val,
-                    "is_holiday": is_hol_sr,
-                }
-        # 오버라이드 로딩
-        # schedule_record에서 추가된 인원도 eids에 포함
-        sr_extra_eids = [eid for eid in emp_days if eid not in eids]
-        all_eids_for_ov = list(eids) + sr_extra_eids
+        # 근무표는 '리얼 데이터' 화면이라 근무보고서(schedule_record)를 섞지 않는다. (2026-08-05)
+        # 예전엔 보고서 결재분을 출입기록 위에 덮어써서, 아직 오지 않은 날짜에도 8시간이 찍혔다
+        # (2026-08 변기숙 7~10일). 보고서 기준 표는 근무표기록관리 화면에서 본다.
+        # 오버라이드 로딩 — 보고서 병합을 뺐으므로 대상은 현재 페이지 인원뿐이다
+        all_eids_for_ov = list(eids)
         overrides = {}
         override_memos = {}
         override_updates = {}
