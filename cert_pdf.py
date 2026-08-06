@@ -25,7 +25,8 @@ from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (Image, Paragraph, SimpleDocTemplate, Spacer, Table,
+                                TableStyle)
 
 # ── 회사 정보 ─────────────────────────────────────────────────────
 # ERP _TCACompany(CompanySeq=1) + 2026-07 발급본 실물에서 확인한 값
@@ -38,6 +39,14 @@ COMPANY = {
 
 # 자동 생성이 가능한 문서종류 (나머지는 담당자가 직접 첨부한다)
 AUTO_DOC_TYPES = ("재직증명서", "경력증명서")
+
+# 직인 이미지 — 파일을 놓으면 서명줄 '(인)' 자리에 자동으로 찍힌다.
+# 배경이 투명한 PNG 를 권장한다 (없으면 '(인)' 글자가 그대로 나온다).
+STAMP_PATH = os.environ.get(
+    "CERT_STAMP_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "cert_stamp.png"),
+)
+STAMP_SIZE = 1.9 * cm
 
 # 한글 폰트는 reportlab 내장 CID 폰트(HYGothic-Medium)를 쓴다.
 # 시스템에 TTF 를 설치할 필요가 없어 컨테이너 이미지를 건드리지 않는다.
@@ -118,26 +127,48 @@ def build_certificate(doc_type, emp, purpose="", issue_no="", issue_date=None,
 
     emp: {name, name_en, dept, position, hire_date, address, retire_date}
     """
-    _ensure_font()
+    font = _ensure_font()
     issue_date = issue_date or date.today()
     title = doc_type if doc_type in AUTO_DOC_TYPES else "재직증명서"
 
-    lbl = _style(10.5, TA_CENTER)      # 라벨 칸
     val = _style(10.5, TA_LEFT)        # 값 칸
-    ttl = _style(20, TA_CENTER, leading=26)
     ctr = _style(11, TA_CENTER)
     ctr_s = _style(9.5, TA_CENTER)
     ctr_b = _style(12, TA_CENTER)
 
-    def L(t):
-        return Paragraph(t, lbl)
-
+    # 라벨은 Paragraph 로 만들지 않고 문자열 그대로 넣는다.
+    # Paragraph 는 HTML 파서라 연속 공백을 하나로 줄여 버려서 '성     명' 같은
+    # 관공서 표기를 못 쓴다. &nbsp; 로 벌렸더니 CID 폰트에서 U+00A0 가 점으로
+    # 찍혔다 (2026-08-06 발급본). 문자열 셀은 공백이 그대로 살아 있다.
     def V(t):
         return Paragraph(t or "", val)
 
     addr = emp.get("address", "") or ""
     if zip_code:
         addr = f"({zip_code}) {addr}"
+
+    # 서명 줄 — '대표이사 / 이름 / (인)' 을 벌려 놓는다.
+    # 한 Paragraph 에 공백으로 벌리면 HTML 파서가 공백을 줄여 버려서 표로 배치한다.
+    # 직인 이미지(STAMP_PATH)가 있으면 (인) 자리에 찍는다.
+    stamp = None
+    if STAMP_PATH and os.path.exists(STAMP_PATH):
+        stamp = Image(STAMP_PATH, width=STAMP_SIZE, height=STAMP_SIZE)
+        stamp.hAlign = "LEFT"
+    sign = Table(
+        [[Paragraph(COMPANY["ceo_title"], _style(12, TA_CENTER)),
+          Paragraph(COMPANY["ceo"], _style(12, TA_CENTER)),
+          stamp if stamp else Paragraph("(인)", _style(12, TA_CENTER))]],
+        colWidths=[3.4 * cm, 5.0 * cm, 2.2 * cm],
+    )
+    sign.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (2, 0), (2, 0), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    sign.hAlign = "CENTER"
 
     # 하단 서명부 — 한 셀 안에 여러 줄
     foot = [
@@ -149,25 +180,24 @@ def build_certificate(doc_type, emp, purpose="", issue_no="", issue_date=None,
         Paragraph(COMPANY["name"], ctr_b),
         Spacer(1, 0.5 * cm),
         Paragraph(COMPANY["address"], ctr_s),
-        Spacer(1, 0.6 * cm),
-        Paragraph(f"{COMPANY['ceo_title']} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; "
-                  f"{COMPANY['ceo']} &nbsp;&nbsp;&nbsp; (인)", ctr_b),
+        Spacer(1, 0.5 * cm),
+        sign,
     ]
 
-    # ERP 발급본의 주민등록번호 칸은 뺐다 — ResidId 가 암호화되어 채울 수 없다.
-    # 그 자리에 입사일이 올라오고, 영문성명 행의 오른쪽은 빈칸으로 합친다.
+    # 라벨 문구·공백은 ERP 발급본 그대로다
     data = [
-        [Paragraph(" ".join(title), ttl), "", "", ""],
-        [L("성 &nbsp; &nbsp; 명"), V(f"(한글) &nbsp; {emp.get('name', '')}"),
-         L("입 &nbsp;사 &nbsp;일"), V(_fmt_kdate(emp.get("hire_date")))],
-        ["", V(f"(영문) &nbsp; {emp.get('name_en', '') or ''}"), "", ""],
-        [L("부 &nbsp; &nbsp; 서"), V(emp.get("dept", "")),
-         L("직 &nbsp; &nbsp; 위"), V(emp.get("position", ""))],
-        [L("현 주 소"), V(addr), "", ""],
-        [L("재직기간"), V(_tenure(emp.get("hire_date"), issue_date,
-                               emp.get("retire_date"))), "", ""],
-        [L("담당업무"), V(task), "", ""],
-        [L("용 &nbsp; &nbsp; 도"), V(purpose or ""), "", ""],
+        ["  ".join(title), "", "", ""],
+        ["성     명", V(f"(한글) {emp.get('name', '')}"),
+         "주민등록번호", V(resid_id)],
+        ["", V(f"(영문) {emp.get('name_en', '') or ''}"),
+         "입   사   일", V(_fmt_kdate(emp.get("hire_date")))],
+        ["부     서", V(emp.get("dept", "")),
+         "직         위", V(emp.get("position", ""))],
+        ["현 주 소", V(addr), "", ""],
+        ["재직기간", V(_tenure(emp.get("hire_date"), issue_date,
+                            emp.get("retire_date"))), "", ""],
+        ["담당업무", V(task), "", ""],
+        ["용     도", V(purpose or ""), "", ""],
         [foot, "", "", ""],
     ]
 
@@ -180,15 +210,25 @@ def build_certificate(doc_type, emp, purpose="", issue_no="", issue_date=None,
         ("GRID", (0, 0), (-1, -2), 0.8, colors.black),
         ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
         ("SPAN", (0, 0), (3, 0)),      # 제목
+        ("FONTNAME", (0, 0), (0, 0), font),
+        ("FONTSIZE", (0, 0), (0, 0), 20),
+        ("ALIGN", (0, 0), (0, 0), "CENTER"),
         ("SPAN", (0, 1), (0, 2)),      # 성명 세로병합 (한글/영문)
-        ("SPAN", (2, 2), (3, 2)),      # 영문 행 오른쪽 빈칸
         ("SPAN", (1, 4), (3, 4)),      # 현주소
         ("SPAN", (1, 5), (3, 5)),      # 재직기간
         ("SPAN", (1, 6), (3, 6)),      # 담당업무
         ("SPAN", (1, 7), (3, 7)),      # 용도
         ("SPAN", (0, 8), (3, 8)),      # 하단 서명부
+        # 라벨 칸(문자열 셀)의 글꼴·정렬은 여기서 준다
+        ("FONTNAME", (0, 1), (0, 7), font),
+        ("FONTNAME", (2, 1), (2, 3), font),
+        ("FONTSIZE", (0, 1), (0, 7), 10.5),
+        ("FONTSIZE", (2, 1), (2, 3), 10.5),
+        ("ALIGN", (0, 1), (0, 7), "CENTER"),
+        ("ALIGN", (2, 1), (2, 3), "CENTER"),
         ("VALIGN", (0, 0), (-1, -2), "MIDDLE"),
         ("VALIGN", (0, 8), (3, 8), "TOP"),
+        ("ALIGN", (0, 8), (3, 8), "CENTER"),   # 서명줄 표를 가운데로
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
     ]))
@@ -201,7 +241,7 @@ def build_certificate(doc_type, emp, purpose="", issue_no="", issue_date=None,
         title=f"{title} - {emp.get('name', '')}", author=COMPANY["name"],
     )
     story = [
-        Paragraph(f"제 {issue_no}호" if issue_no else "", _style(10, TA_LEFT)),
+        Paragraph(f"제 {issue_no} 호" if issue_no else "", _style(10, TA_LEFT)),
         Spacer(1, 0.35 * cm),
         table,
     ]
