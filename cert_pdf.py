@@ -25,8 +25,8 @@ from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import (Image, Paragraph, SimpleDocTemplate, Spacer, Table,
-                                TableStyle)
+from reportlab.platypus import (Flowable, Image, Paragraph, SimpleDocTemplate,
+                                Spacer, Table, TableStyle)
 
 # ── 회사 정보 ─────────────────────────────────────────────────────
 # ERP _TCACompany(CompanySeq=1) + 2026-07 발급본 실물에서 확인한 값
@@ -69,6 +69,31 @@ def _ensure_font():
         pdfmetrics.registerFont(UnicodeCIDFont(_CID_FONT))
         _font_ready = _CID_FONT
     return _font_ready
+
+
+class SealedMark(Flowable):
+    """'(인)' 글자 위에 직인을 겹쳐 찍는다.
+
+    ERP 발급본이 그렇게 나온다 — 직인이 (인) 을 대체하는 게 아니라 덮는다.
+    직인 파일이 없으면 (인) 글자만 그린다.
+    """
+
+    def __init__(self, text, font, size, stamp_path=None, stamp=1.9 * cm):
+        super().__init__()
+        self.text, self.font, self.size = text, font, size
+        self.stamp_path = stamp_path
+        self.width = self.height = stamp
+
+    def draw(self):
+        c = self.canv
+        if self.stamp_path:
+            c.drawImage(self.stamp_path, 0, 0, self.width, self.height,
+                        mask="auto", preserveAspectRatio=True, anchor="c")
+        c.setFont(self.font, self.size)
+        c.setFillColor(colors.black)
+        # 글자의 세로 중심을 도장 한가운데에 맞춘다
+        c.drawCentredString(self.width / 2, self.height / 2 - self.size * 0.34,
+                            self.text)
 
 
 def _style(size=10.5, align=TA_LEFT, leading=None):
@@ -150,15 +175,16 @@ def build_certificate(doc_type, emp, purpose="", issue_no="", issue_date=None,
     # 서명 줄 — '대표이사 / 이름 / (인)' 을 벌려 놓는다.
     # 한 Paragraph 에 공백으로 벌리면 HTML 파서가 공백을 줄여 버려서 표로 배치한다.
     # 직인 이미지(STAMP_PATH)가 있으면 (인) 자리에 찍는다.
-    stamp = None
-    if STAMP_PATH and os.path.exists(STAMP_PATH):
-        stamp = Image(STAMP_PATH, width=STAMP_SIZE, height=STAMP_SIZE)
-        stamp.hAlign = "LEFT"
+    seal = SealedMark(
+        "(인)", font, 12,
+        STAMP_PATH if (STAMP_PATH and os.path.exists(STAMP_PATH)) else None,
+        STAMP_SIZE,
+    )
     sign = Table(
         [[Paragraph(COMPANY["ceo_title"], _style(12, TA_CENTER)),
           Paragraph(COMPANY["ceo"], _style(12, TA_CENTER)),
-          stamp if stamp else Paragraph("(인)", _style(12, TA_CENTER))]],
-        colWidths=[3.4 * cm, 5.0 * cm, 2.2 * cm],
+          seal]],
+        colWidths=[3.4 * cm, 5.0 * cm, 2.4 * cm],
     )
     sign.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
