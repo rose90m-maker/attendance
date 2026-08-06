@@ -242,6 +242,73 @@ def load_persons(cur, emp_seq, yy):
     }
 
 
+def load_family(cur, emp_seq, yy):
+    """3쪽 부양가족 명세 — 관계·성명·공제 해당여부
+
+    ERP 는 부양가족별 보험료·의료비·교육비를 개인 단위로 저장하지 않고
+    합계만 갖고 있다(_TWPRAdjTotIncomeTaxDeduc). 그래서 금액 칸은 비우고
+    관계·성명·공제표시만 채운다.
+    """
+    kinship = {3926001: "본인", 3926002: "배우자", 3926003: "직계존속",
+               3926004: "배우자직계존속", 3926005: "형제자매",
+               3926006: "직계비속(자녀)", 3926008: "직계비속(자녀외)",
+               3926009: "위탁아동", 3926010: "수급자", 3926011: "기타"}
+    cur.execute("""SELECT FamilySeq, FamilyName, SMKinShipSeq, SMDisableType
+                   FROM _TWPRAdjTotDependFamily
+                   WHERE YY=%s AND EmpSeq=%s ORDER BY FamilySeq""", (yy, emp_seq))
+    fam = [{"seq": r[0], "name": (r[1] or "").strip(),
+            "rel": kinship.get(r[2], ""), "disable": r[3] or 0,
+            "flags": set()} for r in cur.fetchall()]
+
+    cur.execute("""SELECT p.FamilySeq, i.NtsItemName
+                   FROM _TWPRAdjTotDependPerCnt p
+                   JOIN (SELECT DISTINCT YY, NtsItemSeq, NtsItemName
+                         FROM _TWPRAdjTotNtsItem) i
+                     ON i.YY=p.YY AND i.NtsItemSeq=p.NtsItemSeq
+                   WHERE p.YY=%s AND p.EmpSeq=%s""", (yy, emp_seq))
+    by_seq = {}
+    for fseq, nm in cur.fetchall():
+        by_seq.setdefault(fseq, set()).add((nm or "").strip())
+    for f in fam:
+        f["flags"] = by_seq.get(f["seq"], set())
+    return fam
+
+
+REPEAT_BEGIN = "<!-- Data7_repeat Begin-->"
+REPEAT_END = "Data7_repeat END-->"
+
+
+def expand_family_rows(tpl, fam):
+    """Page3 의 Data7_repeat 블록을 부양가족 수만큼 복제해 채운다"""
+    b = tpl.find(REPEAT_BEGIN)
+    e = tpl.find(REPEAT_END)
+    if b < 0 or e < 0:
+        return tpl
+    e += len(REPEAT_END)
+    row_tpl = tpl[b:e]
+
+    def one(f):
+        v = {
+            "Data7_DepenType": f["rel"],
+            "Data7_DepenNm": f["name"],
+            "Data7_DepenResidId": "",          # 주민번호는 암호화 — 담당자 기입
+            "Data7_DepenFrgnYn": "",
+            "Data7_DependYn": "O" if f["flags"] else "",
+            "Data7_OldManDeducYn": "O" if "경로우대" in f["flags"] else "",
+            "Data7_WomanDeducYn": "O" if "부녀자" in f["flags"] else "",
+            "Data7_SingleFamYn": "O" if "한부모" in f["flags"] else "",
+            "Data7_DisableType": str(f["disable"]) if f["disable"] else "",
+            "Data7_ChildCnt": "O" if "만8세이상자녀" in f["flags"] else "",
+            "Data7_MarryYn": "",
+            "Data7_ChildBirthYn": "O" if "출산입양자" in f["flags"] else "",
+            "Data7_IsEmptyPlace": "",
+        }
+        return TOKEN_RE.sub(lambda m: str(v.get(m.group(0)[5:], "")), row_tpl)
+
+    rows = "".join(one(f) for f in fam) if fam else ""
+    return tpl[:b] + rows + tpl[e:]
+
+
 def load_company(cur):
     cur.execute("""SELECT CompanyName, Owner, CompanyNo FROM _TCACompany
                    WHERE CompanySeq=1""")
@@ -401,6 +468,8 @@ def build_values(cur, emp_no, yy):
 def render(cur, emp_no, yy):
     tpl = load_template(cur, yy)
     t, values = build_values(cur, emp_no, yy)
+    # 3쪽 부양가족 명세 — 반복행을 인원수만큼 펼친다
+    tpl = expand_family_rows(tpl, load_family(cur, t["emp_seq"], yy))
 
     filled = set()
     missing = set()
