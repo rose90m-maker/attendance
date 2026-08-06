@@ -124,6 +124,11 @@ DEPT_MAP = {
 # 연차 관리 대상이 아닌 부서 (연차관리 화면 · 대시보드 · ERP 동기화에서 모두 제외)
 LEAVE_EXCLUDE_COMPANIES = ("0007000000000000",)   # 경영기획팀
 
+# 근무보고서 결재분을 근무표기록관리·연차에 반영하지 않는 인원 (2026-08-06)
+# 이 사람들의 근무표기록은 schedule_excel_load.py 가 근무표 엑셀에서만 적재한다.
+# 보고서는 작성·결재까지만 하고 실데이터에는 손대지 않는다 (연습용).
+WR_NO_APPLY_NAMES = ("임동훈", "정민재")
+
 # 연차관리 화면의 신청·추가 잠금.
 #   2026-08-02 에 "동기화 때 덮어써진다"는 이유로 True 로 막았으나,
 #   erp_leave_sync 는 memo='ERP' 인 행만 지우고 화면 신청분은 memo 가 비어 있어
@@ -7758,7 +7763,8 @@ def process_leave_request():
                         ON DUPLICATE KEY UPDATE category='기타', etc_value=%s, deduction=0, skipped=0
                     """, (rpt_id, e_id, e_name, leave_cat, leave_cat))
                     # 이미 결재된 보고서면 schedule_record에도 반영
-                    if rpt_status == '결재':
+                    # (연습용 작성자는 제외 — 근무표 엑셀에서만 적재한다)
+                    if rpt_status == '결재' and e_name not in WR_NO_APPLY_NAMES:
                         cur.execute("SELECT group_name FROM wr_groups WHERE id=%s", (req_group_id,))
                         gn = cur.fetchone()
                         sname = gn[0] if gn else '기타'
@@ -10065,7 +10071,7 @@ def process_wr_request():
                            WHERE work_date=%s AND sheet_name=%s AND source_type='보고서'""",
                         (report_date, sheet_name))
             for (drop_nm,) in cur.fetchall():
-                if drop_nm in agg:
+                if drop_nm in agg or drop_nm in WR_NO_APPLY_NAMES:
                     continue
                 cur.execute("""INSERT INTO schedule_record
                         (emp_name, work_date, basic_h, ot_h, night_h, etc,
@@ -10075,6 +10081,10 @@ def process_wr_request():
                              session.get("user_name", "")))
 
         for uname, a in agg.items():
+            # 연습용 작성자는 근무표기록·연차에 반영하지 않는다.
+            # 이들의 근무표기록은 근무표 엑셀에서만 적재된다 (schedule_excel_load.py)
+            if uname in WR_NO_APPLY_NAMES:
+                continue
             # 원본이면 기존 레코드(원본+수정) 모두 삭제. 수정본은 위에서 이미 정리됨.
             if not is_revision:
                 cur.execute("DELETE FROM schedule_record WHERE emp_name=%s AND work_date=%s AND sheet_name=%s AND source_type IN ('보고서','수정근무보고서')",
