@@ -140,7 +140,7 @@
     </div>
 
     <div style="overflow-x:auto;">
-    <table class="table table-sm table-bordered erp-table" id="erpTbl">
+    <table class="js-sort table table-sm table-bordered erp-table" id="erpTbl">
         <thead class="table-light">
             <tr>
                 <th style="width:36px;">#</th>
@@ -215,5 +215,6 @@ function copyTable(){
     });
 }
 </script>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
 </body>
 </html>

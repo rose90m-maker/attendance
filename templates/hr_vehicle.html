@@ -222,7 +222,7 @@
             <span class="vh-count"><b id="vhShown">{{ owners|length }}</b> / {{ owners|length }}대</span>
         </div>
         <div class="table-responsive scroll">
-            <table class="vh-table">
+            <table class="js-sort vh-table">
                 <thead>
                     <tr>
                         <th style="width:44px">#</th><th style="width:150px">차량번호</th>
@@ -252,7 +252,7 @@
     <div class="panel mb-3">
         <h6>➖ 차량 미등록 <span class="tag">{{ nones|length }}명</span></h6>
         <div class="table-responsive scroll" style="max-height:320px">
-            <table class="vh-table">
+            <table class="js-sort vh-table">
                 <thead><tr><th style="width:44px">#</th><th>이름</th><th>사업부</th><th>부서</th></tr></thead>
                 <tbody>
                 {% for p in nones %}
@@ -297,5 +297,6 @@ function vhFilter() {
     document.getElementById('vhShown').textContent = shown;
 }
 </script>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
 </body>
 </html>

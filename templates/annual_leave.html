@@ -148,7 +148,7 @@
     <div class="emp-section summary-card">
         <h6 class="mb-3 fw-bold">📊 {{ year }}년 연차 현황 요약</h6>
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;" id="summaryTable1">
+            <table class="js-sort table table-sm table-hover mb-0" style="font-size:0.82rem;" id="summaryTable1">
                 <thead class="table-primary">
                     <tr>
                         <th style="width:36px;">#</th>
@@ -188,7 +188,7 @@
     <div class="emp-section summary-card mt-3">
         <h6 class="mb-3 fw-bold">📅 {{ year }}년 월별 사용연차 현황</h6>
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;" id="summaryTable2">
+            <table class="js-sort table table-sm table-hover mb-0" style="font-size:0.82rem;" id="summaryTable2">
                 <thead>
                     <tr style="background: linear-gradient(135deg, #1e40af, #2563eb); color: #fff;">
                         <th style="width:36px;">#</th>
@@ -654,5 +654,6 @@ function moveMonth(delta, empId) {
     }
 })();
 </script>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
 </body>
 </html>

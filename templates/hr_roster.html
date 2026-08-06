@@ -141,7 +141,7 @@
             <span class="rs-count"><b id="rsShown">{{ roster|length }}</b> / {{ roster|length }}명</span>
         </div>
         <div class="table-responsive rs-wrap">
-            <table class="rs-table">
+            <table class="js-sort rs-table">
                 <thead>
                     <tr>
                         <th style="width:44px">#</th><th>이름</th><th>직급</th><th>부서</th>
@@ -218,5 +218,6 @@ function rsFilter() {
     document.getElementById('rsShown').textContent = shown;
 }
 </script>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
 </body>
 </html>

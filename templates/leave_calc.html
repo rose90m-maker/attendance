@@ -159,7 +159,7 @@
   </details>
 
   <div class="lc-wrap border rounded">
-    <table class="table table-sm table-hover mb-0 lc-tbl" id="lcTbl">
+    <table class="js-sort table table-sm table-hover mb-0 lc-tbl" id="lcTbl">
       <thead>
         <tr>
           <th>#</th><th>이름</th><th>부서</th><th>입사일</th><th>구분</th><th class="text-end">근속</th>
@@ -222,5 +222,6 @@ function dlCsv() {
     a.click();
 }
 </script>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
 </body>
 </html>

@@ -274,7 +274,7 @@
             <div class="panel rest-box">
                 <h6>🛌 휴직 <span class="tag">{{ rests|length }}건</span></h6>
                 <div class="fill-scroll">
-                <table class="hc-table">
+                <table class="js-sort hc-table">
                     <thead><tr><th>시작</th><th>종료</th><th>상태</th><th>비고</th></tr></thead>
                     <tbody>
                     {% for r in rests %}
@@ -296,7 +296,7 @@
             <div class="panel cert-box">
                 <h6>📄 증명서 발급 <span class="tag">{{ certs|length }}건</span></h6>
                 <div class="fill-scroll">
-                <table class="hc-table">
+                <table class="js-sort hc-table">
                     <thead><tr><th>발급일</th><th>용도</th><th>제출처</th><th>발급번호</th></tr></thead>
                     <tbody>
                     {% for c in certs %}
@@ -380,5 +380,6 @@ function saveEdit(dd, value) {
     });
 }
 </script>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
 </body>
 </html>

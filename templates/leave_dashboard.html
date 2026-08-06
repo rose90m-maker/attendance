@@ -407,7 +407,7 @@
     <div class="panel mb-3">
         <h6>🏝 남은 연차 많은 순 <span class="tag">상위 15명</span></h6>
         <div class="table-responsive">
-            <table class="lv-table">
+            <table class="js-sort lv-table">
                 <thead>
                     <tr>
                         <th style="width:52px">#</th><th>이름</th><th>부서</th>
@@ -450,5 +450,6 @@
     </div>
 
 </div>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
 </body>
 </html>

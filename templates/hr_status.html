@@ -361,7 +361,7 @@
     <div class="panel mb-3">
         <h6>📄 최근 증명서 발급 <span class="tag">최근 10건</span></h6>
         <div class="table-responsive">
-            <table class="hr-table">
+            <table class="js-sort hr-table">
                 <thead><tr><th style="width:110px">발급일</th><th>이름</th><th>용도</th><th>제출처</th><th>발급번호</th></tr></thead>
                 <tbody>
                 {% for c in certs %}
@@ -444,5 +444,6 @@ document.addEventListener('keydown', function(e) {
 });
 </script>
 
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
 </body>
 </html>

@@ -284,7 +284,7 @@
             </div>
             {% endif %}
             <div class="table-responsive" id="leavePlanWrap">
-                <table class="table table-hover table-sm mb-0" style="font-size:0.88rem;">
+                <table class="js-sort table table-hover table-sm mb-0" style="font-size:0.88rem;">
                     <thead class="table-light">
                         <tr>
                             {% if is_admin %}<th class="text-center" style="width:35px;"><input type="checkbox" onclick="toggleAll(this)"></th>{% endif %}
@@ -429,5 +429,6 @@ function toggleAllEmp(check) {
 }
 
 </script>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
 </body>
 </html>

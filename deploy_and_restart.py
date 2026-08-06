@@ -142,6 +142,9 @@ files = [
     ("app_maria.py", "app_maria.py"),
     ("tbm_bp.py", "tbm_bp.py"),
     ("static/style.css", "static/style.css"),
+    # 표 헤더 클릭 정렬 (연차·인사 화면 공용). docker cp 는 static/*.js 를 glob 으로 잡지만
+    # 여기(NAS staging 전송 목록)에 없으면 애초에 NAS 까지 가지 않는다.
+    ("static/table-sort.js", "static/table-sort.js"),
     ("static/LOGO.GIF", "static/LOGO.GIF"),
     ("static/manifest.json", "static/manifest.json"),
     ("templates/attendance.html", "templates/attendance.html"),
