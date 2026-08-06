@@ -94,6 +94,14 @@ def run(days=3):
             by_idno[str(idno).strip()] = uid
         if cardnum and str(cardnum).strip():
             by_card[str(cardnum).strip().upper()] = uid
+    # 카드를 2장 쓰는 사람 — tuser.cardnum 은 1장만 담아서 보조 카드는 별도 표에 둔다.
+    # (이동천·하재임이 각각 2장을 번갈아 써서 ERP 기록 58건이 붕 떠 있었다)
+    try:
+        cur2.execute("SELECT UPPER(TRIM(card)), e_id FROM tuser_card_alias")
+        for card_a, uid in cur2.fetchall():
+            by_card.setdefault(card_a, uid)
+    except Exception:
+        pass    # 표가 아직 없는 환경(구버전)에서도 죽지 않게
 
     # ── 3) tenter_erp 적재 (중복은 무시) ──
     inserted = 0

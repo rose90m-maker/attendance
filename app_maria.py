@@ -749,6 +749,20 @@ def _init_db():
         row = cur.fetchone()
         if row and row[0].upper() != 'VARCHAR':
             cur.execute("ALTER TABLE work_override MODIFY `value` VARCHAR(20) NOT NULL")
+        # 보조 출입카드 → 사원 매핑.
+        # tuser.cardnum 은 카드 1장만 담는데 실제로 2장을 번갈아 쓰는 사람이 있다.
+        # 등록 안 된 카드로 찍은 날은 ERP 연동에서 사원을 못 찾아 근무표에서 통째로 빠졌다.
+        # (2026-08-06 이동천 37건·하재임 21건) erp_enter_sync.py 가 이 표를 함께 본다.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `tuser_card_alias` (
+                `card` VARCHAR(20) NOT NULL,
+                `e_id` INT NOT NULL,
+                `memo` VARCHAR(100) DEFAULT '',
+                `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`card`),
+                KEY `idx_alias_eid` (`e_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS `annual_leave` (
                 `id` INT AUTO_INCREMENT PRIMARY KEY,

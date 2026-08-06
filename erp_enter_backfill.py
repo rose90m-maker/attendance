@@ -39,6 +39,13 @@ def backfill(frm, to):
             by_idno[str(idno).strip()] = uid
         if cardnum and str(cardnum).strip():
             by_card[str(cardnum).strip().upper()] = uid
+    # 보조 카드(한 사람이 2장 쓰는 경우) — tuser.cardnum 에 안 들어가므로 별도 표에서 읽는다
+    try:
+        c2.execute("SELECT UPPER(TRIM(card)), e_id FROM tuser_card_alias")
+        for card_a, uid in c2.fetchall():
+            by_card.setdefault(card_a, uid)
+    except Exception:
+        pass
 
     inserted = 0
     unmapped = set()
