@@ -5473,12 +5473,15 @@ def schedule_record(fname=None):
         conn = _conn(); cur = conn.cursor()
         month_str = f"{year}{mon:02d}"
         # 수정 우선, 원본 fallback
+        # 아직 오지 않은 날짜는 뺀다 — 보고서에 예정분이 미리 올라오면 실적처럼 보인다.
+        # (2026-08 변기숙 7~10일이 8시간으로 찍혔던 건) 2026-08-05
+        today_str = datetime.now().strftime("%Y%m%d")
         cur.execute("""
             SELECT emp_name, work_date, basic_h, ot_h, night_h, etc, source_type
             FROM schedule_record
-            WHERE work_date LIKE %s
+            WHERE work_date LIKE %s AND work_date <= %s
             ORDER BY emp_name, work_date
-        """, (f"{month_str}%",))
+        """, (f"{month_str}%", today_str))
         raw = cur.fetchall()
         # tuser 매칭 (이름과 사번 부분)
         cur.execute("SELECT id, name, idno, company FROM tuser")
