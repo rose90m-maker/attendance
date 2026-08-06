@@ -154,12 +154,13 @@ def build_certificate(doc_type, emp, purpose="", issue_no="", issue_date=None,
                   f"{COMPANY['ceo']} &nbsp;&nbsp;&nbsp; (인)", ctr_b),
     ]
 
-    # ERP 발급본에는 주민등록번호·영문성명 칸이 있지만 둘 다 채울 수 없어 뺐다
-    # (ResidId 는 암호화, name_en 은 전원 빈값 — 2026-08-06 결정)
+    # ERP 발급본의 주민등록번호 칸은 뺐다 — ResidId 가 암호화되어 채울 수 없다.
+    # 그 자리에 입사일이 올라오고, 영문성명 행의 오른쪽은 빈칸으로 합친다.
     data = [
         [Paragraph(" ".join(title), ttl), "", "", ""],
-        [L("성 &nbsp; &nbsp; 명"), V(emp.get("name", "")),
+        [L("성 &nbsp; &nbsp; 명"), V(f"(한글) &nbsp; {emp.get('name', '')}"),
          L("입 &nbsp;사 &nbsp;일"), V(_fmt_kdate(emp.get("hire_date")))],
+        ["", V(f"(영문) &nbsp; {emp.get('name_en', '') or ''}"), "", ""],
         [L("부 &nbsp; &nbsp; 서"), V(emp.get("dept", "")),
          L("직 &nbsp; &nbsp; 위"), V(emp.get("position", ""))],
         [L("현 주 소"), V(addr), "", ""],
@@ -173,19 +174,21 @@ def build_certificate(doc_type, emp, purpose="", issue_no="", issue_date=None,
     table = Table(
         data,
         colWidths=[2.7 * cm, 6.3 * cm, 2.9 * cm, 5.1 * cm],
-        rowHeights=[2.4 * cm] + [1.15 * cm] * 6 + [10.75 * cm],
+        rowHeights=[2.4 * cm] + [1.15 * cm] * 7 + [9.6 * cm],
     )
     table.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -2), 0.8, colors.black),
         ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
         ("SPAN", (0, 0), (3, 0)),      # 제목
-        ("SPAN", (1, 3), (3, 3)),      # 현주소
-        ("SPAN", (1, 4), (3, 4)),      # 재직기간
-        ("SPAN", (1, 5), (3, 5)),      # 담당업무
-        ("SPAN", (1, 6), (3, 6)),      # 용도
-        ("SPAN", (0, 7), (3, 7)),      # 하단 서명부
+        ("SPAN", (0, 1), (0, 2)),      # 성명 세로병합 (한글/영문)
+        ("SPAN", (2, 2), (3, 2)),      # 영문 행 오른쪽 빈칸
+        ("SPAN", (1, 4), (3, 4)),      # 현주소
+        ("SPAN", (1, 5), (3, 5)),      # 재직기간
+        ("SPAN", (1, 6), (3, 6)),      # 담당업무
+        ("SPAN", (1, 7), (3, 7)),      # 용도
+        ("SPAN", (0, 8), (3, 8)),      # 하단 서명부
         ("VALIGN", (0, 0), (-1, -2), "MIDDLE"),
-        ("VALIGN", (0, 7), (3, 7), "TOP"),
+        ("VALIGN", (0, 8), (3, 8), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
     ]))
