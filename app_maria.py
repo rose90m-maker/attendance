@@ -4170,42 +4170,42 @@ def api_schedule_events():
         login_name = session.get("user_name", "")
         month_str = f"{year}{month:02d}"
         if login_name:
+            # 엑셀 적재분('수정'·'원본')도 함께 본다 — 근무보고서를 쓰지 않는 인원은
+            # 근무표 엑셀에서만 기록이 오기 때문이다 (schedule_excel_load.py)
             cur.execute("""
                 SELECT work_date, basic_h, ot_h, night_h, etc, sheet_name, source_type
                 FROM schedule_record
-                WHERE emp_name=%s AND work_date LIKE %s AND source_type IN ('보고서','수정','수정근무보고서')
-                ORDER BY work_date, FIELD(source_type,'보고서','수정','수정근무보고서')
+                WHERE emp_name=%s AND work_date LIKE %s
+                ORDER BY work_date
             """, (login_name, f"{month_str}%"))
             from collections import OrderedDict
+            # 날짜별로 source_type → 카테고리를 모아 둔다. 배지는 뒤에서 하나만 고른다
             sr_by_date = OrderedDict()
             for sr_date, sr_basic, sr_ot, sr_night, sr_etc, sr_sheet, sr_src in cur.fetchall():
                 wd = str(sr_date)
                 formatted = f"{wd[:4]}-{wd[4:6]}-{wd[6:8]}" if len(wd) == 8 else wd
-                if formatted not in sr_by_date:
-                    sr_by_date[formatted] = {"cats": [], "is_revision": False}
-                if sr_src == "수정근무보고서":
-                    sr_by_date[formatted]["is_revision"] = True
                 # 카테고리 역추출
                 if sr_etc == "스킵":
-                    sr_by_date[formatted]["cats"].append("스킵")
+                    cat = "스킵"
                 elif sr_etc in ("연차", "무급"):
-                    sr_by_date[formatted]["cats"].append(sr_etc)
+                    cat = sr_etc
                 elif sr_etc and sr_etc not in ('0', ''):
                     try:
                         float(sr_etc)
-                        sr_by_date[formatted]["cats"].append("공제")
+                        cat = "공제"
                     except (ValueError, TypeError):
-                        sr_by_date[formatted]["cats"].append(sr_etc)
+                        cat = sr_etc
                 elif sr_basic > 0 and sr_ot > 0 and sr_night > 0:
-                    sr_by_date[formatted]["cats"].append("야간연장")
+                    cat = "야간연장"
                 elif sr_basic > 0 and sr_night > 0:
-                    sr_by_date[formatted]["cats"].append("야간기본")
+                    cat = "야간기본"
                 elif sr_basic > 0 and sr_ot > 0:
-                    sr_by_date[formatted]["cats"].append("주간연장")
+                    cat = "주간연장"
                 elif sr_basic > 0:
-                    sr_by_date[formatted]["cats"].append("주간기본")
+                    cat = "주간기본"
                 else:
-                    sr_by_date[formatted]["cats"].append("근무")
+                    cat = "근무"
+                sr_by_date.setdefault(formatted, {}).setdefault(sr_src, cat)
             _cat_colors = {
                 "주간기본": "#6366f1", "주간연장": "#3b82f6",
                 "야간기본": "#8b5cf6", "야간연장": "#7c3aed",
@@ -4219,14 +4219,25 @@ def api_schedule_events():
                 "공제": "➖", "스킵": "⛔",
             }
             _no_schedule_cats = {"연차", "무급", "스킵"}
-            for formatted, info in sr_by_date.items():
-                base_type = "work_report_revision" if info["is_revision"] else "work_report"
-                for cat in info["cats"]:
-                    icon = _cat_icons.get(cat, "📋")
-                    color = _cat_colors.get(cat, "#6366f1")
-                    title = f"{icon} {cat}"
-                    ev_type = "work_report_leave" if cat in _no_schedule_cats else base_type
-                    events.append({"id": None, "title": title, "date": formatted, "color": color, "created_by": "", "type": ev_type})
+            for formatted, recs in sr_by_date.items():
+                # 하루에 배지 하나. 수정근무보고서 → 근무보고서 → 엑셀 적재 순으로 고른다.
+                # 예전에는 원본과 수정본 배지를 둘 다 띄워서, 근무가 취소된 날
+                # (수정본 0/0/0)에도 원본 배지가 남아 근무한 것처럼 보였다
+                # (2026-08-01 지훈구).
+                cat = picked = None
+                for _src in ("수정근무보고서", "보고서", "수정", "원본"):
+                    if _src in recs:
+                        cat, picked = recs[_src], _src
+                        break
+                if cat is None:
+                    continue
+                is_revision = picked == "수정근무보고서"
+                icon = _cat_icons.get(cat, "📋")
+                color = _cat_colors.get(cat, "#6366f1")
+                ev_type = ("work_report_leave" if cat in _no_schedule_cats
+                           else ("work_report_revision" if is_revision else "work_report"))
+                events.append({"id": None, "title": f"{icon} {cat}", "date": formatted,
+                               "color": color, "created_by": "", "type": ev_type})
 
         conn.close()
 
