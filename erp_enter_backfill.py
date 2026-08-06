@@ -31,9 +31,14 @@ def backfill(frm, to):
 
     ac = att_conn()
     c2 = ac.cursor()
-    c2.execute("SELECT id, name, idno FROM tuser")
-    by_idno = {str(idno).strip(): uid
-               for uid, nm, idno in c2.fetchall() if idno and str(idno).strip()}
+    # 재입사자는 ERP 가 옛 사번('이름2')을 들고 있어 사번 매칭이 실패한다. 카드번호로 보조 매핑.
+    c2.execute("SELECT id, name, idno, cardnum FROM tuser")
+    by_idno, by_card = {}, {}
+    for uid, nm, idno, cardnum in c2.fetchall():
+        if idno and str(idno).strip():
+            by_idno[str(idno).strip()] = uid
+        if cardnum and str(cardnum).strip():
+            by_card[str(cardnum).strip().upper()] = uid
 
     inserted = 0
     unmapped = set()
@@ -44,13 +49,14 @@ def backfill(frm, to):
         if not wdate or not wtime or not card:
             continue
         empid = (empid or "").strip()
-        if not empid:
+        eid = by_idno.get(empid) or by_card.get(card)
+        if eid is None:
             unmapped.add(card)
         c2.execute("""
             INSERT IGNORE INTO tenter_erp (e_date, e_time, e_card, e_mode, e_id, e_name, e_idno)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (wdate, wtime, card, CODE_MAP.get((code or "").strip(), ""),
-              by_idno.get(empid), (empname or "").strip(), empid))
+              eid, (empname or "").strip(), empid))
         inserted += c2.rowcount
     ac.commit()
 
