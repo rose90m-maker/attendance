@@ -9023,6 +9023,18 @@ def update_doc_request():
         file_path = save_name
 
     conn = _conn(); cur = conn.cursor()
+    # 완료 처리인데 담당자가 파일을 올리지 않았으면 증명서를 자동 생성한다.
+    # (ERP 재직증명서 양식은 클라이언트 리포트라 받아올 수 없어 여기서 만든다)
+    auto_msg = ""
+    if not file_name and status == "완료":
+        try:
+            file_name, file_path = _make_cert_file(cur, req_id)
+            if file_name:
+                auto_msg = f"{file_name} 자동 생성"
+        except Exception as e:
+            app.logger.exception("증명서 자동생성 실패")
+            return jsonify(ok=False, msg=f"증명서 생성 실패: {e}")
+
     if file_name:
         cur.execute("""UPDATE doc_requests SET status=%s, reply_memo=%s, handler_name=%s,
                        file_name=%s, file_path=%s WHERE id=%s""",
@@ -9031,7 +9043,51 @@ def update_doc_request():
         cur.execute("""UPDATE doc_requests SET status=%s, reply_memo=%s, handler_name=%s
                        WHERE id=%s""", (status, reply_memo, handler, req_id))
     conn.commit(); conn.close()
-    return jsonify(ok=True)
+    return jsonify(ok=True, msg=auto_msg)
+
+
+def _next_issue_no(cur, ym=None):
+    """증명서 발급번호 — ERP IssueNo 체계를 따라 'YYYYMM' + 4자리 일련"""
+    ym = ym or datetime.now().strftime("%Y%m")
+    cur.execute("""SELECT COUNT(*) FROM doc_requests
+                   WHERE status='완료' AND file_path<>''
+                     AND DATE_FORMAT(updated_at,'%%Y%%m')=%s""", (ym,))
+    n = (cur.fetchone()[0] or 0) + 1
+    return f"{ym}{n:04d}"
+
+
+def _make_cert_file(cur, req_id):
+    """요청 건으로 증명서 docx 를 만들어 uploads/documents 에 저장
+
+    → (원본파일명, 저장파일명). 자동 생성 대상이 아니면 ('', '')
+    """
+    from cert_pdf import AUTO_DOC_TYPES, build_certificate, safe_filename
+
+    cur.execute("""SELECT requester_name, doc_type, purpose FROM doc_requests
+                   WHERE id=%s""", (req_id,))
+    row = cur.fetchone()
+    if not row:
+        raise ValueError("요청을 찾을 수 없습니다")
+    emp_name, doc_type, purpose = row[0], row[1], row[2]
+    if doc_type not in AUTO_DOC_TYPES:
+        return "", ""      # 급여명세서 등은 담당자가 직접 첨부한다
+
+    cur.execute("""SELECT name, name_en, dept, position, hire_date,
+                          address, retire_date
+                   FROM employee_roster WHERE name=%s LIMIT 1""", (emp_name,))
+    er = cur.fetchone()
+    if not er:
+        raise ValueError(f"사원명부에서 '{emp_name}' 을 찾을 수 없습니다")
+    emp = dict(zip(("name", "name_en", "dept", "position",
+                    "hire_date", "address", "retire_date"), er))
+
+    buf = build_certificate(doc_type, emp, purpose=purpose,
+                            issue_no=_next_issue_no(cur))
+    orig = safe_filename(doc_type, emp_name)
+    save_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{req_id}.pdf"
+    with open(os.path.join(DOC_UPLOAD_DIR, save_name), "wb") as f:
+        f.write(buf.getvalue())
+    return orig, save_name
 
 
 @app.route("/get_doc_request/<int:req_id>")

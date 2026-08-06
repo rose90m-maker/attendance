@@ -140,6 +140,7 @@ files = [
     ("Dockerfile", "Dockerfile"),
     ("requirements.txt", "requirements.txt"),
     ("app_maria.py", "app_maria.py"),
+    ("cert_pdf.py", "cert_pdf.py"),
     ("tbm_bp.py", "tbm_bp.py"),
     ("static/style.css", "static/style.css"),
     # 표 헤더 클릭 정렬 (연차·인사 화면 공용). docker cp 는 static/*.js 를 glob 으로 잡지만
@@ -409,6 +410,7 @@ print("[████████████████░░░░]  80% Docke
 import glob as _glob
 docker_files_main = [
     (f"{STAGE_DIR}/app_maria.py",       f"{DOCKER_APP_DIR}/app_maria.py"),
+    (f"{STAGE_DIR}/cert_pdf.py",        f"{DOCKER_APP_DIR}/cert_pdf.py"),
     (f"{STAGE_DIR}/tuya_fire.py",       f"{DOCKER_APP_DIR}/tuya_fire.py"),
     (f"{STAGE_DIR}/mes_bp.py",           f"{DOCKER_APP_DIR}/mes_bp.py"),
     (f"{STAGE_DIR}/edu_bp.py",           f"{DOCKER_APP_DIR}/edu_bp.py"),
@@ -520,7 +522,7 @@ STANDBY_HOST = "192.168.100.5"
 STANDBY_KEY = os.path.expanduser("~/.ssh/id_tams_nas")
 STANDBY_DIR = f"/home/{os.environ['NAS_USER']}/attendance"
 STANDBY_PY = [
-    "app_maria.py", "tuya_fire.py", "mes_bp.py", "edu_bp.py", "hazmat_bp.py",
+    "app_maria.py", "cert_pdf.py", "tuya_fire.py", "mes_bp.py", "edu_bp.py", "hazmat_bp.py",
     "safety_ai_bp.py", "tbm_bp.py", "signage_bp.py", "guard_bp.py",
     "kepco_collector.py", "kepco_analyzer.py", "tbm_app.py",
 ]

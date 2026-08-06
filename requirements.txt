@@ -9,3 +9,4 @@ gunicorn
 paho-mqtt
 pymssql
 Pillow
+reportlab

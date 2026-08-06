@@ -219,6 +219,9 @@
                         <label class="form-label">완성 문서 첨부</label>
                         <input type="file" name="file" id="procFile" class="form-control form-control-sm">
                         <small id="procExistingFile" class="text-muted" style="display:none;"></small>
+                        <small id="procAutoHint" class="text-primary d-block mt-1" style="display:none;">
+                            💡 파일을 올리지 않고 <b>완료</b>로 저장하면 사원명부 정보로 증명서가 자동 생성됩니다.
+                        </small>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -308,6 +311,10 @@ function openProcessModal(id) {
         } else {
             document.getElementById('procExistingFile').style.display = 'none';
         }
+        // 자동 생성이 되는 문서종류일 때만 안내를 띄운다 (cert_docx.AUTO_DOC_TYPES 와 같아야 한다)
+        const autoTypes = ['재직증명서', '경력증명서'];
+        document.getElementById('procAutoHint').style.display =
+            (!r.file_name && autoTypes.includes(r.doc_type)) ? 'block' : 'none';
         processModal.show();
     });
 }
@@ -318,7 +325,10 @@ document.getElementById('processForm').addEventListener('submit', function(e) {
     fetch('/update_doc_request', { method: 'POST', body: fd })
     .then(r => r.json())
     .then(data => {
-        if (data.ok) { processModal.hide(); location.reload(); }
+        if (data.ok) {
+            if (data.msg) alert('✅ ' + data.msg);
+            processModal.hide(); location.reload();
+        }
         else alert(data.msg || '저장 실패');
     });
 });

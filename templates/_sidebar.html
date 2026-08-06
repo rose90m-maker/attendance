@@ -208,9 +208,9 @@
         {% endif %}
         <a href="/welfare" class="side-link{% if active_page == 'welfare' %} active{% endif %}"><span class="sl-icon">🎁</span>복지혜택</a>
         {# 근무보고서는 근태관리(근무표 아래)로 이동 #}
-        {% if is_admin %}
-        <a href="/document_management" class="side-link{% if active_page == 'document_management' %} active{% endif %}"><span class="sl-icon">📄</span>공문서관리</a>
-        {% endif %}
+        {# 공문서관리는 직원도 들어온다. 관리자는 전체, 직원은 본인 요청만 보인다
+           (document_management 가 requester_id 로 걸러 준다) #}
+        <a href="/document_management" class="side-link{% if active_page == 'document_management' %} active{% endif %}"><span class="sl-icon">📄</span>{% if is_admin %}공문서관리{% else %}증명서 신청{% endif %}</a>
     </div>
 
     <!-- MES관리 -->
