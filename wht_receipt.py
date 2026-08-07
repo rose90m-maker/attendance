@@ -673,7 +673,8 @@ def main():
     ap.add_argument("--list", metavar="YY", help="귀속연도 대상자 목록")
     ap.add_argument("--emp", help="사번")
     ap.add_argument("--yy", help="귀속연도 (예: 2024)")
-    ap.add_argument("--out", help="저장 경로 (기본: 원천징수영수증_<이름>_<YY>.html)")
+    ap.add_argument("--out", help="저장 경로 (기본: 원천징수영수증_<이름>_<YY>귀속.pdf)")
+    ap.add_argument("--html", action="store_true", help="PDF 대신 HTML 로 저장")
     args = ap.parse_args()
 
     conn = _conn()
@@ -692,15 +693,22 @@ def main():
             ap.error("--emp 사번 --yy 귀속연도 를 주거나 --list YY 를 쓰세요")
 
         html, t, filled, missing = render(cur, args.emp, args.yy)
-        out = args.out or f"원천징수영수증_{t['name']}_{args.yy}.html"
-        open(out, "w", encoding="utf-8").write(html)
-        print(f"생성: {out}  ({len(html):,}자)")
         print(f"토큰 채움 {len(filled)}개 / 미채움 {len(missing)}개")
-        print("미채움(계산값 — ERP 발급본 대조로 채워 나갈 것):")
-        for k in missing[:40]:
-            print("  ", k)
-        if len(missing) > 40:
-            print(f"   … 외 {len(missing)-40}개")
+
+        if args.html:
+            out = args.out or f"원천징수영수증_{t['name']}_{args.yy}.html"
+            open(out, "w", encoding="utf-8").write(html)
+            print(f"생성: {out}  ({len(html):,}자)")
+        else:
+            # 앱과 같은 경로로 만든다 (PDF, 변환 불가하면 HTML 폴백)
+            data, name = generate(args.emp, args.yy)
+            out = args.out or name
+            with open(out, "wb") as f:
+                f.write(data)
+            pages = len(re.findall(rb"/Type\s*/Page[^s]", data))
+            kind = "PDF" if data[:5] == b"%PDF-" else "HTML"
+            print(f"생성: {out}  ({len(data):,} bytes"
+                  + (f", {pages}쪽" if kind == "PDF" else "") + f", {kind})")
     finally:
         conn.close()
     return 0
