@@ -1560,23 +1560,28 @@ MENU_STRUCTURE = [
 
     # 통합관제는 사이드바 맨 위 그룹이다. 식수관리를 여기로 옮겼다 (2026-08-02).
     ("cat_control", None, "통합관제", []),
+    ("control_center", "cat_control", "관제 대시보드", ["view"]),
     ("meal_mgmt", "cat_control", "식수관리", ["view", "create", "update", "delete"]),
     ("bus_members", "cat_control", "탑승자명단", ["view", "create", "update", "delete"]),
     ("bus_dispatch", "cat_control", "배차조회", ["view", "update"]),
     ("bus_sms", "cat_control", "발송이력", ["view", "create"]),
+    ("guard_log", "cat_control", "경비일지", ["view", "create", "update", "delete"]),
 
     ("cat_attendance", None, "근태관리", []),
     ("attendance_record", "cat_attendance", "근태기록", ["view"]),
     ("weekly52", "cat_attendance", "주52시간", ["view"]),
     ("work_schedule", "cat_attendance", "근무표", ["view", "update"]),
     ("schedule_record", "cat_attendance", "근무표기록관리", ["view", "create", "update", "delete"]),
+    ("source_verify", "cat_attendance", "3소스 검증", ["view"]),
 
     # 연차는 대시보드를 1차로 두고 그 아래 2차로 묶는다
-    ("cat_leave", None, "연차관리 대시보드", ["view"]),
+    ("cat_leave", None, "연차관리", []),
+    ("leave_dashboard", "cat_leave", "연차관리 대시보드", ["view"]),
     ("annual_leave", "cat_leave", "연차관리", ["view", "create"]),
     ("leave_plan", "cat_leave", "연차사용계획 (개발중)", ["view", "create", "update", "delete"]),
     ("leave_calc", "cat_leave", "연차 산정표", ["view"]),
     ("leave_erp", "cat_leave", "휴가 ERP 이관", ["view"]),
+    ("leave_approval", "cat_leave", "휴가 결재", ["view", "update"]),
 
     ("cat_hr", None, "인사관리", []),
     ("hr_status", "cat_hr", "인사현황", ["view"]),
@@ -1590,6 +1595,7 @@ MENU_STRUCTURE = [
     ("mes_realtime", "cat_mes", "실시간카운트", ["view"]),
     ("pacemaker", "cat_mes", "페이스메이커", ["view"]),
     ("mes_report", "cat_mes", "생산리포트", ["view"]),
+    ("mes_env", "cat_mes", "온습도 현황", ["view"]),
     ("mes_devices", "cat_mes", "장치관리", ["view", "create", "update", "delete"]),
 
     ("cat_energy", None, "에너지", []),
@@ -1613,10 +1619,33 @@ MENU_STRUCTURE = [
 
     ("cat_tbm", None, "TBM", []),
     ("tbm_sign", "cat_tbm", "서명 참여", ["view", "create"]),
+    ("tbm_history", "cat_tbm", "내 이력", ["view"]),
     ("tbm_admin", "cat_tbm", "TBM 관리", ["view", "create", "update", "delete"]),
+    ("tbm_templates", "cat_tbm", "템플릿 관리", ["view", "create", "update", "delete"]),
+
+    ("cat_edu", None, "교육관리", []),
+    ("edu_main", "cat_edu", "교육 현황", ["view"]),
+    ("edu_sessions", "cat_edu", "실시 기록", ["view", "create", "update", "delete"]),
+    ("edu_courses", "cat_edu", "과정 관리", ["view", "create", "update", "delete"]),
+
+    ("cat_safety", None, "안전관리", []),
+    ("fire_mgmt", "cat_safety", "소방관리", ["view", "update"]),
+    ("hazmat", "cat_safety", "위험물관리", ["view", "create", "update", "delete"]),
+    ("safety_ai", "cat_safety", "AI 안전진단", ["view", "create", "update", "delete"]),
+    ("hazmat_recipients", "cat_safety", "알림 수신자", ["view", "create", "update", "delete"]),
+    ("hazmat_alerts", "cat_safety", "알림 이력", ["view"]),
 
     ("cat_signage", None, "디지털 사이니지", []),
     ("signage", "cat_signage", "사이니지 관리", ["view", "create", "update", "delete", "publish"]),
+
+    # 시스템 — 사이드바 맨 아래. 지금은 전부 is_admin 으로만 막혀 있다
+    ("cat_system", None, "시스템", []),
+    ("roster_mgmt", "cat_system", "명부관리", ["view", "create", "update", "delete"]),
+    ("log_mgmt", "cat_system", "로그관리", ["view"]),
+    ("user_mgmt", "cat_system", "계정관리", ["view", "create", "update", "delete"]),
+    ("perm_groups", "cat_system", "권한그룹관리", ["view", "create", "update", "delete"]),
+    ("erp_api_test", "cat_system", "ERP API 테스트", ["view"]),
+    ("dev_history", "cat_system", "개발이력", ["view"]),
 ]
 
 # 기존 CSV 권한 → 새 메뉴키 매핑 (마이그레이션용)
