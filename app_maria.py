@@ -2217,7 +2217,7 @@ def change_password():
 
 
 @app.route("/user_management")
-@_admin_required
+@_menu_required("user_mgmt")
 def user_management():
     conn = _conn(); cur = conn.cursor()
     # company, last_login 컬럼 존재 여부 확인 및 추가
@@ -2372,7 +2372,7 @@ def save_user_perm():
 # ════════════════════════════════════════════════════════
 
 @app.route("/perm_groups")
-@_admin_required
+@_menu_required("perm_groups")
 def perm_groups_page():
     """권한 그룹 관리 화면"""
     conn = _conn(); cur = conn.cursor()
@@ -6302,7 +6302,7 @@ def hr_roster():
 
 
 @app.route("/api/hr_employee/<int:emp_seq>/field", methods=["POST"])
-@_admin_required
+@_menu_required("hr_status", "update")
 def api_hr_employee_field(emp_seq):
     """인사카드 기본정보 수정 — 연락처·이메일·차량번호
 
@@ -8939,7 +8939,7 @@ def roster():
 
 
 @app.route("/upload_roster", methods=["POST"])
-@_admin_required
+@_menu_required("roster_mgmt", "create")
 def upload_roster():
     f = request.files.get("file")
     if not f or not f.filename.endswith((".xlsx", ".xls")):
