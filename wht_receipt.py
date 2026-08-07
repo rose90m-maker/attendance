@@ -546,7 +546,9 @@ def render(cur, emp_no, yy):
     d2, d3, _ = build_income_rows(t, inc, beg, end, load_company(cur))
     tpl = _expand(tpl, "Data2", d2)
     tpl = _expand(tpl, "Data3", d3)
-    tpl = _expand(tpl, "Data4", [])          # 비과세·감면 — 해당 없음
+    # 비과세·감면 명세 — 해당 없어도 원본 서식처럼 빈 행을 채운다.
+    # 행이 없으면 아래 '20.계' 행과 열 너비가 어긋난다.
+    tpl = _expand(tpl, "Data4", [{}] * 14)
     tpl = expand_family_rows(tpl, load_family(cur, t["emp_seq"], yy))
 
     filled = set()
