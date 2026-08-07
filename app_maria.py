@@ -1183,6 +1183,17 @@ def _init_db():
                 `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+        # 담당업무 — 재직/경력증명서의 '담당업무' 칸에 찍힌다.
+        # 직원이 신청할 때 적거나, 담당자가 처리하면서 채운다.
+        try:
+            cur.execute("""SELECT COUNT(*) FROM information_schema.COLUMNS
+                           WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='doc_requests'
+                             AND COLUMN_NAME='job_task'""")
+            if not cur.fetchone()[0]:
+                cur.execute("ALTER TABLE doc_requests ADD COLUMN `job_task` "
+                            "VARCHAR(200) NOT NULL DEFAULT ''")
+        except Exception as _e:
+            print(f"[init] doc_requests.job_task 추가 실패 (무시): {_e}")
         # ERP 동기화 로그
         cur.execute("""
             CREATE TABLE IF NOT EXISTS `erp_sync_log` (
@@ -8984,6 +8995,7 @@ def submit_doc_request():
     doc_type = request.json.get("doc_type", "").strip()
     purpose = request.json.get("purpose", "").strip()
     memo = request.json.get("memo", "").strip()
+    job_task = request.json.get("job_task", "").strip()
     if not doc_type:
         return jsonify(ok=False, msg="문서 종류를 선택하세요.")
     user_id = session.get("user_id")
@@ -8992,8 +9004,10 @@ def submit_doc_request():
     row = cur.fetchone()
     req_id = row[0] if row and row[0] else user_id
     req_name = row[1] if row else session.get("user_name", "")
-    cur.execute("""INSERT INTO doc_requests (requester_id, requester_name, doc_type, purpose, memo)
-                   VALUES (%s,%s,%s,%s,%s)""", (req_id, req_name, doc_type, purpose, memo))
+    cur.execute("""INSERT INTO doc_requests
+                   (requester_id, requester_name, doc_type, purpose, memo, job_task)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (req_id, req_name, doc_type, purpose, memo, job_task))
     conn.commit(); conn.close()
     return jsonify(ok=True)
 
@@ -9023,13 +9037,28 @@ def update_doc_request():
         file_path = save_name
 
     conn = _conn(); cur = conn.cursor()
+
+    # 담당자가 처리하면서 고친 용도·담당업무를 먼저 반영한다 (문서에 그대로 찍힌다)
+    job_task = request.form.get("job_task", None)
+    purpose_in = request.form.get("purpose", None)
+    if job_task is not None:
+        cur.execute("UPDATE doc_requests SET job_task=%s WHERE id=%s",
+                    (job_task.strip(), req_id))
+    if purpose_in is not None:
+        cur.execute("UPDATE doc_requests SET purpose=%s WHERE id=%s",
+                    (purpose_in.strip(), req_id))
+    if job_task is not None or purpose_in is not None:
+        conn.commit()
+
     # 완료 처리인데 담당자가 파일을 올리지 않았으면 증명서를 자동 생성한다.
     # (ERP 재직증명서 양식은 클라이언트 리포트라 받아올 수 없어 여기서 만든다)
     auto_msg = ""
     if not file_name and status == "완료":
         try:
             file_name, file_path = _make_cert_file(
-                cur, req_id, tax_year=request.form.get("tax_year", "").strip())
+                cur, req_id,
+                tax_year=request.form.get("tax_year", "").strip(),
+                resid_id=request.form.get("resid_id", "").strip())
             if file_name:
                 auto_msg = f"{file_name} 자동 생성"
         except Exception as e:
@@ -9047,6 +9076,18 @@ def update_doc_request():
     return jsonify(ok=True, msg=auto_msg)
 
 
+def _fmt_resid(v):
+    """주민등록번호 표기 정리 — 숫자 13자리면 '######-#######', 아니면 입력 그대로
+
+    담당자가 하이픈을 넣든 안 넣든 같은 모양으로 찍히게 한다.
+    값은 문서에만 쓰고 어디에도 저장하지 않는다.
+    """
+    s = re.sub(r"\D", "", str(v or ""))
+    if len(s) == 13:
+        return f"{s[:6]}-{s[6:]}"
+    return str(v or "").strip()
+
+
 def _next_issue_no(cur, ym=None):
     """증명서 발급번호 — ERP IssueNo 체계를 따라 'YYYYMM' + 4자리 일련"""
     ym = ym or datetime.now().strftime("%Y%m")
@@ -9057,20 +9098,24 @@ def _next_issue_no(cur, ym=None):
     return f"{ym}{n:04d}"
 
 
-def _make_cert_file(cur, req_id, tax_year=""):
+def _make_cert_file(cur, req_id, tax_year="", resid_id=""):
     """요청 건으로 증명서를 만들어 uploads/documents 에 저장
 
     → (원본파일명, 저장파일명). 자동 생성 대상이 아니면 ('', '')
     tax_year: 원천징수영수증의 귀속연도 (담당자가 처리 모달에서 고른다)
+    resid_id: 주민등록번호. ERP 가 뒷자리를 내주지 않아 담당자가 직접 입력한다
+              (2026-08-07 확인 — DB·복호화뷰·OpenAPI 세 경로 모두 마스킹).
+              저장하지 않고 문서에 찍기만 한다.
     """
+    resid_id = _fmt_resid(resid_id)
     from cert_pdf import AUTO_DOC_TYPES, build_certificate, safe_filename
 
-    cur.execute("""SELECT requester_name, doc_type, purpose FROM doc_requests
-                   WHERE id=%s""", (req_id,))
+    cur.execute("""SELECT requester_name, doc_type, purpose, job_task
+                   FROM doc_requests WHERE id=%s""", (req_id,))
     row = cur.fetchone()
     if not row:
         raise ValueError("요청을 찾을 수 없습니다")
-    emp_name, doc_type, purpose = row[0], row[1], row[2]
+    emp_name, doc_type, purpose, job_task = row[0], row[1], row[2], (row[3] or "")
 
     # 원천징수영수증 — ERP 연말정산 확정분으로 생성 (wht_receipt)
     if doc_type == "원천징수영수증":
@@ -9085,7 +9130,8 @@ def _make_cert_file(cur, req_id, tax_year=""):
         if not years:
             raise ValueError(f"'{emp_name}' 의 연말정산 확정 자료가 ERP 에 없습니다")
         yy = tax_year if tax_year in years else years[0]
-        data, orig = wht_receipt.generate(emp_no, yy)
+        data, orig = wht_receipt.generate(emp_no, yy, resid_id=resid_id,
+                                          task=job_task)
         # PDF 변환이 안 되는 환경이면 generate 가 .html 로 돌려준다 — 확장자를 맞춘다
         ext = os.path.splitext(orig)[1] or ".pdf"
         save_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{req_id}{ext}"
@@ -9106,7 +9152,8 @@ def _make_cert_file(cur, req_id, tax_year=""):
                     "hire_date", "address", "retire_date"), er))
 
     buf = build_certificate(doc_type, emp, purpose=purpose,
-                            issue_no=_next_issue_no(cur))
+                            issue_no=_next_issue_no(cur), resid_id=resid_id,
+                            task=job_task)
     orig = safe_filename(doc_type, emp_name)
     save_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{req_id}.pdf"
     with open(os.path.join(DOC_UPLOAD_DIR, save_name), "wb") as f:
@@ -9144,7 +9191,8 @@ def api_doc_tax_years(req_id):
 def get_doc_request(req_id):
     conn = _conn(); cur = conn.cursor()
     cur.execute("""SELECT id, requester_id, requester_name, doc_type, purpose, memo, status,
-                   handler_name, reply_memo, file_name, file_path, created_at, updated_at
+                   handler_name, reply_memo, file_name, file_path, created_at, updated_at,
+                   job_task
                    FROM doc_requests WHERE id=%s""", (req_id,))
     row = cur.fetchone()
     conn.close()
@@ -9165,6 +9213,7 @@ def get_doc_request(req_id):
         "doc_type": row[3], "purpose": row[4], "memo": row[5], "status": row[6],
         "handler_name": row[7], "reply_memo": row[8], "file_name": row[9],
         "file_path": row[10], "created_at": str(row[11]), "updated_at": str(row[12]),
+        "job_task": row[13] or "",
     })
 
 

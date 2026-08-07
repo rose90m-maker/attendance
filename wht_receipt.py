@@ -424,7 +424,7 @@ def load_company(cur):
 
 
 # ── 토큰 채우기 ──────────────────────────────────────────────────
-def build_values(cur, emp_no, yy):
+def build_values(cur, emp_no, yy, resid_id=""):
     t = find_target(cur, emp_no, yy)
     info = load_empinfo(cur, t["emp_seq"], yy)
     inc = load_income(cur, t["emp_seq"], yy)
@@ -442,7 +442,7 @@ def build_values(cur, emp_no, yy):
         # ── Data1: 관리·소득자·징수의무자 ──
         "Data1_EmpID": t["emp_no"],
         "Data1_EmpNM": t["name"],
-        "Data1_ResidId": "",                      # 담당자 수기 기입 (2026-08-06 합의)
+        "Data1_ResidId": resid_id,                # 담당자가 처리 화면에서 입력
         "Data1_Addr": f"({t['zip']}) {t['addr2'] or t['addr1']}",
         "Data1_CONM": co["name"],
         "Data1_CoOwner": co["owner"],
@@ -565,9 +565,9 @@ def build_values(cur, emp_no, yy):
     return t, v
 
 
-def render(cur, emp_no, yy):
+def render(cur, emp_no, yy, resid_id=""):
     tpl = load_template(cur, yy)
-    t, values = build_values(cur, emp_no, yy)
+    t, values = build_values(cur, emp_no, yy, resid_id)
     # 반복행 펼치기 — 1쪽 근무처/소득명세, 3쪽 부양가족
     inc = load_income(cur, t["emp_seq"], yy)
     beg, end = load_period(cur, t["emp_seq"], yy)
@@ -644,7 +644,8 @@ def html_to_pdf(html):
         os.unlink(src)
 
 
-def generate(emp_no, yy, as_pdf=True):
+def generate(emp_no, yy, as_pdf=True, resid_id="", task=""):
+    # task 는 재직/경력증명서 전용이라 여기선 쓰지 않는다 (호출부 인터페이스 통일용)
     """원천징수영수증 생성 → (bytes, 파일명)
 
     ERP 는 읽기만 한다. 주민등록번호는 암호화라 빈칸으로 나가고
@@ -654,7 +655,7 @@ def generate(emp_no, yy, as_pdf=True):
     conn = _conn()
     cur = conn.cursor()
     try:
-        html, t, filled, missing = render(cur, emp_no, yy)
+        html, t, filled, missing = render(cur, emp_no, yy, resid_id)
     finally:
         conn.close()
     name = re.sub(r"[^\w가-힣]", "", t["name"] or "")

@@ -154,7 +154,7 @@
             <div class="modal-body">
                 <div class="mb-3">
                     <label class="form-label">문서 종류 <span class="text-danger">*</span></label>
-                    <select id="reqDocType" class="form-select">
+                    <select id="reqDocType" class="form-select" onchange="toggleReqJobTask()">
                         {% for dt in doc_types %}
                         <option value="{{ dt }}">{{ dt }}</option>
                         {% endfor %}
@@ -163,6 +163,12 @@
                 <div class="mb-3">
                     <label class="form-label">용도 / 사유</label>
                     <input type="text" id="reqPurpose" class="form-control" placeholder="예: 은행 제출용, 비자 신청용">
+                </div>
+                <div class="mb-3" id="reqJobTaskBox">
+                    <label class="form-label">담당업무</label>
+                    <input type="text" id="reqJobTask" class="form-control"
+                           placeholder="예: 전산 시스템 운영 및 유지보수 (비워두면 담당자가 채웁니다)">
+                    <small class="text-muted">재직·경력증명서의 담당업무 칸에 그대로 들어갑니다.</small>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">비고</label>
@@ -220,6 +226,27 @@
                         <select name="tax_year" id="procTaxYear" class="form-select form-select-sm"></select>
                         <small class="text-muted">ERP 연말정산 확정분 기준으로 생성됩니다.</small>
                     </div>
+                    <div id="procDocFields" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label">주민등록번호</label>
+                            <input type="text" name="resid_id" id="procResidId"
+                                   class="form-control form-control-sm" autocomplete="off"
+                                   placeholder="예: 751003-1379915 (비워두면 빈칸으로 발급)">
+                            <small class="text-muted">ERP가 뒷자리를 제공하지 않아 직접 입력합니다. 문서에만 쓰고 저장하지 않습니다.</small>
+                        </div>
+                        <div class="mb-3" id="procJobTaskBox">
+                            <label class="form-label">담당업무</label>
+                            <input type="text" name="job_task" id="procJobTask"
+                                   class="form-control form-control-sm"
+                                   placeholder="예: 전산 시스템 운영 및 유지보수">
+                        </div>
+                        <div class="mb-3" id="procPurposeBox">
+                            <label class="form-label">용도</label>
+                            <input type="text" name="purpose" id="procPurpose"
+                                   class="form-control form-control-sm"
+                                   placeholder="예: 은행 제출용">
+                        </div>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label">완성 문서 첨부</label>
                         <input type="file" name="file" id="procFile" class="form-control form-control-sm">
@@ -248,17 +275,27 @@ function openRequestModal() {
     document.getElementById('reqDocType').value = '재직증명서';
     document.getElementById('reqPurpose').value = '';
     document.getElementById('reqMemo').value = '';
+    document.getElementById('reqJobTask').value = '';
+    toggleReqJobTask();
     requestModal.show();
+}
+
+// 담당업무 칸은 재직·경력증명서에만 있다
+function toggleReqJobTask() {
+    const t = document.getElementById('reqDocType').value;
+    document.getElementById('reqJobTaskBox').style.display =
+        (t === '재직증명서' || t === '경력증명서') ? 'block' : 'none';
 }
 
 function submitRequest() {
     const doc_type = document.getElementById('reqDocType').value;
     const purpose = document.getElementById('reqPurpose').value.trim();
     const memo = document.getElementById('reqMemo').value.trim();
+    const job_task = document.getElementById('reqJobTask').value.trim();
     fetch('/submit_doc_request', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({doc_type, purpose, memo})
+        body: JSON.stringify({doc_type, purpose, memo, job_task})
     })
     .then(r => r.json())
     .then(data => {
@@ -320,6 +357,17 @@ function openProcessModal(id) {
         const autoTypes = ['재직증명서', '경력증명서', '원천징수영수증'];
         document.getElementById('procAutoHint').style.display =
             (!r.file_name && autoTypes.includes(r.doc_type)) ? 'block' : 'none';
+
+        // 자동 생성 문서는 주민번호·담당업무·용도를 여기서 채운다
+        const autoDoc = autoTypes.includes(r.doc_type);
+        document.getElementById('procDocFields').style.display = autoDoc ? 'block' : 'none';
+        document.getElementById('procResidId').value = '';   // 저장하지 않으므로 매번 비운다
+        document.getElementById('procJobTask').value = r.job_task || '';
+        document.getElementById('procPurpose').value = r.purpose || '';
+        // 원천징수영수증 서식에는 담당업무·용도 칸이 없다 — 입력란도 감춘다
+        const isWht = (r.doc_type === '원천징수영수증');
+        document.getElementById('procJobTaskBox').style.display = isWht ? 'none' : 'block';
+        document.getElementById('procPurposeBox').style.display = isWht ? 'none' : 'block';
 
         // 원천징수영수증은 귀속연도를 골라야 한다 — ERP 확정분만 목록에 나온다
         const yearBox = document.getElementById('procTaxYearBox');
