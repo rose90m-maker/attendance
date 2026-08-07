@@ -1789,9 +1789,10 @@ def _backfill_perm_group_menus():
                 c_ = 1 if "create" in acts else 0
                 u_ = 1 if "update" in acts else 0
                 d_ = 1 if "delete" in acts else 0
-            # 조회전용 그룹은 view만 on (설정/삭제 제외)
+            # 조회전용 그룹은 view만 on (설정/삭제 제외).
+            # 단 시스템 메뉴(계정·권한그룹·로그·ERP테스트 등)는 조회도 주지 않는다.
             elif gname == "조회전용":
-                v = 1 if "view" in acts else 0
+                v = 1 if ("view" in acts and _p != "cat_system") else 0
                 c_ = u_ = d_ = 0
             else:
                 v = c_ = u_ = d_ = 0
