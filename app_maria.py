@@ -74,8 +74,10 @@ def inject_lp_member():
         today_str = today_str.replace(e, k)
     uid = session.get("e_id")
     is_admin = session.get("role") == "admin"
+    # 사이드바가 권한그룹 매트릭스를 따르도록 판정 함수를 넘긴다 (admin 은 전부 True)
+    base = {"today_date_str": today_str, "is_admin": is_admin, "can_menu": _menu_perm}
     if not uid:
-        return {"is_lp_member": False, "today_date_str": today_str, "is_admin": is_admin}
+        return {"is_lp_member": False, **base}
     try:
         conn = _conn(); cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM lp_group_members WHERE user_id=%s", (uid,))
@@ -83,9 +85,9 @@ def inject_lp_member():
         cur.execute("SELECT COUNT(*) FROM lp_group_reviewers WHERE user_id=%s", (uid,))
         c2 = cur.fetchone()[0]
         conn.close()
-        return {"is_lp_member": (c1 + c2) > 0, "today_date_str": today_str, "is_admin": is_admin}
+        return {"is_lp_member": (c1 + c2) > 0, **base}
     except Exception:
-        return {"is_lp_member": False, "today_date_str": today_str, "is_admin": is_admin}
+        return {"is_lp_member": False, **base}
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
@@ -1541,12 +1543,149 @@ def _admin_required(f):
     return decorated
 
 
+# 레거시 CSV 키 ↔ 매트릭스 동등 권한.
+# `_has_perm(csv키)` 호출부 40여 곳을 그대로 두고, 권한그룹 매트릭스에서
+# 아래 (메뉴키, 액션) 중 하나라도 허용이면 같은 권한으로 인정한다.
+# 관리 성격 키는 update/create 로 매핑해 조회전용 그룹이 편집권을 얻지 않게 한다.
+_CSV_MATRIX_EQUIV = {
+    "schedule": [("schedule_record", "update"), ("work_schedule", "update")],
+    "meal": [("meal_mgmt", "update")],
+    "bus": [("bus_members", "view"), ("bus_dispatch", "view"), ("bus_sms", "view")],
+    "leave": [("annual_leave", "create")],
+    "leave_erp": [("leave_erp", "view")],
+    "document": [("document_mgmt", "update")],
+    "work_report": [("work_report", "create")],
+    "guard": [("guard_log", "view")],
+}
+
+
 def _has_perm(perm):
-    """admin은 모든 권한, 일반 사용자는 permissions 필드 확인"""
+    """admin 전부 허용 → 레거시 CSV → 권한그룹 매트릭스 동등권한 순으로 판정.
+
+    CSV 는 더하기만 한다(있으면 통과). 그룹 기반으로 통제하려면 계정관리에서
+    해당 사용자의 CSV 권한을 비우고 그룹만 지정할 것.
+    """
     if session.get("role") == "admin":
         return True
     perms = session.get("permissions", "")
-    return perm in [p.strip() for p in perms.split(",") if p.strip()]
+    if perm in [p.strip() for p in perms.split(",") if p.strip()]:
+        return True
+    # 매트릭스 동등 권한 (그룹 지정 사용자)
+    for mk, act in _CSV_MATRIX_EQUIV.get(perm, []):
+        if _menu_perm(mk, act):
+            return True
+    return False
+
+
+# ── 메뉴키 기반 권한 (권한그룹 매트릭스) ──────────────────────────
+# 2026-08-07: 권한그룹 매트릭스가 DB에만 저장되고 실제 차단에 쓰이지 않던 것을
+# 여기서 연결한다. 판정 원칙:
+#   · admin           → 전부 허용
+#   · 그룹 지정 사용자  → perm_group_permissions 가 정본
+#   · 그룹 미지정 사용자 → 종전 동작 유지(공개 메뉴 + 레거시 CSV 확장)
+#   · user_perm_overrides(allow/deny) 가 최종 우선
+# 그룹 미지정자 154명(2026-08-07 기준)이 기존과 똑같이 동작하는 것이 안전선이다.
+
+# 지금 로그인만으로 열리는 화면들 — 그룹 미지정자의 기본 조회 범위 (종전 동작 보존)
+_PUBLIC_MENUS = {
+    "dashboard", "control_center",
+    "attendance_record", "weekly52", "work_schedule",
+    "leave_dashboard", "annual_leave",
+    "welfare", "document_mgmt",
+    "mes_realtime", "pacemaker", "mes_report", "mes_env",
+    "power_dashboard", "power_history", "power_alerts",
+    "it_request", "survey_my",
+    "tbm_sign", "tbm_history",
+    "edu_main", "fire_mgmt", "hazmat", "safety_ai", "hazmat_alerts",
+}
+
+# 레거시 CSV 키 → 메뉴키 (그룹 미지정자의 CSV 권한을 새 체계로 해석)
+_LEGACY_EXPAND = {
+    "meal": ["meal_mgmt"],
+    "bus": ["bus_members", "bus_dispatch", "bus_sms"],
+    "schedule": ["work_schedule", "schedule_record", "source_verify", "work_report"],
+    "work_report": ["work_report"],
+    "leave": ["annual_leave", "leave_plan", "leave_calc", "leave_erp", "leave_approval"],
+    "leave_erp": ["leave_erp"],
+    "document": ["document_mgmt"],
+    "guard": ["guard_log"],
+}
+
+
+def _load_menu_perms():
+    """현재 사용자의 {menu_key: set(actions)} — 요청당 1회 계산해 g 에 캐시"""
+    from flask import g
+    if hasattr(g, "_menu_perms"):
+        return g._menu_perms
+    allowed = {}
+    uid = session.get("user_id")
+    if uid and session.get("role") != "admin":
+        try:
+            conn = _conn(); cur = conn.cursor()
+            cur.execute("SELECT perm_group_id, IFNULL(permissions,'') FROM app_users WHERE id=%s", (uid,))
+            row = cur.fetchone()
+            gid, csv = (row or (None, ""))
+            if gid:
+                # 그룹 지정 — 매트릭스가 정본
+                cur.execute("""SELECT menu_key, can_view, can_create, can_update, can_delete
+                               FROM perm_group_permissions WHERE group_id=%s""", (gid,))
+                for mk, v, c_, u_, d_ in cur.fetchall():
+                    acts = set()
+                    if v: acts.add("view")
+                    if c_: acts.add("create")
+                    if u_: acts.add("update")
+                    if d_: acts.add("delete")
+                    if acts:
+                        allowed[mk] = acts
+            else:
+                # 그룹 미지정 — 종전 동작: 공개 메뉴 view + CSV 확장(가용 액션 전부)
+                for mk in _PUBLIC_MENUS:
+                    allowed[mk] = {"view"}
+                for key in [p.strip() for p in csv.split(",") if p.strip()]:
+                    for mk in _LEGACY_EXPAND.get(key, []):
+                        acts = next((set(a) for k, _p, _l, a in MENU_STRUCTURE if k == mk), set())
+                        allowed[mk] = allowed.get(mk, set()) | acts
+            # 개인 오버라이드 최종 적용
+            cur.execute("""SELECT menu_key, action, grant_type
+                           FROM user_perm_overrides WHERE user_id=%s""", (uid,))
+            for mk, act, gt in cur.fetchall():
+                if gt == "allow":
+                    allowed.setdefault(mk, set()).add(act)
+                else:
+                    allowed.get(mk, set()).discard(act)
+            conn.close()
+        except Exception as _e:
+            print(f"[menu perm] 계산 실패 (레거시 폴백): {_e}")
+            allowed = None       # 판정 불가 → _menu_perm 이 레거시로 폴백
+    g._menu_perms = allowed
+    return allowed
+
+
+def _menu_perm(menu_key, action="view"):
+    """메뉴키 기반 권한 판정. admin 항상 허용."""
+    if session.get("role") == "admin":
+        return True
+    allowed = _load_menu_perms()
+    if allowed is None:          # 계산 실패 시 안전하게 종전 방식
+        return False
+    return action in allowed.get(menu_key, set())
+
+
+def _menu_required(menu_key, action="view"):
+    """라우트 가드 — 로그인 + 메뉴 권한. admin 은 통과."""
+    from functools import wraps
+
+    def deco(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            if "user_id" not in session:
+                return redirect(url_for("login"))
+            if not _menu_perm(menu_key, action):
+                flash("접근 권한이 없습니다.", "danger")
+                return redirect(url_for("dashboard"))
+            return f(*args, **kwargs)
+        return wrapped
+    return deco
 
 
 # ════════════════════════════════════════════════════════
@@ -2452,11 +2591,8 @@ def api_user_perm_save():
 # ════════════════════════════════════════════════════════
 
 def _survey_can_admin():
-    """관리자이거나 survey_admin 권한(view)이 있으면 True. Phase 6에서 세분화 예정."""
-    if session.get("role") == "admin":
-        return True
-    # 기존 _has_perm 기반 임시 체크 (신 권한 시스템 연동은 권한 체크 전환 후)
-    return False
+    """관리자이거나 권한그룹 매트릭스에서 survey_admin(view)을 받은 사람"""
+    return _menu_perm("survey_admin")
 
 
 @app.route("/surveys")
@@ -5928,7 +6064,7 @@ def welfare():
 
 
 @app.route("/hr_status")
-@_admin_required
+@_menu_required("hr_status")
 def hr_status():
     """인사현황 — hr_*(ERP 동기화 결과)를 집계해 보여준다.
 
@@ -6095,7 +6231,7 @@ def hr_status():
 
 
 @app.route("/hr_roster")
-@_admin_required
+@_menu_required("hr_roster")
 def hr_roster():
     """전체 재직자 명단 — 이름을 누르면 개인 인사카드로 간다.
 
@@ -6218,7 +6354,7 @@ def api_hr_employee_field(emp_seq):
 
 
 @app.route("/hr_vehicle")
-@_admin_required
+@_menu_required("hr_vehicle")
 def hr_vehicle():
     """직원 차량현황 — 누가 어떤 차를 갖고 있나.
 
@@ -6278,7 +6414,7 @@ def hr_vehicle():
 
 
 @app.route("/hr_employee/<int:emp_seq>")
-@_admin_required
+@_menu_required("hr_status")
 def hr_employee(emp_seq):
     """개인 인사카드 — 한 사람의 이력을 한 장으로 본다.
 
@@ -8204,9 +8340,9 @@ def erp_api_test():
     """ERP K-System OpenAPI 호출 테스트 화면.
 
     영림원 [Ksystem API 등록] 에 공개한 호출ID / OpenApi명을 여기서 직접 두드려 본다.
-    운영 로직에 붙이기 전에 규격·응답을 확인하는 용도라 관리자만 연다.
+    운영 로직에 붙이기 전에 규격·응답 확인 용도.
     """
-    if session.get("role") != "admin":
+    if not _menu_perm("erp_api_test"):
         flash("접근 권한이 없습니다.", "danger"); return redirect("/")
     return render_template("erp_api_test.html", active_page="erp_api_test")
 
@@ -8268,7 +8404,7 @@ def api_erp_api_call():
 @app.route("/dev_history")
 @_login_required
 def dev_history():
-    if session.get("role") != "admin":
+    if not _menu_perm("dev_history"):
         flash("접근 권한이 없습니다.", "danger"); return redirect("/")
     import json as _json
     commits = []
@@ -8295,7 +8431,7 @@ def dev_history():
 @app.route("/log_management")
 @_login_required
 def log_management():
-    if session.get("role") != "admin":
+    if not _menu_perm("log_mgmt"):
         flash("접근 권한이 없습니다.", "danger")
         return redirect(url_for("dashboard"))
     conn = _conn(); cur = conn.cursor()
@@ -8729,7 +8865,7 @@ def api_fire_heartbeat():
 @app.route("/roster")
 @_login_required
 def roster():
-    if session.get("role") != "admin":
+    if not _menu_perm("roster_mgmt"):
         flash("접근 권한이 없습니다.", "danger")
         return redirect(url_for("dashboard"))
     search = request.args.get("search", "").strip()
@@ -11740,7 +11876,7 @@ def power_alerts():
 
 @app.route("/power_settings", methods=["GET", "POST"])
 @_login_required
-@_admin_required
+@_menu_required("power_settings")
 def power_settings():
     msg = None
     cfg = {"cust_no": KEPCO_CUST, "contract_kw": 500, "warn_pct": 90.0, "danger_pct": 95.0}
@@ -12497,8 +12633,9 @@ ENV_CATEGORIES = [
 
 @app.route("/esg/environment")
 def esg_environment():
-    guard = _require_admin()
-    if guard: return guard
+    if not _menu_perm("esg_environment"):
+        guard = _require_admin()
+        if guard: return guard
 
     from datetime import datetime as _dt, date as _date
     today = _date.today()
@@ -12726,9 +12863,10 @@ def it_request_page():
 
 @app.route("/it/manage")
 def it_manage_page():
-    """관리자: 전체 요청 관리"""
-    guard = _require_admin()
-    if guard: return guard
+    """요청 관리 — admin 또는 권한그룹에서 it_manage 를 받은 사람"""
+    if not _menu_perm("it_manage"):
+        guard = _require_admin()
+        if guard: return guard
 
     status_filter = request.args.get("status", "all")
     try:
@@ -12892,8 +13030,9 @@ def it_api_delete_request(rid):
 
 @app.route("/esg/social")
 def esg_social():
-    guard = _require_admin()
-    if guard: return guard
+    if not _menu_perm("esg_social"):
+        guard = _require_admin()
+        if guard: return guard
     return render_template(
         "esg_placeholder.html",
         active_page="esg_social",
@@ -12912,8 +13051,9 @@ def esg_social():
 
 @app.route("/esg/governance")
 def esg_governance():
-    guard = _require_admin()
-    if guard: return guard
+    if not _menu_perm("esg_governance"):
+        guard = _require_admin()
+        if guard: return guard
     return render_template(
         "esg_placeholder.html",
         active_page="esg_governance",

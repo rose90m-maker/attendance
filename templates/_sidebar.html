@@ -135,11 +135,11 @@
         <span class="ng-icon">🖥️</span><span class="ng-label">통합관제</span><span class="ng-arrow">▸</span>
     </button>
     <div class="nav-group-items" data-group="grp-control">
-        <a href="/control_center" class="side-link{% if active_page == 'control_center' %} active{% endif %}"><span class="sl-icon">📡</span>관제 대시보드</a>
-        {% if is_admin or 'meal' in session.get('permissions','') %}
+        {% if can_menu('control_center') %}<a href="/control_center" class="side-link{% if active_page == 'control_center' %} active{% endif %}"><span class="sl-icon">📡</span>관제 대시보드</a>{% endif %}
+        {% if can_menu('meal_mgmt') %}
         <a href="/meal_management" class="side-link{% if active_page == 'meal_management' %} active{% endif %}"><span class="sl-icon">🍽️</span>식수관리</a>
         {% endif %}
-        {% if is_admin or 'bus' in session.get('permissions','') %}
+        {% if can_menu('bus_members') or can_menu('bus_dispatch') or can_menu('bus_sms') %}
         <button class="nav-sub-toggle" data-sub="sub-bus">
             <span class="sl-icon">🚌</span><span class="ns-label">배차관리</span><span class="ns-arrow">▸</span>
         </button>
@@ -149,7 +149,7 @@
             <a href="/bus_sms_log" class="side-link{% if active_page == 'bus_sms_log' %} active{% endif %}"><span class="sl-icon">💬</span>발송이력</a>
         </div>
         {% endif %}
-        {% if is_admin or 'guard' in session.get('permissions','') %}
+        {% if can_menu('guard_log') %}
         <a href="/guard" class="side-link{% if active_page == 'guard' %} active{% endif %}"><span class="sl-icon">🌙</span>경비일지</a>
         {% endif %}
     </div>
@@ -161,13 +161,13 @@
         <span class="ng-icon">🕒</span><span class="ng-label">근태관리</span><span class="ng-arrow">▸</span>
     </button>
     <div class="nav-group-items" data-group="grp-attendance">
-        <a href="/attendance" class="side-link{% if active_page == 'attendance' %} active{% endif %}"><span class="sl-icon">📝</span>근태기록</a>
-        <a href="/weekly52" class="side-link{% if active_page == 'weekly52' %} active{% endif %}"><span class="sl-icon">⏱</span>주52시간</a>
-        <a href="/work_schedule" class="side-link{% if active_page == 'work_schedule' %} active{% endif %}"><span class="sl-icon">📊</span>근무표</a>
-        {% if is_admin or 'work_report' in session.get('permissions','') or 'schedule' in session.get('permissions','') or session.get('is_wr_member') %}
+        {% if can_menu('attendance_record') %}<a href="/attendance" class="side-link{% if active_page == 'attendance' %} active{% endif %}"><span class="sl-icon">📝</span>근태기록</a>{% endif %}
+        {% if can_menu('weekly52') %}<a href="/weekly52" class="side-link{% if active_page == 'weekly52' %} active{% endif %}"><span class="sl-icon">⏱</span>주52시간</a>{% endif %}
+        {% if can_menu('work_schedule') %}<a href="/work_schedule" class="side-link{% if active_page == 'work_schedule' %} active{% endif %}"><span class="sl-icon">📊</span>근무표</a>{% endif %}
+        {% if can_menu('work_report') or session.get('is_wr_member') %}
         <a href="/work_report" class="side-link{% if active_page == 'work_report' %} active{% endif %}"><span class="sl-icon">📋</span>근무보고서</a>
         {% endif %}
-        {% if is_admin or 'schedule' in session.get('permissions','') %}
+        {% if can_menu('schedule_record') %}
         <a href="/schedule_record" class="side-link{% if active_page == 'schedule_record' %} active{% endif %}"><span class="sl-icon">📑</span>근무표기록관리</a>
         <a href="/source_verify" class="side-link{% if active_page == 'source_verify' %} active{% endif %}"><span class="sl-icon">🔎</span>3소스 검증</a>
         {% endif %}
@@ -181,11 +181,11 @@
     </a>
     <div class="nav-group-items" data-group="grp-leave">
         <a href="/annual_leave" class="side-link{% if active_page == 'annual_leave' %} active{% endif %}"><span class="sl-icon">📋</span>연차관리</a>
-        {% if is_admin or 'leave' in session.get('permissions','') or is_lp_member %}
+        {% if can_menu('leave_plan') or is_lp_member %}
         {# 연차사용계획은 아직 손보는 중이라 눌리지 않게 해 뒀다 (2026-08-02) #}
         <span class="side-link side-link-off" title="아직 만드는 중입니다"><span class="sl-icon">🚧</span>연차사용계획 <em>(개발중)</em></span>
         {% endif %}
-        {% if is_admin or 'leave' in session.get('permissions','') %}
+        {% if can_menu('leave_calc') %}
         <a href="/leave_calc" class="side-link{% if active_page == 'leave_calc' %} active{% endif %}"><span class="sl-icon">🧮</span>연차 산정표</a>
         <a href="/leave_erp" class="side-link{% if active_page == 'leave_erp' %} active{% endif %}"><span class="sl-icon">🔗</span>휴가 ERP 이관</a>
         {% endif %}
@@ -196,7 +196,7 @@
         <span class="ng-icon">👥</span><span class="ng-label">인사관리</span><span class="ng-arrow">▸</span>
     </button>
     <div class="nav-group-items" data-group="grp-hr">
-        {% if is_admin %}
+        {% if can_menu('hr_status') %}
         <a href="/hr_status" data-sub="sub-hr"
            class="nav-sub-toggle nav-sub-link{% if active_page == 'hr_status' %} active{% endif %}">
             <span class="sl-icon">👤</span><span class="ns-label">인사현황</span><span class="ns-arrow">▸</span>
@@ -206,7 +206,7 @@
         </div>
         <a href="/hr_vehicle" class="side-link{% if active_page == 'hr_vehicle' %} active{% endif %}"><span class="sl-icon">🚗</span>차량현황</a>
         {% endif %}
-        <a href="/welfare" class="side-link{% if active_page == 'welfare' %} active{% endif %}"><span class="sl-icon">🎁</span>복지혜택</a>
+        {% if can_menu('welfare') %}<a href="/welfare" class="side-link{% if active_page == 'welfare' %} active{% endif %}"><span class="sl-icon">🎁</span>복지혜택</a>{% endif %}
         {# 근무보고서는 근태관리(근무표 아래)로 이동 #}
         {# 공문서관리는 직원도 들어온다. 관리자는 전체, 직원은 본인 요청만 보인다
            (document_management 가 requester_id 로 걸러 준다) #}
@@ -222,7 +222,7 @@
         <a href="/pacemaker"    class="side-link{% if active_page == 'pacemaker'    %} active{% endif %}"><span class="sl-icon">🎯</span>페이스메이커</a>
         <a href="/mes/report"   class="side-link{% if active_page == 'mes_report'   %} active{% endif %}"><span class="sl-icon">📊</span>생산 리포트</a>
         <a href="/mes/env/dashboard" class="side-link{% if active_page == 'mes_env' %} active{% endif %}"><span class="sl-icon">🌡️</span>온습도 현황</a>
-        {% if is_admin %}
+        {% if can_menu('mes_devices') %}
         <a href="/mes/devices"  class="side-link{% if active_page == 'mes_devices'  %} active{% endif %}"><span class="sl-icon">⚙️</span>장치 관리</a>
         {% endif %}
     </div>
@@ -235,7 +235,7 @@
         <a href="/power_dashboard" class="side-link{% if active_page == 'power_dashboard' %} active{% endif %}"><span class="sl-icon">⚡</span>전력사용현황</a>
         <a href="/power_history"   class="side-link{% if active_page == 'power_history'   %} active{% endif %}"><span class="sl-icon">📊</span>기간별 조회</a>
         <a href="/power_alerts"    class="side-link{% if active_page == 'power_alerts'    %} active{% endif %}"><span class="sl-icon">🔔</span>경보 이력</a>
-        {% if is_admin %}
+        {% if can_menu('power_settings') %}
         <a href="/power_settings"  class="side-link{% if active_page == 'power_settings'  %} active{% endif %}"><span class="sl-icon">⚙️</span>전력 설정</a>
         {% endif %}
     </div>
@@ -246,7 +246,7 @@
     </button>
     <div class="nav-group-items" data-group="grp-it">
         <a href="/it/request" class="side-link{% if active_page == 'it_request' %} active{% endif %}"><span class="sl-icon">📝</span>요청하기</a>
-        {% if is_admin %}
+        {% if can_menu('it_manage') %}
         <a href="/it/manage"  class="side-link{% if active_page == 'it_manage'  %} active{% endif %}"><span class="sl-icon">🔧</span>요청 관리</a>
         {% endif %}
     </div>
@@ -258,7 +258,7 @@
     <div class="nav-group-items" data-group="grp-tbm">
         <a href="/tbm/sign" class="side-link{% if active_page == 'tbm_sign' %} active{% endif %}"><span class="sl-icon">✍️</span>서명 참여</a>
         <a href="/tbm/sign/history" class="side-link{% if active_page == 'tbm_history' %} active{% endif %}"><span class="sl-icon">📋</span>내 이력</a>
-        {% if is_admin %}
+        {% if can_menu('tbm_admin') %}
         <a href="/tbm/admin" class="side-link{% if active_page == 'tbm_admin' %} active{% endif %}"><span class="sl-icon">⚙️</span>TBM 관리</a>
         <a href="/tbm/admin/templates" class="side-link{% if active_page == 'tbm_tmpl' %} active{% endif %}"><span class="sl-icon">📑</span>템플릿 관리</a>
         {% endif %}
@@ -270,7 +270,7 @@
     </button>
     <div class="nav-group-items" data-group="grp-edu">
         <a href="/education" class="side-link{% if active_page == 'education' %} active{% endif %}"><span class="sl-icon">📊</span>교육 현황</a>
-        {% if is_admin %}
+        {% if can_menu('edu_sessions') %}
         <a href="/education/sessions" class="side-link{% if active_page == 'edu_sessions' %} active{% endif %}"><span class="sl-icon">📋</span>실시 기록</a>
         <a href="/education/courses" class="side-link{% if active_page == 'edu_courses' %} active{% endif %}"><span class="sl-icon">📚</span>과정 관리</a>
         {% endif %}
@@ -284,7 +284,7 @@
         <a href="/fire_management" class="side-link{% if active_page == 'fire_management' %} active{% endif %}"><span class="sl-icon">🚨</span>소방관리</a>
         <a href="/hazmat" class="side-link{% if active_page == 'hazmat' %} active{% endif %}"><span class="sl-icon">🧨</span>위험물관리</a>
         <a href="/safety_ai" class="side-link{% if active_page == 'safety_ai' %} active{% endif %}"><span class="sl-icon">🤖</span>AI 안전진단</a>
-        {% if session.get('role') == 'admin' %}
+        {% if can_menu('hazmat_recipients') %}
         <a href="/hazmat/recipients" class="side-link{% if active_page == 'hazmat_recipients' %} active{% endif %}"><span class="sl-icon">🔔</span>알림 수신자</a>
         <a href="/hazmat/alerts" class="side-link{% if active_page == 'hazmat_alerts' %} active{% endif %}"><span class="sl-icon">📋</span>알림 이력</a>
         {% endif %}
@@ -296,13 +296,13 @@
     </button>
     <div class="nav-group-items" data-group="grp-survey">
         <a href="/my/surveys" class="side-link{% if active_page == 'survey_my' %} active{% endif %}"><span class="sl-icon">📋</span>내 설문</a>
-        {% if is_admin %}
+        {% if can_menu('survey_admin') %}
         <a href="/surveys" class="side-link{% if active_page == 'survey_admin' %} active{% endif %}"><span class="sl-icon">⚙️</span>설문 관리</a>
         {% endif %}
     </div>
 
-    {% if is_admin %}
-    <!-- ESG 경영 (관리자 전용) -->
+    {% if can_menu('esg_environment') or can_menu('esg_social') or can_menu('esg_governance') %}
+    <!-- ESG 경영 -->
     <button class="nav-group-toggle" data-group="grp-esg">
         <span class="ng-icon">🌱</span><span class="ng-label">ESG 경영</span><span class="ng-arrow">▸</span>
     </button>
@@ -311,7 +311,9 @@
         <a href="/esg/social"      class="side-link{% if active_page == 'esg_social'      %} active{% endif %}"><span class="sl-icon">🤝</span>사회 (S)</a>
         <a href="/esg/governance"  class="side-link{% if active_page == 'esg_governance'  %} active{% endif %}"><span class="sl-icon">🏛</span>지배구조 (G)</a>
     </div>
+    {% endif %}
 
+    {% if can_menu('signage') %}
     <!-- 디지털 사이니지 -->
     <button class="nav-group-toggle" data-group="grp-signage">
         <span class="ng-icon">📺</span><span class="ng-label">디지털 사이니지</span><span class="ng-arrow">▸</span>
@@ -334,18 +336,20 @@
         <a href="/signage/settings"  class="side-link{% if active_page == 'signage_settings' %} active{% endif %}"><span class="sl-icon">⚙️</span>설정</a>
         {% endif %}
     </div>
+    {% endif %}
 
+    {% if can_menu('roster_mgmt') or can_menu('log_mgmt') or can_menu('user_mgmt') or can_menu('perm_groups') or can_menu('erp_api_test') or can_menu('dev_history') %}
     <!-- 시스템 -->
     <button class="nav-group-toggle" data-group="grp-system">
         <span class="ng-icon">🛠</span><span class="ng-label">시스템</span><span class="ng-arrow">▸</span>
     </button>
     <div class="nav-group-items" data-group="grp-system">
-        <a href="/roster" class="side-link{% if active_page == 'roster' %} active{% endif %}"><span class="sl-icon">📂</span>명부관리</a>
-        <a href="/log_management" class="side-link{% if active_page == 'log_management' %} active{% endif %}"><span class="sl-icon">📋</span>로그관리</a>
-        <a href="/user_management" class="side-link{% if active_page == 'user_management' %} active{% endif %}"><span class="sl-icon">⚙️</span>계정관리</a>
-        <a href="/perm_groups" class="side-link{% if active_page == 'perm_groups' %} active{% endif %}"><span class="sl-icon">🔐</span>권한그룹관리</a>
-        <a href="/erp_api_test" class="side-link{% if active_page == 'erp_api_test' %} active{% endif %}"><span class="sl-icon">🔌</span>ERP API 테스트</a>
-        <a href="/dev_history" class="side-link{% if active_page == 'dev_history' %} active{% endif %}"><span class="sl-icon">📜</span>개발이력</a>
+        {% if can_menu('roster_mgmt') %}<a href="/roster" class="side-link{% if active_page == 'roster' %} active{% endif %}"><span class="sl-icon">📂</span>명부관리</a>{% endif %}
+        {% if can_menu('log_mgmt') %}<a href="/log_management" class="side-link{% if active_page == 'log_management' %} active{% endif %}"><span class="sl-icon">📋</span>로그관리</a>{% endif %}
+        {% if can_menu('user_mgmt') %}<a href="/user_management" class="side-link{% if active_page == 'user_management' %} active{% endif %}"><span class="sl-icon">⚙️</span>계정관리</a>{% endif %}
+        {% if can_menu('perm_groups') %}<a href="/perm_groups" class="side-link{% if active_page == 'perm_groups' %} active{% endif %}"><span class="sl-icon">🔐</span>권한그룹관리</a>{% endif %}
+        {% if can_menu('erp_api_test') %}<a href="/erp_api_test" class="side-link{% if active_page == 'erp_api_test' %} active{% endif %}"><span class="sl-icon">🔌</span>ERP API 테스트</a>{% endif %}
+        {% if can_menu('dev_history') %}<a href="/dev_history" class="side-link{% if active_page == 'dev_history' %} active{% endif %}"><span class="sl-icon">📜</span>개발이력</a>{% endif %}
     </div>
     {% endif %}
 </aside>
