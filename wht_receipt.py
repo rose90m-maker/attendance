@@ -80,11 +80,12 @@ def load_template(cur, yy):
         raise ValueError(f"{yy} 귀속 서식 템플릿이 ERP에 없습니다")
     head, style, p1, p2, p3, det, foot = (x or "" for x in r)
     # 쪽 나누기 — 템플릿에는 없어서 붙인다 (.pagewrap 이 1쪽/2쪽/3쪽 컨테이너)
+    # 쪽 나누기 — 두 번째 pagewrap 부터 '앞에서' 자른다.
+    # page-break-after 를 쓰면 마지막 쪽 뒤에도 잘려 빈 페이지가 생긴다.
     style += """
 <style>
-  @page { size: A4; margin: 8mm 6mm; }
-  .pagewrap { page-break-after: always; break-after: page; }
-  .pagewrap:last-of-type { page-break-after: auto; break-after: auto; }
+  @page { size: A4; margin: 6mm 5mm; }
+  .pagewrap + .pagewrap { page-break-before: always; break-before: page; }
 </style>"""
     return head + style + p1 + p2 + p3 + foot   # Detail(부속명세)는 2차에서
 
