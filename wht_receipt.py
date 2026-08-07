@@ -309,6 +309,30 @@ def _expand(tpl, marker, rows_values):
     return tpl[:b] + out + tpl[e:]
 
 
+def _insert_section2_label(tpl, span):
+    """Ⅱ 비과세소득·감면소득명세 영역 첫 행에 세로 레이블 셀을 끼운다.
+
+    Ⅰ영역(rowspan=13 '근무처별소득명세')과 열 수를 맞추기 위한 것.
+    없으면 Ⅱ영역 전체가 한 칸씩 왼쪽으로 밀린다.
+    """
+    marker = "Data3_Sum END-->"
+    i = tpl.find(marker)
+    if i < 0:
+        return tpl
+    i += len(marker)
+    j = tpl.find("<tr", i)
+    if j < 0:
+        return tpl
+    k = tpl.find(">", j)
+    if k < 0:
+        return tpl
+    cell = (f'<td rowspan="{span}" class="labelVertical" '
+            f'style="writing-mode:vertical-rl; text-align:center; '
+            f'font-size:10px; letter-spacing:1px;">'
+            f'Ⅱ비과세소득 및 감면소득명세</td>')
+    return tpl[:k + 1] + cell + tpl[k + 1:]
+
+
 def build_income_rows(t, inc, beg, end, co):
     """1쪽 '근무처별 소득명세' — 원본 서식의 행 구성 그대로
 
@@ -550,9 +574,13 @@ def render(cur, emp_no, yy):
     d2, d3, _ = build_income_rows(t, inc, beg, end, load_company(cur))
     tpl = _expand(tpl, "Data2", d2)
     tpl = _expand(tpl, "Data3", d3)
-    # 비과세·감면 명세 — 해당 없어도 원본 서식처럼 빈 행을 채운다.
-    # 행이 없으면 아래 '20.계' 행과 열 너비가 어긋난다.
-    tpl = _expand(tpl, "Data4", [{}] * 14)
+    # 비과세·감면 명세(Ⅱ) — 해당 없어도 원본처럼 빈 행을 채운다.
+    # ⚠️ Ⅰ영역은 왼쪽에 세로 레이블 셀(rowspan=13)이 있어 행마다 28열인데
+    #    Data4_repeat 에는 그 셀이 없어 27열이다. 그대로 두면 표가 한 칸씩 밀린다.
+    #    → 첫 행에 레이블 셀을 끼워 넣는다 (빈행 + 20 + 20-1 을 덮는다).
+    BLANK = 14
+    tpl = _expand(tpl, "Data4", [{}] * BLANK)
+    tpl = _insert_section2_label(tpl, BLANK + 2)
     tpl = expand_family_rows(tpl, load_family(cur, t["emp_seq"], yy))
 
     filled = set()
