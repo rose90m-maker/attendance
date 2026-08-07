@@ -9086,7 +9086,9 @@ def _make_cert_file(cur, req_id, tax_year=""):
             raise ValueError(f"'{emp_name}' 의 연말정산 확정 자료가 ERP 에 없습니다")
         yy = tax_year if tax_year in years else years[0]
         data, orig = wht_receipt.generate(emp_no, yy)
-        save_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{req_id}.html"
+        # PDF 변환이 안 되는 환경이면 generate 가 .html 로 돌려준다 — 확장자를 맞춘다
+        ext = os.path.splitext(orig)[1] or ".pdf"
+        save_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{req_id}{ext}"
         with open(os.path.join(DOC_UPLOAD_DIR, save_name), "wb") as f:
             f.write(data)
         return orig, save_name
