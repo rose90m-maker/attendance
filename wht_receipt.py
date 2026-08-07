@@ -35,7 +35,11 @@ try:
 except ImportError:
     pass
 
-TOKEN_RE = re.compile(r"YLW#_[A-Za-z0-9_]+")
+# 템플릿 토큰 — 대부분 'YLW#_' 지만 직인만 'Ylw#_' 로 섞여 있다
+TOKEN_RE = re.compile(r"Y[Ll][Ww]#_[A-Za-z0-9_]+")
+
+# 체크 표기는 CSS 클래스로 그린다 (.alterCheck.checked → 글자에 동그라미)
+CHECK = "checked"
 
 
 def _conn():
@@ -75,6 +79,13 @@ def load_template(cur, yy):
     if not r:
         raise ValueError(f"{yy} 귀속 서식 템플릿이 ERP에 없습니다")
     head, style, p1, p2, p3, det, foot = (x or "" for x in r)
+    # 쪽 나누기 — 템플릿에는 없어서 붙인다 (.pagewrap 이 1쪽/2쪽/3쪽 컨테이너)
+    style += """
+<style>
+  @page { size: A4; margin: 8mm 6mm; }
+  .pagewrap { page-break-after: always; break-after: page; }
+  .pagewrap:last-of-type { page-break-after: auto; break-after: auto; }
+</style>"""
     return head + style + p1 + p2 + p3 + foot   # Detail(부속명세)는 2차에서
 
 def find_target(cur, emp_no, yy):
@@ -278,6 +289,57 @@ REPEAT_BEGIN = "<!-- Data7_repeat Begin-->"
 REPEAT_END = "Data7_repeat END-->"
 
 
+def _expand(tpl, marker, rows_values):
+    """`<!-- {marker}_repeat Begin-->` ~ `{marker}_repeat END-->` 블록을
+    rows_values(행별 토큰 dict 목록) 만큼 복제해 채운다."""
+    b = tpl.find(f"<!-- {marker}_repeat Begin-->")
+    e = tpl.find(f"{marker}_repeat END-->")
+    if b < 0 or e < 0:
+        return tpl
+    e += len(f"{marker}_repeat END-->")
+    row_tpl = tpl[b:e]
+    out = "".join(
+        TOKEN_RE.sub(lambda m: str(v.get(m.group(0)[5:], "")), row_tpl)
+        for v in rows_values
+    )
+    return tpl[:b] + out + tpl[e:]
+
+
+def build_income_rows(t, inc, beg, end, co):
+    """1쪽 '근무처별 소득명세' — 원본 서식의 행 구성 그대로
+
+    Data2 = 근무처 정보(⑨~⑫), Data3 = 소득 항목(⑬~⑮-4)
+    열 = 주(현) / 종(전)×3 / 합계
+    """
+    def row2(title, cur_val):
+        return {"Data2_Title": title, "Data2_cur": cur_val,
+                "Data2_pre1": "", "Data2_pre2": "", "Data2_pre3": ""}
+
+    def row3(title, amt):
+        v = _num(amt)
+        return {"Data3_Title": title, "Data3_Cur": v,
+                "Data3_pre1": "", "Data3_pre2": "", "Data3_pre3": "",
+                "Data3_TotAmt": v}
+
+    pay, bonus = inc.get("급여", 0), inc.get("상여", 0)
+    d2 = [
+        row2("⑨ 근무처명", co["name"]),
+        row2("⑩ 사업자등록번호", co["biz_no"]),
+        row2("⑪ 근무기간", f"{_date8(beg, '.')} ~ {_date8(end, '.')}"),
+        row2("⑫ 감면기간", ""),
+    ]
+    d3 = [
+        row3("⑬ 급여", pay),
+        row3("⑭ 상여", bonus),
+        row3("⑮ 인정상여", 0),
+        row3("⑮-1 주식매수선택권 행사이익", 0),
+        row3("⑮-2 우리사주조합인출금", 0),
+        row3("⑮-3 임원 퇴직소득금액 한도초과액", 0),
+        row3("⑮-4 직무발명보상금", 0),
+    ]
+    return d2, d3, pay + bonus
+
+
 def expand_family_rows(tpl, fam):
     """Page3 의 Data7_repeat 블록을 부양가족 수만큼 복제해 채운다"""
     b = tpl.find(REPEAT_BEGIN)
@@ -309,6 +371,20 @@ def expand_family_rows(tpl, fam):
     return tpl[:b] + rows + tpl[e:]
 
 
+def _seal_b64():
+    """직인 PNG → base64 (증명서와 같은 파일을 쓴다). 없으면 빈 문자열"""
+    import base64
+    path = os.environ.get(
+        "CERT_STAMP_PATH",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                     "static", "cert_stamp.png"))
+    try:
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except OSError:
+        return ""
+
+
 def load_company(cur):
     cur.execute("""SELECT CompanyName, Owner, CompanyNo FROM _TCACompany
                    WHERE CompanySeq=1""")
@@ -327,9 +403,9 @@ def build_values(cur, emp_no, yy):
     beg, end = load_period(cur, t["emp_seq"], yy)
     co = load_company(cur)
 
-    def flag(field, val, n):
-        """체크 표기 — 값이 n 이면 O 표시 (alterCheck 방식)"""
-        return "O" if (info.get(field, "") == str(val)) else ""
+    def flag(field, val, n=None):
+        """체크 표기 — 해당하면 CSS 클래스를 넣어 글자에 동그라미를 그린다"""
+        return CHECK if (info.get(field, "") == str(val)) else ""
 
     pay = inc.get("급여", 0)
     bonus = inc.get("상여", 0)
@@ -358,25 +434,20 @@ def build_values(cur, emp_no, yy):
         "Data1_IsFrgnTaxRate1": flag("IsFrgnTaxRate", 1, 1),
         "Data1_IsFrgnTaxRate2": flag("IsFrgnTaxRate", 0, 2),
         "Data1_IsFrgnComDispatcher1": "",
-        "Data1_IsFrgnComDispatcher2": "O",
+        "Data1_IsFrgnComDispatcher2": CHECK,
         "Data1_IsWkReligion1": "",
-        "Data1_IsWkReligion2": "O",
+        "Data1_IsWkReligion2": CHECK,
         "Data1_IsHouseHead1": flag("IsHouseHead", 1, 1),
         "Data1_IsHouseHead2": flag("IsHouseHead", 0, 2),
         "Data1_IsHouseHead3": flag("IsHouseHead", 2, 3),
-        "Data1_SMRetType1": "O" if str(t["ret_type"]).endswith("1") else "",
-        "Data1_SMRetType2": "O" if str(t["ret_type"]).endswith("2") else "",
+        "Data1_SMRetType1": CHECK if str(t["ret_type"]).endswith("1") else "",
+        "Data1_SMRetType2": CHECK if str(t["ret_type"]).endswith("2") else "",
         "Data1_IsBizTax1": "",
-        "Data1_IsBizTax2": "O",
-        # ── Data2~3: 근무처·근무기간 ──
-        "Data2_Title": co["name"],
-        "Data2_cur": co["biz_no"],
-        "Data3_Title": f"{_date8(beg, '.')} ~ {_date8(end, '.')}",
-        # ── Data4 계열: 소득명세 (당사 = Cur) ──
-        "Data3_Cur": _num(pay),                   # 위치상 급여 열 — 검증 대상
-        "Data4_Cur": _num(bonus),
-        "Data3_SumCur": _num(pay + bonus),
-        "Data3_TotAmt": _num(pay + bonus),
+        "Data1_IsBizTax2": CHECK,
+        # Data2/Data3 는 반복행이라 render() 에서 펼친다. 여기서는 합계만.
+        "Data3_SumCur": _num(pay + bonus),        # 16.계
+        "Data3_Sumpre1": "", "Data3_Sumpre2": "", "Data3_Sumpre3": "",
+        "Data4_DeducSumCur": "", "Data4_NonTaxSumCur": "",   # 20/20-1 계
         # ── Data5: 기납부세액·보험료 ──
         "Data5_Tax_TC": _num(inc.get("소득세", 0)),
         "Data5_ResidTax_TC": _num(inc.get("지방소득세", 0)),
@@ -391,6 +462,7 @@ def build_values(cur, emp_no, yy):
         "Data5_TaxName": co["name"],
         "Data5_Owner": co["owner"],
         "Data5_TaxOffice": "청주",
+        "Data5_SealPhoto": _seal_b64(),          # 징수의무자 직인
     }
 
     # ── 정산명세 (2쪽) — wht_calc 로 법정 산식 계산 ──
@@ -468,7 +540,13 @@ def build_values(cur, emp_no, yy):
 def render(cur, emp_no, yy):
     tpl = load_template(cur, yy)
     t, values = build_values(cur, emp_no, yy)
-    # 3쪽 부양가족 명세 — 반복행을 인원수만큼 펼친다
+    # 반복행 펼치기 — 1쪽 근무처/소득명세, 3쪽 부양가족
+    inc = load_income(cur, t["emp_seq"], yy)
+    beg, end = load_period(cur, t["emp_seq"], yy)
+    d2, d3, _ = build_income_rows(t, inc, beg, end, load_company(cur))
+    tpl = _expand(tpl, "Data2", d2)
+    tpl = _expand(tpl, "Data3", d3)
+    tpl = _expand(tpl, "Data4", [])          # 비과세·감면 — 해당 없음
     tpl = expand_family_rows(tpl, load_family(cur, t["emp_seq"], yy))
 
     filled = set()
@@ -503,11 +581,40 @@ def available_years(emp_no):
         conn.close()
 
 
-def generate(emp_no, yy):
-    """원천징수영수증 HTML 생성 → (bytes, 파일명)
+def html_to_pdf(html):
+    """HTML → PDF (headless Chromium)
+
+    서식이 복잡한 표라서 브라우저 렌더링이 가장 정확하다.
+    playwright 가 없거나 브라우저 미설치면 RuntimeError.
+    """
+    import tempfile
+    from playwright.sync_api import sync_playwright
+
+    with tempfile.NamedTemporaryFile("w", suffix=".html", encoding="utf-8",
+                                     delete=False) as f:
+        f.write(html)
+        src = f.name
+    try:
+        with sync_playwright() as p:
+            b = p.chromium.launch(args=["--no-sandbox"])
+            pg = b.new_page()
+            pg.goto(f"file://{src}")
+            pg.emulate_media(media="print")
+            data = pg.pdf(format="A4", print_background=True,
+                          margin={"top": "8mm", "bottom": "8mm",
+                                  "left": "6mm", "right": "6mm"})
+            b.close()
+        return data
+    finally:
+        os.unlink(src)
+
+
+def generate(emp_no, yy, as_pdf=True):
+    """원천징수영수증 생성 → (bytes, 파일명)
 
     ERP 는 읽기만 한다. 주민등록번호는 암호화라 빈칸으로 나가고
     담당자가 채운다 (2026-08-06 합의).
+    PDF 변환이 불가한 환경이면 HTML 로 돌려준다.
     """
     conn = _conn()
     cur = conn.cursor()
@@ -516,7 +623,14 @@ def generate(emp_no, yy):
     finally:
         conn.close()
     name = re.sub(r"[^\w가-힣]", "", t["name"] or "")
-    return html.encode("utf-8"), f"{DOC_TYPE}_{name}_{yy}귀속.html"
+    base = f"{DOC_TYPE}_{name}_{yy}귀속"
+    if as_pdf:
+        try:
+            return html_to_pdf(html), f"{base}.pdf"
+        except Exception as e:
+            # PDF 변환 실패는 발급 자체를 막지 않는다 — HTML 로 내보낸다
+            print(f"  ⚠️  PDF 변환 실패 → HTML 로 대체: {type(e).__name__}: {str(e)[:100]}")
+    return html.encode("utf-8"), f"{base}.html"
 
 
 def main():

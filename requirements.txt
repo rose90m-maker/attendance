@@ -10,3 +10,4 @@ paho-mqtt
 pymssql
 Pillow
 reportlab
+playwright

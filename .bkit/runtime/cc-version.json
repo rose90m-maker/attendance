@@ -1,7 +1,7 @@
 {
-  "version": "2.1.214",
+  "version": null,
   "isOldVersion": false,
-  "detectedAt": "2026-08-06T05:36:49.756Z",
+  "detectedAt": "2026-08-07T00:00:25.642Z",
   "ttlSeconds": 3600,
-  "detectError": null
+  "detectError": "spawnSync /bin/sh ETIMEDOUT"
 }
