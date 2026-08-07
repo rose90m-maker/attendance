@@ -496,27 +496,35 @@ for _cont in (DOCKER_MAIN, DOCKER_TBM):
 
 # ── 4) Docker 재시작 (또는 이미지 재빌드) ────────────────────────
 if REBUILD:
-    print("[████████████████░░░░]  80% 이미지 재빌드 중 (약 3분)...")
-    r_build = sudo_nas(
-        f"cd {STAGE_DIR} && docker compose build app tbm && "
-        f"docker compose up -d --no-deps --force-recreate app tbm && echo RST_OK"
-    )
-    r_main = r_build
-    r_tbm  = r_build
-    time.sleep(15)
+    # 예전에는 여기서 `docker compose build` 를 돌렸는데 Synology 에는 그 명령이
+    # 없어서(하이픈형 docker-compose 도 없다) 조용히 실패했고, 스크립트는 성공으로
+    # 표시했다. 그래서 이미지가 2026-05-26 자에 3개월간 멈춰 있었다.
+    # 이제 rebuild_containers.py 에 맡긴다 — 백업 태그·헬스체크·롤백이 들어 있다.
+    print("[████████████████░░░░]  80% 이미지 재빌드 → rebuild_containers.py 위임")
+    print("=" * 45)
+    c.close()
+    _rc = subprocess.run([sys.executable, "rebuild_containers.py"]).returncode
+    if _rc != 0:
+        print("\n❌ 재빌드 실패 — 컨테이너 상태를 확인하세요.")
+        print("   롤백: python rebuild_containers.py --rollback")
+        sys.exit(_rc)
+    print("\n✅ 재빌드 완료 (코드는 위에서 이미 NAS·컨테이너로 전송됨)")
+    _REBUILT = True
 else:
+    _REBUILT = False
+if not _REBUILT:
     r_main = sudo_nas(f"docker restart {DOCKER_MAIN} && echo RST_OK")
     r_tbm  = sudo_nas(f"docker restart {DOCKER_TBM}  && echo RST_OK")
     time.sleep(8)
 
-# ── 5) 헬스체크 ──────────────────────────────────────────────────
-main_code = sudo_nas("curl -s -o /dev/null -w '%{http_code}' http://localhost:5050/")
-tbm_code  = sudo_nas("curl -s -o /dev/null -w '%{http_code}' http://localhost:5051/tbm/login")
+    # ── 5) 헬스체크 ──────────────────────────────────────────────
+    # 재빌드 경로에서는 rebuild_containers.py 가 이미 확인했고 SSH 도 닫았다.
+    main_code = sudo_nas("curl -s -o /dev/null -w '%{http_code}' http://localhost:5050/")
+    tbm_code  = sudo_nas("curl -s -o /dev/null -w '%{http_code}' http://localhost:5051/tbm/login")
+    c.close()
 
-c.close()
-
-ok = main_code in ("200","302") and tbm_code in ("200","302")
-print(f"[████████████████████] 100% {'✅ 배포 완료! (main:'+main_code+' tbm:'+tbm_code+')' if ok else '⚠️ 확인필요 main:'+main_code+' tbm:'+tbm_code}")
+    ok = main_code in ("200","302") and tbm_code in ("200","302")
+    print(f"[████████████████████] 100% {'✅ 배포 완료! (main:'+main_code+' tbm:'+tbm_code+')' if ok else '⚠️ 확인필요 main:'+main_code+' tbm:'+tbm_code}")
 
 
 # ── 6) .5 대기(standby) 서버 코드 동기화 ─────────────────────────
