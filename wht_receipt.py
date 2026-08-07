@@ -82,9 +82,12 @@ def load_template(cur, yy):
     # 쪽 나누기 — 템플릿에는 없어서 붙인다 (.pagewrap 이 1쪽/2쪽/3쪽 컨테이너)
     # 쪽 나누기 — 두 번째 pagewrap 부터 '앞에서' 자른다.
     # page-break-after 를 쓰면 마지막 쪽 뒤에도 잘려 빈 페이지가 생긴다.
+    # 쪽 나누기 — 두 번째 pagewrap 부터 '앞에서' 자른다.
+    # page-break-after 를 쓰면 마지막 쪽 뒤에도 잘려 빈 페이지가 생긴다.
+    # @page 에 size 를 넣으면 chromium 이 PDF scale 옵션을 무시하므로 margin 만 준다.
     style += """
 <style>
-  @page { size: A4; margin: 6mm 5mm; }
+  @page { margin: 6mm 5mm; }
   .pagewrap + .pagewrap { page-break-before: always; break-before: page; }
 </style>"""
     return head + style + p1 + p2 + p3 + foot   # Detail(부속명세)는 2차에서
@@ -603,9 +606,10 @@ def html_to_pdf(html):
             pg = b.new_page()
             pg.goto(f"file://{src}")
             pg.emulate_media(media="print")
-            data = pg.pdf(format="A4", print_background=True,
-                          margin={"top": "8mm", "bottom": "8mm",
-                                  "left": "6mm", "right": "6mm"})
+            # scale 0.9 — 1.0 이면 1쪽 내용이 A4 를 살짝 넘겨 4쪽이 된다
+            data = pg.pdf(format="A4", print_background=True, scale=0.9,
+                          margin={"top": "6mm", "bottom": "6mm",
+                                  "left": "5mm", "right": "5mm"})
             b.close()
         return data
     finally:
