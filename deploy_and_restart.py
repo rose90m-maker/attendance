@@ -182,6 +182,7 @@ files = [
     ("templates/dashboard.html", "templates/dashboard.html"),
     ("templates/control_center.html", "templates/control_center.html"),
     ("templates/document_management.html", "templates/document_management.html"),
+    ("templates/message_send.html", "templates/message_send.html"),
     ("templates/_sidebar.html", "templates/_sidebar.html"),
     ("templates/erp_api_test.html", "templates/erp_api_test.html"),
     ("templates/leave_approval.html", "templates/leave_approval.html"),
