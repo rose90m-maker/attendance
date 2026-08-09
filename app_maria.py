@@ -6111,8 +6111,19 @@ def welfare():
 # 결과를 msg_campaigns/msg_logs 에 남긴다.
 # 알림톡은 카카오 채널이 등록돼야 열린다 — 없으면 화면에서 문자만 고를 수 있다.
 
-def _msg_roster(depts=None, positions=None, emp_ids=None, only_active=True):
-    """발송 대상 후보를 명부에서 뽑는다. retire_date 가 비어 있으면 재직으로 본다."""
+def _msg_roster(depts=None, positions=None, emp_ids=None, only_active=True, send_all=False):
+    """발송 대상 후보를 명부에서 뽑는다. retire_date 가 비어 있으면 재직으로 본다.
+
+    사람을 직접 골랐으면(emp_ids) 그 사람들만 보낸다 — 부서·직급 조건은 무시한다.
+    한 명한테만 보내려는데 부서 칩이 남아 있어 엉뚱하게 여러 명에게 나가는 일을 막는다.
+
+    아무 조건도 없으면 빈 목록을 돌려준다. 전 직원에게 보내려면 send_all 을 명시해야 한다 —
+    조건을 안 고른 상태에서 실수로 160명에게 나가는 것이 가장 위험하다.
+    """
+    if emp_ids:
+        depts = positions = None
+    if not (emp_ids or depts or positions or send_all):
+        return []
     conn = _conn(); cur = conn.cursor()
     sql = ["SELECT id, name, dept, position, phone, emp_no, job_title",
            "FROM employee_roster WHERE 1=1"]
@@ -6160,7 +6171,8 @@ def api_msg_targets():
     """조건에 맞는 대상자 목록 (화면에서 인원수·번호 확인용)"""
     import msg_send as MS
     d = request.get_json(force=True, silent=True) or {}
-    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"))
+    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"),
+                       send_all=bool(d.get("send_all")))
     out = []
     for r in rows:
         ph = MS.norm_phone(r["phone"])
@@ -6175,7 +6187,8 @@ def api_msg_preview():
     """실제로 보내지 않고 종류(SMS/LMS)·글자수·제외자만 계산한다."""
     import msg_send as MS
     d = request.get_json(force=True, silent=True) or {}
-    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"))
+    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"),
+                       send_all=bool(d.get("send_all")))
     res = MS.send(rows, d.get("body", ""), d.get("title") or None,
                   channel=d.get("channel", "auto"), dry_run=True)
     # 건당 단가는 계약에 따라 다르다. 화면에는 대략치로만 보여 준다.
@@ -6194,7 +6207,8 @@ def api_msg_send():
     body = (d.get("body") or "").strip()
     if not body:
         return jsonify({"ok": False, "error": "본문을 입력하세요."}), 400
-    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"))
+    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"),
+                       send_all=bool(d.get("send_all")))
     if not rows:
         return jsonify({"ok": False, "error": "대상자가 없습니다."}), 400
 

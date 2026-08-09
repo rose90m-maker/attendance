@@ -71,6 +71,28 @@
         <div class="col-lg-5">
             <div class="ms-card">
                 <h6>1. 받는 사람</h6>
+
+                <!-- 개인 지정 — 한 명이나 몇 명한테만 보낼 때 -->
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <small class="text-muted">이름으로 직접 고르기</small>
+                        <button class="btn btn-link btn-sm p-0" style="font-size:.74rem;" onclick="clearPicked()">선택 해제</button>
+                    </div>
+                    <input type="text" class="form-control form-control-sm" id="nameSearch"
+                           placeholder="이름 두 글자만 쳐도 됩니다 (예: 홍길)" autocomplete="off"
+                           oninput="searchName()" onfocus="searchName()">
+                    <div id="nameResult" class="border rounded mt-1"
+                         style="max-height:170px; overflow-y:auto; display:none; font-size:.82rem;"></div>
+                    <div id="pickedBox" class="mt-2" style="display:none;">
+                        <div class="alert alert-primary py-2 px-3 mb-1" style="font-size:.78rem;">
+                            <b id="pickedCnt">0</b>명을 직접 골랐습니다. 이 사람들에게만 나가고
+                            <b>아래 부서·직급은 무시</b>됩니다.
+                        </div>
+                        <div id="pickedChips"></div>
+                    </div>
+                </div>
+                <hr class="my-2">
+
                 <div class="mb-2">
                     <div class="d-flex justify-content-between align-items-center mb-1">
                         <small class="text-muted">부서</small>
@@ -89,9 +111,14 @@
                         {% for p in positions %}<span class="chip" data-t="pos" data-v="{{ p }}">{{ p }}</span>{% endfor %}
                     </div>
                 </div>
-                <div class="alert alert-secondary py-2 px-3 mb-2" style="font-size:.76rem;">
-                    아무것도 안 고르면 <b>재직자 전원</b>에게 나갑니다.
-                    부서와 직급을 같이 고르면 <b>둘 다 해당하는 사람</b>만 받습니다.
+                <div class="alert alert-secondary py-2 px-3 mb-2" style="font-size:.76rem;" id="filterHint">
+                    부서와 직급을 같이 고르면 <b>둘 다 해당하는 사람</b>만 받습니다.<br>
+                    <span class="text-danger">아무것도 안 고르면 아무에게도 안 나갑니다.</span>
+                    전 직원에게 보내려면 아래 버튼을 누르세요.
+                </div>
+                <div class="mb-2">
+                    <button class="btn btn-outline-danger btn-sm w-100" id="btnAll" onclick="toggleAll()"
+                            style="font-size:.78rem;">👥 재직자 전원에게 보내기</button>
                 </div>
                 <div class="cnt-box">
                     <div class="cnt c-total"><div class="n" id="nTotal">-</div><div class="l">대상</div></div>
@@ -181,15 +208,85 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 let firstTarget = null;
+const ROSTER = {{ roster|tojson }};   // 이름 검색용 (재직자 전원)
+let picked = [];                      // 직접 고른 사람 [{id,name,dept,position}]
 
 function sel(t){ return [...document.querySelectorAll(`.chip[data-t="${t}"].on`)].map(e=>e.dataset.v); }
 function clearSel(t){ document.querySelectorAll(`.chip[data-t="${t}"]`).forEach(c=>c.classList.remove('on')); refresh(); }
-document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{ c.classList.toggle('on'); refresh(); });
+document.querySelectorAll('.chip[data-t]').forEach(c=>c.onclick=()=>{
+    if (sendAll) toggleAll();          // 부서를 고르면 전원 모드는 푼다
+    c.classList.toggle('on'); refresh();
+});
 
-function cond(){ return { depts: sel('dept'), positions: sel('pos'),
-                          body: document.getElementById('body').value,
-                          title: document.getElementById('title').value,
-                          channel: document.getElementById('channel').value }; }
+/* ── 이름으로 직접 고르기 ── */
+function searchName(){
+    const q = document.getElementById('nameSearch').value.trim();
+    const box = document.getElementById('nameResult');
+    if (!q){ box.style.display='none'; return; }
+    const hit = ROSTER.filter(r => (r.name||'').includes(q)).slice(0, 30);
+    if (!hit.length){ box.innerHTML = '<div class="p-2 text-muted">찾는 사람이 없습니다.</div>'; box.style.display=''; return; }
+    box.innerHTML = hit.map(r => {
+        const on = picked.some(p => p.id === r.id);
+        return `<div class="px-2 py-1 border-bottom d-flex justify-content-between align-items-center"
+                     style="cursor:pointer;" onclick="togglePick(${r.id})">
+                  <span>${r.name} <span class="text-muted">${r.dept||''} ${r.position||''}</span></span>
+                  <span>${on ? '<span class="text-primary">✓ 선택됨</span>' : '<span class="text-muted">누르면 추가</span>'}</span>
+                </div>`;
+    }).join('');
+    box.style.display='';
+}
+
+function togglePick(id){
+    if (sendAll) toggleAll();          // 사람을 고르면 전원 모드는 푼다
+    const i = picked.findIndex(p => p.id === id);
+    if (i >= 0) picked.splice(i, 1);
+    else { const r = ROSTER.find(x => x.id === id); if (r) picked.push(r); }
+    drawPicked(); searchName(); refresh();
+}
+
+function drawPicked(){
+    const box = document.getElementById('pickedBox');
+    box.style.display = picked.length ? '' : 'none';
+    // 직접 고른 사람이 있으면 부서·직급 영역을 흐리게 해서 안 쓰인다는 걸 보인다
+    ['deptChips','posChips','filterHint'].forEach(id=>{
+        const e = document.getElementById(id);
+        if (e){ e.style.opacity = picked.length ? .4 : 1;
+                e.style.pointerEvents = picked.length ? 'none' : ''; }
+    });
+    document.getElementById('pickedCnt').textContent = picked.length;
+    document.getElementById('pickedChips').innerHTML = picked.map(p =>
+        `<span class="chip on" onclick="togglePick(${p.id})" title="누르면 제외">
+           ${p.name} <span style="opacity:.75;">${p.dept||''}</span> ✕</span>`).join('');
+}
+
+function clearPicked(){
+    picked = [];
+    document.getElementById('nameSearch').value = '';
+    document.getElementById('nameResult').style.display = 'none';
+    drawPicked(); refresh();
+}
+
+let sendAll = false;   // 전원 발송은 버튼을 눌러 켜야만 한다 (기본 꺼짐)
+
+function toggleAll(){
+    sendAll = !sendAll;
+    if (sendAll){ picked = []; drawPicked();
+                  document.querySelectorAll('.chip[data-t]').forEach(c=>c.classList.remove('on')); }
+    const b = document.getElementById('btnAll');
+    b.className = 'btn btn-sm w-100 ' + (sendAll ? 'btn-danger' : 'btn-outline-danger');
+    b.textContent = sendAll ? '✓ 재직자 전원 (누르면 해제)' : '👥 재직자 전원에게 보내기';
+    refresh();
+}
+
+function cond(){
+    const c = { body: document.getElementById('body').value,
+                title: document.getElementById('title').value,
+                channel: document.getElementById('channel').value };
+    if (picked.length) c.emp_ids = picked.map(p => p.id);   // 직접 고르면 부서·직급은 안 보낸다
+    else if (sendAll) c.send_all = true;
+    else { c.depts = sel('dept'); c.positions = sel('pos'); }
+    return c;
+}
 
 function onChannel(){
     const v = document.getElementById('channel').value;
@@ -226,6 +323,11 @@ async function refresh(){
     document.getElementById('nDrop').textContent = r.total - r.valid;
     firstTarget = r.rows.find(x=>x.valid) || null;
     document.getElementById('pvWho').textContent = firstTarget ? `(${firstTarget.name} 기준)` : '';
+    const btn = document.getElementById('btnSend');
+    if (btn){                                   // 대상 0명이면 아예 못 누르게
+        btn.disabled = !r.valid;
+        btn.textContent = r.valid ? '발송하기' : '받는 사람을 고르세요';
+    }
     onBody();
     if (document.getElementById('body').value.trim()){
         const p = await fetch('/api/msg_preview', {method:'POST',
@@ -255,7 +357,10 @@ async function doSend(){
     const n = document.getElementById('nValid').textContent;
     const kind = document.getElementById('kindInfo').textContent;
     const cost = document.getElementById('nCost').textContent;
-    if (!confirm(`${n}명에게 ${kind}로 발송합니다.\n예상 비용 ${cost}\n\n보내시겠습니까?`)) return;
+    // 한두 명한테 보낼 때는 누구인지 이름으로 확인시킨다 (오발송 방지)
+    let who = `${n}명에게`;
+    if (picked.length && picked.length <= 5) who = picked.map(p => p.name).join(', ') + '님에게';
+    if (!confirm(`${who} ${kind}로 발송합니다.\n예상 비용 ${cost}\n\n보내시겠습니까?`)) return;
 
     const btn = document.getElementById('btnSend');
     btn.disabled = true; btn.textContent = '발송 중…';
