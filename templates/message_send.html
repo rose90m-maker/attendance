@@ -41,17 +41,21 @@
                    border-top:1px solid #f1f5f9; margin-top:8px; padding-top:8px; font-size:.8rem; }
         .statbar b { color:#1d4ed8; }
 
-        /* 명단 (펼침) */
-        #listBody { max-height:230px; overflow-y:auto; font-size:.8rem; }
-        #listBody .dh { padding:3px 8px; background:#f9fafb; font-weight:600; font-size:.73rem; color:#4b5563;
-                        border-bottom:1px solid #f1f5f9; position:sticky; top:0; }
-        #listBody label { padding:3px 8px; border-bottom:1px solid #f8fafc; margin:0; cursor:pointer;
-                          display:flex; align-items:center; gap:7px; }
-        #listBody label:hover { background:#f8fbff; }
-        #nameResult { max-height:180px; overflow-y:auto; font-size:.8rem; }
-        #nameResult .r { padding:4px 8px; border-bottom:1px solid #f1f5f9; cursor:pointer;
-                         display:flex; justify-content:space-between; }
-        #nameResult .r:hover { background:#eff6ff; }
+        /* 직원 명단 — 6~8명 보이는 높이로 두고 안에서 스크롤한다 */
+        #empList { max-height:232px; overflow-y:auto; font-size:.82rem; }
+        #empList .dh { padding:3px 9px; background:#f9fafb; font-weight:600; font-size:.73rem; color:#4b5563;
+                       border-bottom:1px solid #f1f5f9; position:sticky; top:0; z-index:1; }
+        #empList label { display:flex; align-items:center; gap:8px; margin:0; cursor:pointer;
+                         padding:5px 9px; border-bottom:1px solid #f8fafc; }
+        #empList label:hover { background:#f8fbff; }
+        #empList label.sel { background:#eff6ff; }
+        #empList label input { flex:0 0 auto; width:15px; height:15px; }
+        #empList .nm { flex:0 0 74px; font-weight:600; color:#111827; }
+        #empList .dp { flex:1; min-width:0; color:#6b7280; font-size:.78rem;
+                       overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        #empList .ps { flex:0 0 58px; color:#374151; font-size:.78rem; }
+        #empList .tl { flex:0 0 76px; text-align:right; color:#9ca3af; font-size:.75rem; }
+        .rcpt .ps2 { opacity:.65; font-size:.72rem; }
 
         /* 내용 */
         #body { font-size:.9rem; line-height:1.6; min-height:190px; resize:vertical; }
@@ -118,34 +122,47 @@
             <div class="ms-box">
                 <div class="bh">
                     <span class="t"><span class="n">1</span> 받는 사람</span>
-                    <span style="font-size:.78rem; color:#6b7280;">
+                    <span style="font-size:.8rem; color:#374151;">
                         선택된 수신자 <b id="cntSel" style="color:#1d4ed8;">0</b>명</span>
                 </div>
 
-                <div class="mb-2">
-                    <span class="chip-sm danger" id="qAll" onclick="toggleAll()">재직자 전원</span>
-                    <span class="chip-sm" onclick="checkAll(true)">전체 선택</span>
-                    <span class="chip-sm" onclick="clearAll()">선택 해제</span>
+                <!-- 탐색 방식 -->
+                <div class="btn-group btn-group-sm mb-2" role="group">
+                    <button class="btn btn-outline-secondary" id="tabAll"  onclick="setMode('all')">재직자 전원</button>
+                    <button class="btn btn-outline-secondary active" id="tabDept" onclick="setMode('dept')">부서별</button>
+                    <button class="btn btn-outline-secondary" id="tabPos"  onclick="setMode('pos')">직급별</button>
                 </div>
 
                 <input type="text" class="form-control form-control-sm mb-2" id="nameSearch"
-                       autocomplete="off" placeholder="🔍 이름 또는 부서 검색"
-                       oninput="searchName()" onfocus="searchName()">
-                <div id="nameResult" class="border rounded mb-2" style="display:none;"></div>
+                       autocomplete="off" placeholder="🔍 이름 · 부서 · 직급 검색"
+                       oninput="onSearch()">
 
-                <div class="mb-1" id="deptChips">
-                    {% for d in depts %}<span class="chip-sm" data-dept="{{ d }}" onclick="toggleDept(this)">{{ d }}</span>{% endfor %}
+                <!-- 그룹 칩 (부서 또는 직급) -->
+                <div class="mb-2" id="groupChips"></div>
+
+                <!-- 직원 명단 -->
+                <div class="border rounded" id="empBox" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center px-2 py-1"
+                         style="background:#f9fafb; border-bottom:1px solid #e5e7eb;">
+                        <span style="font-size:.82rem; font-weight:600;" id="empTitle">—</span>
+                        <span>
+                            <span style="font-size:.76rem; color:#6b7280;" id="empCnt"></span>
+                            <button class="btn btn-link btn-sm p-0 ms-2" style="font-size:.76rem;"
+                                    onclick="selGroup(true)" id="btnGroupAll">전체 선택</button>
+                            <button class="btn btn-link btn-sm p-0 ms-2 text-secondary" style="font-size:.76rem;"
+                                    onclick="selGroup(false)">해제</button>
+                        </span>
+                    </div>
+                    <div id="empList"></div>
                 </div>
 
+                <!-- 선택 목록 -->
                 <div class="statbar">
                     <div id="rcptArea" style="flex:1; min-width:0;">
                         <span class="text-muted" style="font-size:.79rem;">선택된 수신자: 0명</span>
                     </div>
-                    <span class="more-link ms-2" id="listToggle" onclick="toggleListBox()" style="display:none;">명단 펼치기</span>
-                </div>
-
-                <div id="listBox" class="border rounded mt-2" style="display:none;">
-                    <div id="listBody"></div>
+                    <span class="more-link ms-2" onclick="clearAll()" id="btnClearSel"
+                          style="display:none; color:#b91c1c;">비우기</span>
                 </div>
             </div>
 
@@ -265,125 +282,157 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const ROSTER = {{ roster|tojson }};
-/* 명단에 올라온 사람 중 체크가 켜진 사람에게만 나간다.
-   그룹/검색은 명단에 "불러오는" 역할이고, 최종 판단은 언제나 체크 상태다. */
-let listed = [];
+/* 이름을 몰라도 고를 수 있어야 한다 —
+   [부서/직급 고르기] → [그 안의 사람 보기] → [체크] 순서로 간다.
+   화면에 보이는 것(탐색)과 실제 받는 사람(selected)은 별개다. */
+let selected = new Set();     // 실제로 받을 사람 id
+let mode = 'dept';            // dept | pos | all
+let curGroup = null;          // 지금 펼쳐 본 부서/직급
+let searchQ = '';
+let showAllRcpt = false;
 let firstTarget = null;
 let lastValid = 0;
-let showAllRcpt = false;
 
-function inList(id){ return listed.find(x => x.id === id); }
-function onIds(){ return listed.filter(x => x.on).map(x => x.id); }
-function addRows(rows){ rows.forEach(r=>{ if(!inList(r.id)) listed.push({...r, on: r.has_phone !== false}); }); }
-function removeRows(rows){ const d = new Set(rows.map(r=>r.id)); listed = listed.filter(x => !d.has(x.id)); }
+const DEPTS = [...new Set(ROSTER.map(r=>r.dept).filter(Boolean))].sort();
+const POSES = [...new Set(ROSTER.map(r=>r.position).filter(Boolean))].sort();
 
-/* ── 그룹 ── */
-function toggleDept(el){
-    const rows = ROSTER.filter(r => r.dept === el.dataset.dept);
-    const allIn = rows.length && rows.every(r => inList(r.id));
-    if (allIn) removeRows(rows); else addRows(rows);
-    syncQuick(); drawList(); refresh();
-}
-function toggleAll(){
-    const allIn = ROSTER.length && ROSTER.every(r => inList(r.id));
-    if (allIn) listed = []; else addRows(ROSTER);
-    syncQuick(); drawList(); refresh();
-}
-function syncQuick(){
-    const allIn = ROSTER.length && ROSTER.every(r => inList(r.id));
-    document.getElementById('qAll').classList.toggle('on', allIn);
-    document.querySelectorAll('.chip-sm[data-dept]').forEach(e=>{
-        const rows = ROSTER.filter(r => r.dept === e.dataset.dept);
-        e.classList.toggle('on', rows.length && rows.every(r => inList(r.id)));
-    });
-}
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function empOf(id){ return ROSTER.find(r=>r.id===id); }
 
-/* ── 검색 (이름 또는 부서) ── */
-function searchName(){
-    const q = document.getElementById('nameSearch').value.trim();
-    const box = document.getElementById('nameResult');
-    if (!q){ box.style.display='none'; return; }
-    const hit = ROSTER.filter(r => (r.name||'').includes(q) || (r.dept||'').includes(q)).slice(0,40);
-    box.innerHTML = hit.length ? hit.map(r=>{
-        const on = !!inList(r.id);
-        return `<div class="r" onclick="pick(${r.id})">
-                  <span>${r.name} <span class="text-muted">${r.dept||''} ${r.position||''}</span>
-                  ${r.has_phone?'':'<span class="st-drop" style="font-size:.72rem;">번호없음</span>'}</span>
-                  <span class="${on?'text-primary':'text-muted'}">${on?'✓ 선택됨':'추가'}</span></div>`;
-    }).join('') : '<div class="p-2 text-muted">검색 결과가 없습니다.</div>';
-    box.style.display='';
+/* ── 탐색 방식 ── */
+function setMode(m){
+    mode = m; curGroup = null;
+    document.getElementById('nameSearch').value = ''; searchQ = '';
+    ['tabAll','tabDept','tabPos'].forEach(id=>document.getElementById(id).classList.remove('active'));
+    document.getElementById(m==='all'?'tabAll':m==='dept'?'tabDept':'tabPos').classList.add('active');
+    drawGroups(); drawEmp();
 }
-function pick(id){
-    const r = ROSTER.find(x=>x.id===id); if(!r) return;
-    if (inList(id)) removeRows([r]); else addRows([r]);
-    syncQuick(); drawList(); searchName(); refresh();
-}
-
-/* ── 선택 목록 ── */
-function toggleOne(id){
-    const x = inList(id); if(!x || x.has_phone === false) return;
-    x.on = !x.on; drawList(); refresh();
-}
-function dropOne(id){
-    const r = ROSTER.find(x=>x.id===id); if(!r) return;
-    removeRows([r]); syncQuick(); drawList(); refresh();
-}
-function checkAll(v){ listed.forEach(x=>x.on = v && x.has_phone !== false); drawList(); refresh(); }
-function clearAll(){ listed = []; showAllRcpt = false; syncQuick(); drawList(); refresh(); }
-function toggleListBox(){
-    const b = document.getElementById('listBox');
-    const open = b.style.display === '';
-    b.style.display = open ? 'none' : '';
-    document.getElementById('listToggle').textContent = open ? '명단 펼치기' : '명단 접기';
-}
-
-function drawList(){
-    const on = listed.filter(x=>x.on);
-    document.getElementById('cntSel').textContent = on.length;
-    document.getElementById('listToggle').style.display = listed.length ? '' : 'none';
-
-    // 선택된 사람 칩 — 많으면 앞부분만 보이고 나머지는 "+N명"
-    const area = document.getElementById('rcptArea');
-    if (!on.length){
-        area.innerHTML = '<span class="text-muted" style="font-size:.79rem;">선택된 수신자: 0명</span>';
-    } else {
-        const LIMIT = 12;
-        const show = showAllRcpt ? on : on.slice(0, LIMIT);
-        const rest = on.length - show.length;
-        area.innerHTML = show.map(p=>
-            `<span class="rcpt">${p.name}<span class="x" onclick="dropOne(${p.id})">×</span></span>`).join('') +
-            (rest > 0 ? `<span class="more-link" onclick="showAllRcpt=true;drawList()">+ ${rest}명</span>`
-                      : (showAllRcpt && on.length > LIMIT
-                         ? `<span class="more-link" onclick="showAllRcpt=false;drawList()">접기</span>` : ''));
-    }
-
-    // 펼침 명단 — 부서별로 묶어 개별 체크
-    const byDept = {};
-    listed.forEach(x => (byDept[x.dept||'(부서없음)'] ||= []).push(x));
-    document.getElementById('listBody').innerHTML = Object.keys(byDept).sort().map(d=>{
-        const rows = byDept[d];
-        return `<div class="dh">${d} <span class="text-muted">(${rows.filter(r=>r.on).length}/${rows.length})</span></div>` +
-            rows.map(r=>`<label>
-                  <input type="checkbox" ${r.on?'checked':''} ${r.has_phone?'':'disabled'} onchange="toggleOne(${r.id})">
-                  <span style="${r.on?'':'opacity:.45; text-decoration:line-through;'}">
-                    ${r.name} <span class="text-muted">${r.position||''}</span>
-                    ${r.has_phone?'':'<span class="st-drop" style="font-size:.72rem;">번호없음</span>'}</span>
-                </label>`).join('');
+function drawGroups(){
+    const box = document.getElementById('groupChips');
+    if (mode === 'all'){ box.innerHTML = ''; return; }
+    const list = mode === 'dept' ? DEPTS : POSES;
+    box.innerHTML = list.map(g=>{
+        const rows = rowsOf(g);
+        const sel = rows.filter(r=>selected.has(r.id)).length;
+        return `<span class="chip-sm ${curGroup===g?'on':''}" onclick="openGroup('${esc(g)}')">
+                  ${esc(g)} <span style="opacity:.7;">${sel?sel+'/':''}${rows.length}</span></span>`;
     }).join('');
+}
+function rowsOf(g){
+    return ROSTER.filter(r => (mode==='dept' ? r.dept : r.position) === g);
+}
+function openGroup(g){ curGroup = (curGroup===g) ? null : g; drawGroups(); drawEmp(); }
+
+/* ── 통합 검색 (이름·부서·직급) ── */
+function onSearch(){
+    searchQ = document.getElementById('nameSearch').value.trim();
+    if (searchQ) curGroup = null;
+    drawGroups(); drawEmp();
+}
+
+/* ── 직원 명단 ── */
+function visibleRows(){
+    if (searchQ){
+        const q = searchQ;
+        return ROSTER.filter(r => (r.name||'').includes(q) || (r.dept||'').includes(q)
+                                || (r.position||'').includes(q));
+    }
+    if (mode === 'all') return ROSTER;
+    if (curGroup) return rowsOf(curGroup);
+    return null;                      // 그룹을 아직 안 골랐다
+}
+
+function drawEmp(){
+    const rows = visibleRows();
+    const box = document.getElementById('empBox');
+    if (!rows){ box.style.display = 'none'; return; }
+    box.style.display = '';
+
+    const title = searchQ ? `"${esc(searchQ)}" 검색 결과`
+                : mode === 'all' ? '재직자 전원' : esc(curGroup);
+    const sel = rows.filter(r=>selected.has(r.id)).length;
+    document.getElementById('empTitle').textContent = title;
+    document.getElementById('empCnt').textContent = `${rows.length}명 중 ${sel}명 선택`;
+    document.getElementById('btnGroupAll').textContent =
+        (searchQ ? '검색결과' : mode==='all' ? '전원' : curGroup) + ' 전체 선택';
+
+    // 전원/검색일 때는 부서 머리글로 묶어 어디 소속인지 보이게 한다
+    const grouped = (mode === 'all' || searchQ);
+    let html = '';
+    if (grouped){
+        const by = {};
+        rows.forEach(r => (by[r.dept||'(부서없음)'] ||= []).push(r));
+        html = Object.keys(by).sort().map(d =>
+            `<div class="dh">${esc(d)} <span class="text-muted">(${by[d].length})</span></div>` +
+            by[d].map(empRow).join('')).join('');
+    } else {
+        html = rows.map(empRow).join('');
+    }
+    document.getElementById('empList').innerHTML = html || '<div class="p-2 text-muted">해당하는 직원이 없습니다.</div>';
+}
+
+function empRow(r){
+    const on = selected.has(r.id);
+    const dis = r.has_phone === false;
+    return `<label class="${on?'sel':''}" style="${dis?'cursor:not-allowed;':''}">
+        <input type="checkbox" ${on?'checked':''} ${dis?'disabled':''} onchange="toggleEmp(${r.id})">
+        <span class="nm">${esc(r.name)}</span>
+        <span class="dp">${esc(r.dept||'')}</span>
+        <span class="ps">${esc(r.position||'')}</span>
+        <span class="tl">${dis ? '<span class="st-drop">번호없음</span>' : '****-'+r.tail}</span>
+      </label>`;
+}
+
+/* ── 선택 ── */
+function toggleEmp(id){
+    const r = empOf(id); if(!r || r.has_phone === false) return;
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    afterSelect();
+}
+function selGroup(v){
+    const rows = visibleRows(); if(!rows) return;
+    rows.forEach(r=>{
+        if (r.has_phone === false) return;
+        if (v) selected.add(r.id); else selected.delete(r.id);
+    });
+    afterSelect();
+}
+function dropOne(id){ selected.delete(id); afterSelect(); }
+function clearAll(){ selected.clear(); showAllRcpt = false; afterSelect(); }
+function afterSelect(){ drawGroups(); drawEmp(); drawSelected(); refresh(); }
+
+function drawSelected(){
+    const ids = [...selected];
+    document.getElementById('cntSel').textContent = ids.length;
+    document.getElementById('btnClearSel').style.display = ids.length ? '' : 'none';
+    const area = document.getElementById('rcptArea');
+    if (!ids.length){
+        area.innerHTML = '<span class="text-muted" style="font-size:.79rem;">선택된 수신자: 0명</span>';
+        return;
+    }
+    const people = ids.map(empOf).filter(Boolean);
+    const LIMIT = 8;
+    const show = showAllRcpt ? people : people.slice(0, LIMIT);
+    const rest = people.length - show.length;
+    area.innerHTML =
+        `<div style="font-size:.78rem; color:#6b7280; margin-bottom:3px;">선택된 수신자 <b style="color:#1d4ed8;">${people.length}명</b></div>` +
+        show.map(p=>`<span class="rcpt">${esc(p.name)}<span class="ps2"> · ${esc(p.position||'')}</span>
+                     <span class="x" onclick="dropOne(${p.id})">×</span></span>`).join('') +
+        (rest > 0 ? `<span class="more-link" onclick="showAllRcpt=true;drawSelected()">+ ${rest}명</span>`
+                  : (showAllRcpt && people.length > LIMIT
+                     ? `<span class="more-link" onclick="showAllRcpt=false;drawSelected()">접기</span>` : ''));
 }
 
 function cond(){
     const c = { body: document.getElementById('body').value,
                 title: (document.getElementById('title')||{}).value || '',
                 channel: document.getElementById('channel').value };
-    const ids = onIds();
-    if (ids.length) c.emp_ids = ids;
+    if (selected.size) c.emp_ids = [...selected];
     return c;
 }
 
 /* ── 미리보기·집계 (한글 2바이트, 서버와 같은 기준) ── */
 function bytesOf(s){ let n=0; for(const ch of s) n += (ch.charCodeAt(0)<128?1:2); return n; }
-function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 function insVar(v){
     const t = document.getElementById('body');
     const p = t.selectionStart;
@@ -555,8 +604,9 @@ async function detail(cid){
     document.getElementById('detailBox').scrollIntoView({behavior:'smooth'});
 }
 
-/* 내 번호를 테스트칸에 미리 채워 둔다 */
-drawList();
+/* 첫 진입: 부서 칩을 그려 두고, 내 번호를 테스트칸에 채운다 */
+setMode('dept');
+drawSelected();
 fetch('/api/msg_my_phone').then(r=>r.json()).then(j=>{
     if (j.phone) document.getElementById('testPhone').value =
         j.phone.replace(/(\d{3})(\d{4})(\d{4})/,'$1-$2-$3');

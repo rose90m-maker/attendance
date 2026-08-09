@@ -6158,11 +6158,15 @@ def message_send():
     depts = sorted({r["dept"] for r in rows if r["dept"]})
     positions = sorted({r["position"] for r in rows if r["position"]})
     channels = MS.kakao_channels()
-    # 화면 명단에는 번호를 싣지 않는다 — 고르는 데 필요 없고, 페이지 소스에
-    # 전 직원 연락처가 그대로 노출된다. 발송할 때 서버가 id 로 다시 조회한다.
-    view_rows = [{"id": r["id"], "name": r["name"], "dept": r["dept"],
-                  "position": r["position"], "has_phone": bool(MS.norm_phone(r["phone"]))}
-                 for r in rows]
+    # 화면 명단에는 번호 전체를 싣지 않는다 — 페이지 소스에 전 직원 연락처가
+    # 그대로 노출되기 때문. 동명이인을 가릴 수 있게 끝 4자리만 준다.
+    # 발송할 때는 서버가 id 로 원본 번호를 다시 조회한다.
+    view_rows = []
+    for r in rows:
+        ph = MS.norm_phone(r["phone"])
+        view_rows.append({"id": r["id"], "name": r["name"], "dept": r["dept"],
+                          "position": r["position"], "has_phone": bool(ph),
+                          "tail": ph[-4:] if ph else ""})
     return render_template("message_send.html",
                            active_page="msg_send",
                            roster=view_rows, depts=depts, positions=positions,
