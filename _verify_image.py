@@ -9,7 +9,8 @@ freetds-dev 를 Dockerfile 에서 제거했으므로, pymssql 이 정말 동작�
   - 포트를 열지 않고, 볼륨도 붙이지 않고, DB 에 접속하지 않는다.
   - 운영 컨테이너 attendance-app / attendance-tbm 은 건드리지 않는다.
 
-사용:  python3 _verify_image.py
+사용:  python3 _verify_image.py [이미지명]
+       기본값 attendance-app:latest
 """
 import base64
 import os
@@ -31,7 +32,7 @@ for k in ("NAS_HOST", "NAS_USER", "NAS_PASS", "NAS_SUDO"):
     if not os.environ.get(k):
         sys.exit(f".env 에 {k} 가 없습니다.")
 
-IMG = "attendance-app:buildtest"
+IMG = sys.argv[1] if len(sys.argv) > 1 else "attendance-app:latest"
 
 c = paramiko.SSHClient()
 c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
