@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""_check_containers.py — 컨테이너 상태 읽기 전용 진단 (일회용 디버그 스크립트)
+
+재빌드 실패 원인 파악용. .env 의 NAS_* 자격증명을 그대로 재사용한다
+(deploy_and_restart.py 와 동일한 접속 방식 — 비밀번호 직접 입력 불필요).
+
+아무것도 바꾸지 않는다. docker ps / inspect / logs / images 만 읽는다.
+
+사용:  python3 _check_containers.py
+"""
+import os
+import re
+import sys
+
+try:
+    import paramiko
+except ImportError:
+    sys.exit("paramiko 가 없습니다.  pip install paramiko  후 다시 실행하세요.")
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# ── .env 확인 ────────────────────────────────────────────────
+need = ["NAS_HOST", "NAS_USER", "NAS_PASS", "NAS_SUDO"]
+missing = [k for k in need if not os.environ.get(k)]
+if missing:
+    sys.exit(f".env 에 다음 키가 없습니다: {', '.join(missing)}")
+
+NAS_HOST = os.environ["NAS_HOST"]
+NAS_USER = os.environ["NAS_USER"]
+NAS_PASS = os.environ["NAS_PASS"]
+NAS_SUDO = os.environ["NAS_SUDO"]
+
+MAIN, TBM = "attendance-app", "attendance-tbm"
+
+# ── 출력 마스킹 ──────────────────────────────────────────────
+# 로그/inspect 결과에 자격증명이 섞여 나올 수 있으므로 화면에 찍기 전에 가린다.
+_SECRETS = [v for v in (NAS_PASS, NAS_SUDO, os.environ.get("DB_PASSWORD", "")) if v]
+_PATTERNS = [
+    re.compile(r'((?:password|passwd|pwd|secret|token|api[_-]?key)\s*[:=]\s*)'
+               r'(["\']?)([^\s"\',}]+)(\2)', re.I),
+]
+
+
+def mask(text: str) -> str:
+    for s in _SECRETS:
+        text = text.replace(s, "***")
+    for p in _PATTERNS:
+        text = p.sub(lambda m: f"{m.group(1)}{m.group(2)}***{m.group(4)}", text)
+    return text
+
+
+def head(title: str):
+    print(f"\n{'=' * 68}\n  {title}\n{'=' * 68}")
+
+
+# ── 접속 (deploy_and_restart.py 와 동일 순서) ────────────────
+c = paramiko.SSHClient()
+c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+_key = os.path.expanduser("~/.ssh/id_rsa")
+try:
+    if os.path.exists(_key):
+        try:
+            c.connect(NAS_HOST, port=22, username=NAS_USER, key_filename=_key, timeout=15)
+        except Exception:
+            c.connect(NAS_HOST, port=22, username=NAS_USER, password=NAS_PASS, timeout=15)
+    else:
+        c.connect(NAS_HOST, port=22, username=NAS_USER, password=NAS_PASS, timeout=15)
+except Exception as e:
+    sys.exit(f"NAS 접속 실패: {type(e).__name__}: {e}\n"
+             f"  → .env 의 NAS_HOST / NAS_USER / NAS_PASS 를 확인하세요.")
+
+print(f"접속 성공: {NAS_USER}@{NAS_HOST}")
+
+
+def sudo_nas(cmd: str) -> str:
+    """sudo 로 NAS 명령 실행. 출력 앞의 'Password: ' 프롬프트를 제거한다."""
+    full = f"echo '{NAS_SUDO}' | sudo -S sh -c 'PATH=/usr/local/bin:$PATH {cmd}' 2>&1"
+    _, out, _ = c.exec_command(full, timeout=60)
+    text = out.read().decode("utf-8", "replace")
+    return re.sub(r'^Password:\s*', '', text)
+
+
+# ── 1. 컨테이너 목록 ─────────────────────────────────────────
+head("1. 컨테이너 목록 (docker ps -a)")
+print(mask(sudo_nas(
+    "docker ps -a --format '{{.Names}} | {{.Status}} | {{.Image}} | {{.Ports}}'"
+)).strip() or "(출력 없음)")
+
+# ── 2. 이미지 목록 ───────────────────────────────────────────
+head("2. attendance 이미지 (docker images)")
+print(mask(sudo_nas(
+    "docker images --format '{{.Repository}}:{{.Tag}} | {{.ID}} | {{.CreatedSince}} | {{.Size}}' "
+    "| grep -i attendance"
+)).strip() or "(attendance 이미지 없음)")
+
+# ── 3. 컨테이너별 상세 ───────────────────────────────────────
+# 5월 19일 사고 재발 점검: CMD 가 의도한 스크립트를 가리키는지, 포트 매핑이 맞는지.
+for name in (MAIN, TBM):
+    head(f"3. {name} — 실행 설정")
+    fmt = ('Status={{.State.Status}}  Restarts={{.RestartCount}}  '
+           'ExitCode={{.State.ExitCode}}\nError={{.State.Error}}\n'
+           'Cmd={{.Config.Cmd}}\nEntrypoint={{.Config.Entrypoint}}\n'
+           'Image={{.Config.Image}}\nPorts={{.HostConfig.PortBindings}}')
+    print(mask(sudo_nas(f"docker inspect -f '{fmt}' {name}")).strip() or "(컨테이너 없음)")
+
+    # 컨테이너 안에서 실제로 무엇이 어느 포트를 잡고 있는지
+    print("\n-- 컨테이너 내부 프로세스 --")
+    print(mask(sudo_nas(f"docker top {name} 2>&1 | head -6")).strip() or "(미실행)")
+
+# ── 4. 환경변수 — 값이 아니라 '길이'만 ───────────────────────
+# 5월 19일 사고: --env-file 로 박힌 옛 DB_PASSWORD 가 .env 를 덮어써서 1045 발생.
+head("4. DB_PASSWORD 길이 비교 (값은 출력하지 않음)")
+for name in (MAIN, TBM):
+    out = sudo_nas(
+        f"docker inspect -f '{{{{range .Config.Env}}}}{{{{println .}}}}{{{{end}}}}' {name} "
+        f"| grep '^DB_PASSWORD=' | head -1"
+    ).strip()
+    if out.startswith("DB_PASSWORD="):
+        print(f"  {name:16} 컨테이너 env DB_PASSWORD 길이 = {len(out.split('=', 1)[1])}")
+    else:
+        print(f"  {name:16} 컨테이너 env 에 DB_PASSWORD 없음 (/app/.env 로 주입되는 구조)")
+
+local_db = os.environ.get("DB_PASSWORD", "")
+print(f"  {'맥 .env':16} DB_PASSWORD 길이 = {len(local_db) if local_db else '(없음)'}")
+print("  → 길이가 다르면 5월 19일과 같은 1045 인증 실패 원인입니다.")
+
+# ── 5. 로그 ──────────────────────────────────────────────────
+for name in (MAIN, TBM):
+    head(f"5. {name} — 최근 로그 60줄")
+    print(mask(sudo_nas(f"docker logs --tail 60 {name}")).strip() or "(로그 없음)")
+
+# ── 6. 포트 점유 ─────────────────────────────────────────────
+head("6. NAS 포트 5050 / 5051 점유 상태")
+print(mask(sudo_nas(
+    "netstat -tlnp 2>/dev/null | grep -E ':(5050|5051)' || echo '(5050/5051 리스닝 없음)'"
+)).strip())
+
+c.close()
+print("\n진단 완료 — 위 출력을 그대로 붙여주세요 (자격증명은 마스킹되어 있습니다).")
