@@ -34,7 +34,8 @@ Thumbs.db
 # 임시 파일
 *.tmp
 *.swp
-.claude/
+.claude/*
+!.claude/skills/
 db-init/
 
 # 일회용 복구/진단 스크립트 (보관용, git 추적 X)
