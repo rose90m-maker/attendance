@@ -8,6 +8,7 @@
 
 사용:  python3 _check_containers.py
 """
+import base64
 import os
 import re
 import sys
@@ -89,8 +90,15 @@ say(f"접속 성공: {NAS_USER}@{NAS_HOST}")
 
 
 def sudo_nas(cmd: str) -> str:
-    """sudo 로 NAS 명령 실행. 출력 앞의 'Password: ' 프롬프트를 제거한다."""
-    full = f"echo '{NAS_SUDO}' | sudo -S sh -c 'PATH=/usr/local/bin:$PATH {cmd}' 2>&1"
+    """sudo 로 NAS 명령 실행. 출력 앞의 'Password: ' 프롬프트를 제거한다.
+
+    명령을 base64 로 실어 보낸다. docker --format / inspect -f 의 작은따옴표가
+    sh -c '...' 의 따옴표를 조기에 닫아버리는 문제를 원천 차단하기 위함이다.
+    """
+    payload = base64.b64encode(
+        f"PATH=/usr/local/bin:$PATH\n{cmd}\n".encode("utf-8")
+    ).decode("ascii")
+    full = f"echo '{NAS_SUDO}' | sudo -S sh -c \"echo {payload} | base64 -d | sh\" 2>&1"
     _, out, _ = c.exec_command(full, timeout=60)
     text = out.read().decode("utf-8", "replace")
     return re.sub(r'^Password:\s*', '', text)
@@ -140,8 +148,18 @@ for name in (MAIN, TBM):
     ).strip()
     if out.startswith("DB_PASSWORD="):
         say(f"  {name:16} 컨테이너 env DB_PASSWORD 길이 = {len(out.split('=', 1)[1])}")
+    elif not out:
+        say(f"  {name:16} 컨테이너 env 에 DB_PASSWORD 키 없음 (/app/.env 로 주입되는 구조)")
     else:
-        say(f"  {name:16} 컨테이너 env 에 DB_PASSWORD 없음 (/app/.env 로 주입되는 구조)")
+        say(f"  {name:16} 조회 실패 → {out[:120]}")
+
+# 컨테이너 안 /app/.env 가 실제로 앱이 읽는 값이므로 그 길이도 본다.
+for name in (MAIN, TBM):
+    out = sudo_nas(
+        f"docker exec {name} sh -c "
+        f"\"grep '^DB_PASSWORD=' /app/.env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\\r\\n' | wc -c\""
+    ).strip()
+    say(f"  {name:16} /app/.env 의 DB_PASSWORD 길이 = {out or '(읽기 실패)'}")
 
 local_db = os.environ.get("DB_PASSWORD", "")
 say(f"  {'맥 .env':16} DB_PASSWORD 길이 = {len(local_db) if local_db else '(없음)'}")
@@ -155,8 +173,10 @@ for name in (MAIN, TBM):
 # ── 6. 포트 점유 ─────────────────────────────────────────────
 head("6. NAS 포트 5050 / 5051 점유 상태")
 say(mask(sudo_nas(
-    "netstat -tlnp 2>/dev/null | grep -E ':(5050|5051)' || echo '(5050/5051 리스닝 없음)'"
-)).strip())
+    "docker port " + MAIN + " 2>&1; docker port " + TBM + " 2>&1; "
+    "(ss -tln 2>/dev/null || netstat -tln 2>/dev/null) | grep -E ':(5050|5051)' "
+    "|| echo '(ss/netstat 사용 불가)'"
+)).strip() or "(출력 없음)")
 
 # ── 7. 메모리 사용량 ─────────────────────────────────────────
 # 20~30분 주기 재시작은 OOM kill 가능성이 있어 현재 사용량을 본다.
