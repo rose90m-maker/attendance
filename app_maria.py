@@ -6152,7 +6152,9 @@ def _msg_roster(depts=None, positions=None, emp_ids=None, only_active=True, send
 def message_send():
     """단체 발송 화면"""
     import msg_send as MS
-    rows = _msg_roster()
+    # 화면에 뿌릴 후보 명단이라 전원을 가져온다. 실제 발송 대상은 사용자가 고른 뒤에 정해진다
+    # (_msg_roster 는 조건이 없으면 빈 목록을 주므로 send_all 을 명시해야 한다).
+    rows = _msg_roster(send_all=True)
     depts = sorted({r["dept"] for r in rows if r["dept"]})
     positions = sorted({r["position"] for r in rows if r["position"]})
     channels = MS.kakao_channels()
@@ -6246,6 +6248,41 @@ def api_msg_send():
     return jsonify(res)
 
 
+@app.route("/api/msg_test", methods=["POST"])
+@_menu_required("msg_send", "create")
+def api_msg_test():
+    """내 번호로 한 통만 보내 본다. 단체 발송 전에 눈으로 확인하는 용도."""
+    import msg_send as MS
+    d = request.get_json(force=True, silent=True) or {}
+    phone = MS.norm_phone(d.get("phone"))
+    if not phone:
+        return jsonify({"ok": False, "error": "휴대폰 번호를 올바르게 입력하세요."}), 400
+    body = (d.get("body") or "").strip()
+    if not body:
+        return jsonify({"ok": False, "error": "본문을 입력하세요."}), 400
+
+    # 치환자가 그대로 나가지 않도록 첫 대상자 값으로 채워 실제 발송본과 같게 만든다
+    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"),
+                       send_all=bool(d.get("send_all")))
+    sample = dict(rows[0]) if rows else {"name": session.get("user_name", ""), "dept": "", "position": ""}
+    sample["phone"] = phone
+    res = MS.send([sample], body, d.get("title") or None, channel=d.get("channel", "auto"))
+    return jsonify(res)
+
+
+@app.route("/api/msg_my_phone")
+@_menu_required("msg_send")
+def api_msg_my_phone():
+    """테스트 발송칸에 기본으로 채워 줄 본인 번호 (명부에서 이름으로 찾는다)"""
+    import msg_send as MS
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT phone FROM employee_roster WHERE name=%s LIMIT 1",
+                (session.get("user_name", ""),))
+    r = cur.fetchone()
+    conn.close()
+    return jsonify({"ok": True, "phone": MS.norm_phone(r[0]) if r else ""})
+
+
 @app.route("/api/msg_history")
 @_menu_required("msg_send")
 def api_msg_history():
@@ -6263,8 +6300,9 @@ def api_msg_history():
     cur.execute("""SELECT id, title, channel, kind, body, total, sent, failed, dropped,
                           created_by, DATE_FORMAT(created_at,'%%Y-%%m-%%d %%H:%%i')
                    FROM msg_campaigns ORDER BY id DESC LIMIT 50""")
+    # body 전문을 함께 준다 — 화면에서 "이 내용 다시 쓰기" 로 불러올 수 있게
     rows = [{"id": r[0], "title": r[1], "channel": r[2], "kind": r[3],
-             "body": (r[4] or "")[:60], "total": r[5], "sent": r[6], "failed": r[7],
+             "body": r[4] or "", "total": r[5], "sent": r[6], "failed": r[7],
              "dropped": r[8], "by": r[9], "at": r[10]} for r in cur.fetchall()]
     conn.close()
     return jsonify({"ok": True, "rows": rows})
