@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>단체 문자·알림톡</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        .ms-card { background:#fff; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.07); padding:18px 20px; margin-bottom:18px; }
+        .ms-card h6 { font-size:.92rem; font-weight:700; color:#1e40af; margin-bottom:12px; }
+        .chip { display:inline-block; padding:4px 12px; margin:3px 4px 3px 0; border-radius:16px;
+                border:1px solid #cbd5e1; background:#f8fafc; font-size:.78rem; cursor:pointer; user-select:none; }
+        .chip.on { background:#2563eb; border-color:#2563eb; color:#fff; font-weight:600; }
+        .cnt-box { display:flex; gap:10px; flex-wrap:wrap; }
+        .cnt { flex:1; min-width:88px; border-radius:9px; padding:10px 8px; text-align:center; color:#fff; }
+        .cnt .n { font-size:1.35rem; font-weight:800; line-height:1.15; }
+        .cnt .l { font-size:.7rem; opacity:.92; }
+        .c-total { background:linear-gradient(135deg,#64748b,#475569); }
+        .c-ok    { background:linear-gradient(135deg,#10b981,#059669); }
+        .c-drop  { background:linear-gradient(135deg,#f59e0b,#d97706); }
+        .c-cost  { background:linear-gradient(135deg,#3b82f6,#2563eb); }
+        #body { font-size:.9rem; line-height:1.6; }
+        .byte-info { font-size:.76rem; color:#64748b; }
+        .byte-info b { color:#1e40af; }
+        .var-btn { font-size:.72rem; padding:2px 8px; margin-right:4px; }
+        .preview-box { background:#fdf6e3; border:1px solid #f0e0b0; border-radius:10px;
+                       padding:12px 14px; font-size:.85rem; white-space:pre-wrap; min-height:60px; }
+        .tbl { font-size:.8rem; }
+        .tbl th { background:#e2e8f0; font-size:.76rem; white-space:nowrap; }
+        .tbl td { vertical-align:middle; }
+        .st-ok   { color:#059669; font-weight:600; }
+        .st-fail { color:#dc2626; font-weight:600; }
+        .st-drop { color:#d97706; font-weight:600; }
+        @media (max-width:767.98px){
+            .ms-card{padding:14px;} .cnt .n{font-size:1.1rem;} .tbl{font-size:.7rem;}
+        }
+    </style>
+</head>
+<body>
+{% set active_page = 'msg_send' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h5 class="mb-0">📨 단체 문자·알림톡</h5>
+        <div class="d-flex align-items-center gap-2">
+            {% if balance.ok %}
+            <span class="badge bg-light text-dark border">잔액 {{ '{:,.0f}'.format(balance.balance) }}원</span>
+            {% else %}
+            <span class="badge bg-danger">잔액 조회 실패</span>
+            {% endif %}
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadHistory()">발송 이력</button>
+        </div>
+    </div>
+
+    {% if not kakao_channels %}
+    <div class="alert alert-warning py-2 px-3" style="font-size:.83rem;">
+        <b>카카오 알림톡은 아직 쓸 수 없습니다.</b>
+        솔라피에 연결된 카카오톡 채널이 없습니다. 채널을 개설하고 템플릿 승인을 받으면
+        여기서 바로 선택할 수 있습니다. 그때까지는 문자로 발송됩니다.
+    </div>
+    {% endif %}
+
+    <div class="row g-3">
+        <!-- 왼쪽: 대상 선택 -->
+        <div class="col-lg-5">
+            <div class="ms-card">
+                <h6>1. 받는 사람</h6>
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <small class="text-muted">부서</small>
+                        <button class="btn btn-link btn-sm p-0" style="font-size:.74rem;" onclick="clearSel('dept')">전체 해제</button>
+                    </div>
+                    <div id="deptChips">
+                        {% for d in depts %}<span class="chip" data-t="dept" data-v="{{ d }}">{{ d }}</span>{% endfor %}
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <small class="text-muted">직급</small>
+                        <button class="btn btn-link btn-sm p-0" style="font-size:.74rem;" onclick="clearSel('pos')">전체 해제</button>
+                    </div>
+                    <div id="posChips">
+                        {% for p in positions %}<span class="chip" data-t="pos" data-v="{{ p }}">{{ p }}</span>{% endfor %}
+                    </div>
+                </div>
+                <div class="alert alert-secondary py-2 px-3 mb-2" style="font-size:.76rem;">
+                    아무것도 안 고르면 <b>재직자 전원</b>에게 나갑니다.
+                    부서와 직급을 같이 고르면 <b>둘 다 해당하는 사람</b>만 받습니다.
+                </div>
+                <div class="cnt-box">
+                    <div class="cnt c-total"><div class="n" id="nTotal">-</div><div class="l">대상</div></div>
+                    <div class="cnt c-ok"><div class="n" id="nValid">-</div><div class="l">발송가능</div></div>
+                    <div class="cnt c-drop"><div class="n" id="nDrop">0</div><div class="l">제외</div></div>
+                    <div class="cnt c-cost"><div class="n" id="nCost">-</div><div class="l">예상비용</div></div>
+                </div>
+                <div class="mt-2 text-end">
+                    <button class="btn btn-sm btn-outline-primary" onclick="showTargets()">대상자 명단 보기</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 오른쪽: 내용 -->
+        <div class="col-lg-7">
+            <div class="ms-card">
+                <h6>2. 보낼 내용</h6>
+                <div class="mb-2">
+                    <label class="form-label mb-1" style="font-size:.8rem;">발송 방법</label>
+                    <select class="form-select form-select-sm" id="channel" onchange="onChannel()">
+                        <option value="auto">문자 — 길이에 따라 자동 (짧으면 SMS, 길면 LMS)</option>
+                        <option value="sms">문자 SMS (90바이트까지)</option>
+                        <option value="lms">문자 LMS (장문)</option>
+                        {% for c in kakao_channels %}
+                        <option value="ata" data-pf="{{ c.pf_id }}">카카오 알림톡 ({{ c.search_id }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2" id="titleWrap" style="display:none;">
+                    <label class="form-label mb-1" style="font-size:.8rem;">제목 <span class="text-muted">(LMS만)</span></label>
+                    <input type="text" class="form-control form-control-sm" id="title" placeholder="예) 안전교육 안내">
+                </div>
+                <div class="mb-1">
+                    <label class="form-label mb-1" style="font-size:.8rem;">본문</label>
+                    <div class="mb-1">
+                        <button class="btn btn-outline-secondary var-btn" onclick="insVar('{이름}')">{이름}</button>
+                        <button class="btn btn-outline-secondary var-btn" onclick="insVar('{부서}')">{부서}</button>
+                        <button class="btn btn-outline-secondary var-btn" onclick="insVar('{직급}')">{직급}</button>
+                        <span class="text-muted" style="font-size:.72rem;">누르면 넣어집니다. 사람마다 바뀝니다.</span>
+                    </div>
+                    <textarea class="form-control" id="body" rows="7" oninput="onBody()"
+                              placeholder="예) {이름}님, 내일 10시 안전교육이 있습니다. 늦지 않게 참석해 주세요."></textarea>
+                </div>
+                <div class="byte-info mb-2">
+                    <span id="byteInfo">0바이트</span> · 예상 발송 <b id="kindInfo">-</b>
+                    <span class="text-muted">(한글 2바이트, 90바이트 넘으면 LMS)</span>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label mb-1" style="font-size:.8rem;">미리보기 <span class="text-muted" id="pvWho"></span></label>
+                    <div class="preview-box" id="preview">본문을 입력하면 첫 번째 대상자 기준으로 보여 드립니다.</div>
+                </div>
+                <div class="d-flex justify-content-end gap-2">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="refresh()">다시 계산</button>
+                    {% if can_send %}
+                    <button class="btn btn-primary btn-sm" id="btnSend" onclick="doSend()">발송하기</button>
+                    {% else %}
+                    <button class="btn btn-secondary btn-sm" disabled title="발송 권한이 없습니다">발송하기</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 대상자 명단 -->
+<div class="modal fade" id="mdTargets" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2"><h6 class="modal-title">대상자 명단</h6>
+                <button class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><div id="targetBody">불러오는 중…</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- 발송 이력 -->
+<div class="modal fade" id="mdHistory" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2"><h6 class="modal-title">발송 이력</h6>
+                <button class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><div id="histBody">불러오는 중…</div></div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let firstTarget = null;
+
+function sel(t){ return [...document.querySelectorAll(`.chip[data-t="${t}"].on`)].map(e=>e.dataset.v); }
+function clearSel(t){ document.querySelectorAll(`.chip[data-t="${t}"]`).forEach(c=>c.classList.remove('on')); refresh(); }
+document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{ c.classList.toggle('on'); refresh(); });
+
+function cond(){ return { depts: sel('dept'), positions: sel('pos'),
+                          body: document.getElementById('body').value,
+                          title: document.getElementById('title').value,
+                          channel: document.getElementById('channel').value }; }
+
+function onChannel(){
+    const v = document.getElementById('channel').value;
+    document.getElementById('titleWrap').style.display = (v==='lms'||v==='auto') ? '' : 'none';
+    refresh();
+}
+
+/* 한글 2바이트로 세는 것은 서버와 같은 기준 */
+function bytesOf(s){ let n=0; for(const ch of s) n += (ch.charCodeAt(0)<128?1:2); return n; }
+
+function onBody(){
+    const raw = document.getElementById('body').value;
+    let pv = raw;
+    if (firstTarget){
+        pv = pv.replace(/\{이름\}/g, firstTarget.name||'')
+               .replace(/\{부서\}/g, firstTarget.dept||'')
+               .replace(/\{직급\}/g, firstTarget.position||'');
+    }
+    pv = pv.replace(/\{[가-힣A-Za-z_][가-힣A-Za-z0-9_]*\}/g,'');
+    document.getElementById('preview').textContent = pv || '본문을 입력하면 첫 번째 대상자 기준으로 보여 드립니다.';
+    const b = bytesOf(pv);
+    document.getElementById('byteInfo').textContent = b + '바이트';
+    const ch = document.getElementById('channel').value;
+    let kind = ch==='ata' ? '알림톡' : ch==='sms' ? 'SMS' : ch==='lms' ? 'LMS'
+             : (b>90 || document.getElementById('title').value) ? 'LMS' : 'SMS';
+    document.getElementById('kindInfo').textContent = kind;
+}
+
+async function refresh(){
+    const r = await fetch('/api/msg_targets', {method:'POST',
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify(cond())}).then(r=>r.json());
+    document.getElementById('nTotal').textContent = r.total;
+    document.getElementById('nValid').textContent = r.valid;
+    document.getElementById('nDrop').textContent = r.total - r.valid;
+    firstTarget = r.rows.find(x=>x.valid) || null;
+    document.getElementById('pvWho').textContent = firstTarget ? `(${firstTarget.name} 기준)` : '';
+    onBody();
+    if (document.getElementById('body').value.trim()){
+        const p = await fetch('/api/msg_preview', {method:'POST',
+            headers:{'Content-Type':'application/json'}, body: JSON.stringify(cond())}).then(r=>r.json());
+        document.getElementById('nCost').textContent = p.est_cost ? p.est_cost.toLocaleString()+'원' : '-';
+    } else {
+        document.getElementById('nCost').textContent = '-';
+    }
+}
+
+async function showTargets(){
+    new bootstrap.Modal(document.getElementById('mdTargets')).show();
+    const r = await fetch('/api/msg_targets', {method:'POST',
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify(cond())}).then(r=>r.json());
+    let h = `<table class="table table-sm tbl"><thead><tr><th>이름</th><th>부서</th><th>직급</th><th>번호</th><th>상태</th></tr></thead><tbody>`;
+    r.rows.forEach(x=>{
+        const ph = x.valid ? x.phone.replace(/(\d{3})(\d{4})(\d{4})/,'$1-****-$3') : '-';
+        h += `<tr><td>${x.name||''}</td><td>${x.dept||''}</td><td>${x.position||''}</td><td>${ph}</td>
+              <td class="${x.valid?'st-ok':'st-drop'}">${x.valid?'발송가능':'번호없음'}</td></tr>`;
+    });
+    document.getElementById('targetBody').innerHTML = h + '</tbody></table>';
+}
+
+async function doSend(){
+    const c = cond();
+    if (!c.body.trim()){ alert('본문을 입력하세요.'); return; }
+    const n = document.getElementById('nValid').textContent;
+    const kind = document.getElementById('kindInfo').textContent;
+    const cost = document.getElementById('nCost').textContent;
+    if (!confirm(`${n}명에게 ${kind}로 발송합니다.\n예상 비용 ${cost}\n\n보내시겠습니까?`)) return;
+
+    const btn = document.getElementById('btnSend');
+    btn.disabled = true; btn.textContent = '발송 중…';
+    const sel = document.getElementById('channel').selectedOptions[0];
+    if (sel.dataset.pf) c.pf_id = sel.dataset.pf;
+    try{
+        const r = await fetch('/api/msg_send', {method:'POST',
+            headers:{'Content-Type':'application/json'}, body: JSON.stringify(c)}).then(r=>r.json());
+        if (r.error && !r.sent){ alert('발송 실패: ' + r.error); }
+        else {
+            let m = `발송 완료\n\n성공 ${r.sent}건`;
+            if (r.failed) m += `\n실패 ${r.failed}건`;
+            if ((r.dropped||[]).length) m += `\n제외 ${r.dropped.length}건 (번호 없음·중복)`;
+            alert(m);
+            document.getElementById('body').value = '';
+            onBody(); refresh();
+        }
+    } catch(e){ alert('발송 중 오류: ' + e); }
+    btn.disabled = false; btn.textContent = '발송하기';
+}
+
+async function loadHistory(){
+    new bootstrap.Modal(document.getElementById('mdHistory')).show();
+    const r = await fetch('/api/msg_history').then(r=>r.json());
+    if (!r.rows.length){ document.getElementById('histBody').innerHTML = '<p class="text-muted">발송 이력이 없습니다.</p>'; return; }
+    let h = `<table class="table table-sm tbl"><thead><tr><th>일시</th><th>종류</th><th>내용</th>
+             <th>대상</th><th>성공</th><th>실패</th><th>제외</th><th>보낸이</th><th></th></tr></thead><tbody>`;
+    r.rows.forEach(x=>{
+        h += `<tr><td>${x.at}</td><td>${x.kind||x.channel}</td><td>${(x.body||'').replace(/</g,'&lt;')}…</td>
+              <td>${x.total}</td><td class="st-ok">${x.sent}</td>
+              <td class="${x.failed?'st-fail':''}">${x.failed}</td>
+              <td class="${x.dropped?'st-drop':''}">${x.dropped}</td><td>${x.by||''}</td>
+              <td><button class="btn btn-outline-secondary btn-sm py-0" onclick="detail(${x.id})">상세</button></td></tr>`;
+    });
+    document.getElementById('histBody').innerHTML = h + '</tbody></table><div id="detailBox"></div>';
+}
+
+async function detail(cid){
+    const r = await fetch('/api/msg_history?cid=' + cid).then(r=>r.json());
+    let h = `<hr><h6 style="font-size:.85rem;">수신자별 결과</h6>
+             <table class="table table-sm tbl"><thead><tr><th>이름</th><th>부서</th><th>번호</th><th>결과</th><th>사유</th></tr></thead><tbody>`;
+    r.rows.forEach(x=>{
+        const cls = x.status==='ok'?'st-ok':x.status==='fail'?'st-fail':'st-drop';
+        const lbl = x.status==='ok'?'성공':x.status==='fail'?'실패':'제외';
+        const ph = (x.phone||'').replace(/(\d{3})(\d{4})(\d{4})/,'$1-****-$3');
+        h += `<tr><td>${x.name||''}</td><td>${x.dept||''}</td><td>${ph}</td>
+              <td class="${cls}">${lbl}</td><td>${x.error||''}</td></tr>`;
+    });
+    document.getElementById('detailBox').innerHTML = h + '</tbody></table>';
+    document.getElementById('detailBox').scrollIntoView({behavior:'smooth'});
+}
+
+onChannel();
+refresh();
+</script>
+</body>
+</html>

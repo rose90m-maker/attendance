@@ -211,6 +211,7 @@
         {# 공문서관리는 직원도 들어온다. 관리자는 전체, 직원은 본인 요청만 보인다
            (document_management 가 requester_id 로 걸러 준다) #}
         <a href="/document_management" class="side-link{% if active_page == 'document_management' %} active{% endif %}"><span class="sl-icon">📄</span>{% if is_admin %}공문서관리{% else %}증명서 신청{% endif %}</a>
+        {% if can_menu('msg_send') %}<a href="/message_send" class="side-link{% if active_page == 'msg_send' %} active{% endif %}"><span class="sl-icon">📨</span>단체 문자·알림톡</a>{% endif %}
     </div>
 
     <!-- MES관리 -->

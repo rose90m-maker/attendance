@@ -1729,6 +1729,7 @@ MENU_STRUCTURE = [
     ("welfare", "cat_hr", "복지혜택", ["view"]),
     ("work_report", "cat_hr", "근무보고서", ["view", "create", "update", "delete"]),
     ("document_mgmt", "cat_hr", "공문서관리", ["view", "create", "update", "delete"]),
+    ("msg_send", "cat_hr", "단체 문자·알림톡", ["view", "create"]),
 
     ("cat_mes", None, "MES관리", []),
     ("mes_realtime", "cat_mes", "실시간카운트", ["view"]),
@@ -1941,6 +1942,42 @@ def _backfill_perm_group_menus():
     conn.commit(); conn.close()
 
 
+def _init_msg_db():
+    """단체 발송(문자·알림톡) 이력 테이블. 앱 시작 때마다 돌아도 안전하다."""
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS msg_campaigns (
+            id          INT AUTO_INCREMENT PRIMARY KEY,
+            title       VARCHAR(200) DEFAULT '',
+            channel     VARCHAR(10)  NOT NULL,          -- auto/sms/lms/ata/cta
+            kind        VARCHAR(10)  DEFAULT '',        -- 실제 발송된 종류
+            body        TEXT,
+            total       INT DEFAULT 0,
+            sent        INT DEFAULT 0,
+            failed      INT DEFAULT 0,
+            dropped     INT DEFAULT 0,
+            group_id    VARCHAR(64) DEFAULT '',
+            error       VARCHAR(500) DEFAULT '',
+            created_by  VARCHAR(50) DEFAULT '',
+            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_created (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS msg_logs (
+            id          INT AUTO_INCREMENT PRIMARY KEY,
+            campaign_id INT NOT NULL,
+            name        VARCHAR(50)  DEFAULT '',
+            dept        VARCHAR(80)  DEFAULT '',
+            phone       VARCHAR(20)  DEFAULT '',
+            status      VARCHAR(10)  DEFAULT '',        -- ok/fail/drop
+            error       VARCHAR(300) DEFAULT '',
+            INDEX idx_campaign (campaign_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+    conn.commit(); conn.close()
+
+
 _init_db()
 try:
     _seed_perm_groups()
@@ -1948,6 +1985,10 @@ try:
     _migrate_csv_to_overrides()
 except Exception as _e:
     print(f"[perm init] {_e}")
+try:
+    _init_msg_db()
+except Exception as _e:
+    print(f"[msg init] {_e}")
 
 
 def _time_to_sec(t):
@@ -6061,6 +6102,158 @@ def upload_schedule_record():
 @_login_required
 def welfare():
     return render_template("welfare.html")
+
+
+# ════════════════════════════════════════════════════════
+# 단체 문자·알림톡 발송
+# ════════════════════════════════════════════════════════
+# 발송 자체는 msg_send.py 가 한다. 여기서는 대상자를 명부에서 뽑아 주고
+# 결과를 msg_campaigns/msg_logs 에 남긴다.
+# 알림톡은 카카오 채널이 등록돼야 열린다 — 없으면 화면에서 문자만 고를 수 있다.
+
+def _msg_roster(depts=None, positions=None, emp_ids=None, only_active=True):
+    """발송 대상 후보를 명부에서 뽑는다. retire_date 가 비어 있으면 재직으로 본다."""
+    conn = _conn(); cur = conn.cursor()
+    sql = ["SELECT id, name, dept, position, phone, emp_no, job_title",
+           "FROM employee_roster WHERE 1=1"]
+    args = []
+    if only_active:
+        sql.append("AND (retire_date IS NULL OR retire_date='')")
+    if depts:
+        sql.append("AND dept IN (" + ",".join(["%s"] * len(depts)) + ")")
+        args += list(depts)
+    if positions:
+        sql.append("AND position IN (" + ",".join(["%s"] * len(positions)) + ")")
+        args += list(positions)
+    if emp_ids:
+        sql.append("AND id IN (" + ",".join(["%s"] * len(emp_ids)) + ")")
+        args += list(emp_ids)
+    sql.append("ORDER BY dept, name")
+    cur.execute(" ".join(sql), args)
+    rows = [{"id": r[0], "name": r[1], "dept": r[2], "position": r[3],
+             "phone": r[4], "emp_no": r[5], "job_title": r[6]} for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+@app.route("/message_send")
+@_menu_required("msg_send")
+def message_send():
+    """단체 발송 화면"""
+    import msg_send as MS
+    rows = _msg_roster()
+    depts = sorted({r["dept"] for r in rows if r["dept"]})
+    positions = sorted({r["position"] for r in rows if r["position"]})
+    channels = MS.kakao_channels()
+    return render_template("message_send.html",
+                           active_page="msg_send",
+                           roster=rows, depts=depts, positions=positions,
+                           balance=MS.balance(),
+                           kakao_channels=channels,
+                           kakao_templates=MS.kakao_templates() if channels else [],
+                           can_send=_menu_perm("msg_send", "create"))
+
+
+@app.route("/api/msg_targets", methods=["POST"])
+@_menu_required("msg_send")
+def api_msg_targets():
+    """조건에 맞는 대상자 목록 (화면에서 인원수·번호 확인용)"""
+    import msg_send as MS
+    d = request.get_json(force=True, silent=True) or {}
+    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"))
+    out = []
+    for r in rows:
+        ph = MS.norm_phone(r["phone"])
+        out.append({**r, "phone": ph or "", "valid": bool(ph)})
+    return jsonify({"ok": True, "rows": out,
+                    "valid": sum(1 for r in out if r["valid"]), "total": len(out)})
+
+
+@app.route("/api/msg_preview", methods=["POST"])
+@_menu_required("msg_send")
+def api_msg_preview():
+    """실제로 보내지 않고 종류(SMS/LMS)·글자수·제외자만 계산한다."""
+    import msg_send as MS
+    d = request.get_json(force=True, silent=True) or {}
+    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"))
+    res = MS.send(rows, d.get("body", ""), d.get("title") or None,
+                  channel=d.get("channel", "auto"), dry_run=True)
+    # 건당 단가는 계약에 따라 다르다. 화면에는 대략치로만 보여 준다.
+    unit = {"SMS": 20, "LMS": 43, "알림톡": 9, "친구톡": 15}.get(res.get("kind"), 20)
+    res["est_cost"] = unit * res.get("total", 0)
+    res["unit"] = unit
+    return jsonify(res)
+
+
+@app.route("/api/msg_send", methods=["POST"])
+@_menu_required("msg_send", "create")
+def api_msg_send():
+    """실제 발송 + 이력 기록"""
+    import msg_send as MS
+    d = request.get_json(force=True, silent=True) or {}
+    body = (d.get("body") or "").strip()
+    if not body:
+        return jsonify({"ok": False, "error": "본문을 입력하세요."}), 400
+    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"))
+    if not rows:
+        return jsonify({"ok": False, "error": "대상자가 없습니다."}), 400
+
+    channel = d.get("channel", "auto")
+    kakao = None
+    if channel in ("ata", "cta"):
+        kakao = {"pf_id": d.get("pf_id"), "template_id": d.get("template_id"),
+                 "disable_sms": bool(d.get("disable_sms"))}
+
+    pre = MS.send(rows, body, d.get("title") or None, channel=channel, dry_run=True)
+    res = MS.send(rows, body, d.get("title") or None, channel=channel, kakao=kakao)
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""INSERT INTO msg_campaigns
+                   (title, channel, kind, body, total, sent, failed, dropped,
+                    group_id, error, created_by)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (d.get("title") or "", channel, pre.get("kind", ""), body,
+                 res.get("total", 0), res.get("sent", 0), res.get("failed", 0),
+                 len(res.get("dropped") or []), res.get("group_id", ""),
+                 (res.get("error") or "")[:500], session.get("user_name", "")))
+    cid = cur.lastrowid
+    logs = [(cid, r.get("name", ""), r.get("dept", ""), r.get("phone", ""),
+             "ok" if r.get("ok") else "fail", (r.get("error") or "")[:300])
+            for r in (res.get("results") or [])]
+    logs += [(cid, x.get("name", ""), "", str(x.get("phone", ""))[:20], "drop",
+              (x.get("reason") or "")[:300]) for x in (res.get("dropped") or [])]
+    if logs:
+        cur.executemany("""INSERT INTO msg_logs
+                           (campaign_id, name, dept, phone, status, error)
+                           VALUES (%s,%s,%s,%s,%s,%s)""", logs)
+    conn.commit(); conn.close()
+
+    res["campaign_id"] = cid
+    return jsonify(res)
+
+
+@app.route("/api/msg_history")
+@_menu_required("msg_send")
+def api_msg_history():
+    """최근 발송 이력. cid 를 주면 그 건의 수신자별 결과까지."""
+    cid = request.args.get("cid", type=int)
+    conn = _conn(); cur = conn.cursor()
+    if cid:
+        cur.execute("""SELECT name, dept, phone, status, error
+                       FROM msg_logs WHERE campaign_id=%s
+                       ORDER BY FIELD(status,'fail','drop','ok'), name""", (cid,))
+        rows = [{"name": r[0], "dept": r[1], "phone": r[2],
+                 "status": r[3], "error": r[4]} for r in cur.fetchall()]
+        conn.close()
+        return jsonify({"ok": True, "rows": rows})
+    cur.execute("""SELECT id, title, channel, kind, body, total, sent, failed, dropped,
+                          created_by, DATE_FORMAT(created_at,'%%Y-%%m-%%d %%H:%%i')
+                   FROM msg_campaigns ORDER BY id DESC LIMIT 50""")
+    rows = [{"id": r[0], "title": r[1], "channel": r[2], "kind": r[3],
+             "body": (r[4] or "")[:60], "total": r[5], "sent": r[6], "failed": r[7],
+             "dropped": r[8], "by": r[9], "at": r[10]} for r in cur.fetchall()]
+    conn.close()
+    return jsonify({"ok": True, "rows": rows})
 
 
 @app.route("/hr_status")
