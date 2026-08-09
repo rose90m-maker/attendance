@@ -107,36 +107,42 @@ say("  로컬 Dockerfile → NAS 임시 업로드 (운영 파일 미변경)")
 say("=" * 68)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-UPLOADS_MAP = []
-try:
-    sftp = c.open_sftp()
-    for local_name in ("Dockerfile", "Dockerfile.tbm"):
-        lp = os.path.join(HERE, local_name)
-        if not os.path.exists(lp):
-            say(f"  {local_name}: 로컬에 없음 — 건너뜀")
-            continue
-        remote = f"{STAGE}/{local_name}.buildtest"
-        sftp.put(lp, remote)
-        UPLOADS_MAP.append((local_name, f"{local_name}.buildtest"))
-        say(f"  {local_name} → {remote}  ({os.path.getsize(lp)}B)")
-    sftp.close()
-except Exception as e:
-    say(f"  업로드 실패: {type(e).__name__}: {e}")
-    say("  → 스테이징에 이미 있는 Dockerfile 로 빌드합니다 (로컬 수정 미반영).")
-    UPLOADS_MAP = [("Dockerfile", "Dockerfile"), ("Dockerfile.tbm", "Dockerfile.tbm")]
 
-# freetds-dev 가 실제로 빠졌는지 눈으로 확인할 수 있게 남긴다
-for local_name, _ in UPLOADS_MAP:
+# Synology 는 SFTP 가 기본으로 꺼져 있어 paramiko open_sftp() 가 죽는다.
+# 이미 동작이 확인된 SSH exec 경로로 base64 를 실어 보내 파일을 만든다.
+def upload_via_ssh(local_path, remote_path):
+    data = open(local_path, "rb").read()
+    b64 = base64.b64encode(data).decode("ascii")
+    out = sudo_nas(f"echo {b64} | base64 -d > {remote_path} && echo UPLOAD_OK", timeout=120)
+    return "UPLOAD_OK" in out, out.strip()
+
+
+BUILD_PLAN = []   # (이미지명, NAS 에서 쓸 Dockerfile 이름)
+for img, local_name in [("attendance-app", "Dockerfile"),
+                        ("attendance-tbm", "Dockerfile.tbm")]:
     lp = os.path.join(HERE, local_name)
-    if os.path.exists(lp):
-        body = open(lp, encoding="utf-8").read()
-        say(f"  [{local_name}] freetds-dev 포함? "
-            f"{'예 — 아직 안 지워졌습니다' if 'freetds-dev' in body else '아니오 (삭제됨)'}")
+    if not os.path.exists(lp):
+        say(f"  {local_name}: 로컬에 없음 — 스테이징 원본으로 빌드")
+        BUILD_PLAN.append((img, local_name))
+        continue
+
+    body = open(lp, encoding="utf-8").read()
+    say(f"  [{local_name}] freetds-dev 포함? "
+        f"{'예 — 아직 안 지워졌습니다' if 'freetds-dev' in body else '아니오 (삭제됨)'}")
+
+    remote_name = f"{local_name}.buildtest"
+    ok, msg = upload_via_ssh(lp, f"{STAGE}/{remote_name}")
+    if ok:
+        say(f"  {local_name} → {STAGE}/{remote_name}  ({os.path.getsize(lp)}B) 업로드 OK")
+        BUILD_PLAN.append((img, remote_name))
+    else:
+        say(f"  {local_name} 업로드 실패: {msg[:160]}")
+        say(f"  → 스테이징 원본 {local_name} 로 빌드합니다 (로컬 수정 미반영).")
+        BUILD_PLAN.append((img, local_name))
 
 # ── 빌드 ─────────────────────────────────────────────────────
 # :latest 가 아니라 :buildtest 로 태그해서 운영 이미지를 건드리지 않는다.
-for img, df in [("attendance-app", "Dockerfile.buildtest"),
-                ("attendance-tbm", "Dockerfile.tbm.buildtest")]:
+for img, df in BUILD_PLAN:
     say("\n" + "=" * 68)
     say(f"  {img} 빌드 ({df}) → {img}:buildtest")
     say("=" * 68)
