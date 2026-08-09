@@ -19,6 +19,8 @@
         .chip{display:inline-block;font-size:0.7rem;padding:2px 8px;border-radius:10px;margin-left:4px;}
         .chip-warn{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
         .chip-mute{background:#f3f4f6;color:#6b7280;}
+        /* 일지 날짜 ≠ 실제 작성일 — 경고(빨강)까지는 아니고 눈에만 띄게 */
+        .chip-gap{background:#fffbeb;color:#92400e;border:1px solid #fde68a;}
         .empty{text-align:center;color:#9ca3af;padding:48px 0;font-size:0.9rem;}
     </style>
 </head>
@@ -63,6 +65,8 @@
                 {% if l.photo_cnt %}· 사진 {{ l.photo_cnt }}매{% endif %}
                 {% if l.abnormal_cnt %}<span class="chip chip-warn">이상 {{ l.abnormal_cnt }}건</span>{% endif %}
                 {% if l.patrol_done < l.patrol_total %}<span class="chip chip-mute">미점검 {{ l.patrol_total - l.patrol_done }}</span>{% endif %}
+                {# 일지 날짜와 실제 작성일이 다르면 표시 — 앱이 날짜를 잘못 보낸 경우를 사람이 잡으라고 #}
+                {% if l.date_gap %}<span class="chip chip-gap" title="일지 날짜와 실제 작성일이 다릅니다">✏️ {{ l.written_on }} 작성</span>{% endif %}
             </div>
         </div>
         <div class="d-flex align-items-center gap-2">

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>연차 산정표</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        .lc-tbl th, .lc-tbl td { font-size:.8rem; white-space:nowrap; vertical-align:middle; }
+        .lc-tbl thead th { position:sticky; top:0; background:#f8f9fa; z-index:2; }
+        .lc-wrap { max-height:calc(100vh - 320px); overflow:auto; }
+        .tag-1 { background:#fee2e2; color:#991b1b; }
+        /* 설명문 안의 입사일 — ①입사년 태그와 같은 분홍으로 눈에 띄게 */
+        .ent-hl { background:#fee2e2; color:#991b1b; font-weight:700;
+                  padding:1px 6px; border-radius:4px; }
+        .tag-2 { background:#fef3c7; color:#92400e; }
+        .tag-3 { background:#dcfce7; color:#166534; }
+        .tag  { padding:1px 6px; border-radius:6px; font-size:.68rem; font-weight:700; }
+        .kpi { background:#fff; border:1px solid #e8edf4; border-radius:10px; padding:9px 14px; }
+        .kpi b { font-size:1.15rem; }
+        .diff-x { color:#dc2626; font-weight:700; }
+        @media print { .no-print { display:none; } .lc-wrap { max-height:none; overflow:visible; } }
+    </style>
+</head>
+<body>
+{% set active_page = 'leave_calc' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <div class="page-title mb-0"><span class="title-icon">🧮</span><span>연차 산정표</span></div>
+    <form class="d-flex flex-wrap gap-1 ms-3 no-print align-items-center" method="get">
+      <select name="year" class="form-select form-select-sm" style="width:96px;" onchange="this.form.submit()">
+        {% for y in years %}<option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}년</option>{% endfor %}
+      </select>
+      <select name="dept" class="form-select form-select-sm" style="width:130px;" onchange="this.form.submit()">
+        <option value="">부서 전체</option>
+        {% for d in dept_list %}<option value="{{ d }}" {{ 'selected' if d == f_dept }}>{{ d }}</option>{% endfor %}
+      </select>
+      <select name="tag" class="form-select form-select-sm" style="width:118px;" onchange="this.form.submit()">
+        <option value="">구분 전체</option>
+        {% for t in ['①입사년','②2년차','③이후'] %}
+        <option value="{{ t }}" {{ 'selected' if t == f_tag }}>{{ t }}</option>{% endfor %}
+      </select>
+      <select name="stat" class="form-select form-select-sm" style="width:130px;" onchange="this.form.submit()">
+        <option value="">상태 전체</option>
+        <option value="gap"  {{ 'selected' if f_stat == 'gap' }}>⚠ 점검 대상만</option>
+        <option value="note" {{ 'selected' if f_stat == 'note' }}>비고 있음</option>
+        <option value="ok"   {{ 'selected' if f_stat == 'ok' }}>일치</option>
+      </select>
+      <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm"
+             style="width:150px;" placeholder="이름 검색">
+      <button class="btn btn-primary btn-sm">조회</button>
+      {% if q or f_dept or f_tag or f_stat %}
+      <a href="{{ url_for('leave_calc', year=year) }}" class="btn btn-outline-secondary btn-sm">초기화</a>
+      {% endif %}
+    </form>
+    <button class="btn btn-outline-dark btn-sm no-print ms-auto" onclick="window.print()">🖨️ 인쇄</button>
+    <button class="btn btn-outline-success btn-sm no-print" onclick="dlCsv()">⬇ CSV</button>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <div class="kpi">대상 <b>{{ s.n }}</b>명</div>
+    <div class="kpi">산정 발생 <b>{{ '%g'|format(s.grant) }}</b>일</div>
+    <div class="kpi">사용가능 <b>{{ '%g'|format(s.avail) }}</b>일</div>
+    <div class="kpi">사용 <b>{{ '%g'|format(s.used) }}</b>일</div>
+    <div class="kpi">잔여 <b>{{ '%g'|format(s.remain) }}</b>일</div>
+    <div class="kpi">다음해 이월 <b>{{ s.carry }}</b>일</div>
+    <div class="kpi">점검 대상 <b class="{{ 'diff-x' if s.gap }}">{{ s.gap }}</b>명
+      <span class="text-muted" style="font-size:.72rem;">시스템값과 차이</span></div>
+    <div class="kpi text-muted">비고 있음 <b>{{ s.noted }}</b>명
+      <span style="font-size:.72rem;">임원·제외부서·수기 등</span></div>
+  </div>
+
+  <details class="mb-2">
+    <summary style="cursor:pointer; font-size:.82rem; font-weight:600;">
+      📐 산정 기준 — <span class="text-muted" style="font-weight:400;">회계연도(1/1) 기준 · 눌러서 펼치기</span>
+    </summary>
+    <div class="border rounded p-2 mt-1" style="background:#fbfcfd;">
+      <table class="table table-sm table-bordered mb-2" style="font-size:.78rem;">
+        <thead class="table-light">
+          <tr><th style="width:92px;">구분</th><th style="width:120px;">대상</th>
+              <th>발생 산정식</th><th style="width:200px;">비고</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="tag tag-1">①입사년</span></td><td>입사 당해연도</td>
+              <td><b>월할발생 + 회계연도분</b></td>
+              <td class="text-muted">ERP에 등록되지 않고<br><b>다음 회계연도 1/1에 지급</b></td></tr>
+          <tr><td><span class="tag tag-2">②2년차</span></td><td>입사 다음 해</td>
+              <td><b>월할발생 + 회계연도분</b> <span class="text-muted">(입사연도 기준)</span></td>
+              <td class="text-muted">전년도 산정분을 지급</td></tr>
+          <tr><td><span class="tag tag-3">③이후</span></td><td>그 이후</td>
+              <td><b>이월 월할분 + 근속가산</b></td>
+              <td class="text-muted">11일을 다 줄 때까지 이월분이 얹힘</td></tr>
+        </tbody>
+      </table>
+      <table class="table table-sm mb-0" style="font-size:.78rem;">
+        <tbody>
+          <tr><td style="width:96px;"><b>월할발생</b></td>
+              <td><code>min(11, 12 − 입사월)</code> · 1개월 개근당 1일, 최대 11일</td></tr>
+          <tr><td><b>회계연도분</b></td>
+              <td><code>round(15 × 입사연도 재직일수 ÷ 365)</code></td></tr>
+          <tr><td><b>근속가산</b></td>
+              <td><code>min(25, 15 + (근속−1) ÷ 2)</code> · 근속은 <b>전년 12/31 기준</b></td></tr>
+          <tr><td><b>사용가능</b></td>
+              <td><code>발생 + 전년차감</code> · 전년도에서 당겨 쓴 몫(음수)을 반영</td></tr>
+          <tr><td><b>이월</b></td>
+              <td><code>11 − 도래한 월할 누계</code> · 다음 회계연도에 지급</td></tr>
+        </tbody>
+      </table>
+      <div class="mt-3 mb-1" style="font-size:.8rem;"><b>📌 예시 — 문영인 (<span class="ent-hl">2026-02-26</span> 입사)</b></div>
+      <table class="table table-sm table-bordered mb-2" style="font-size:.78rem;">
+        <thead class="table-light">
+          <tr><th style="width:70px;">연도</th><th style="width:92px;">구분</th>
+              <th class="text-end" style="width:76px;">월할</th>
+              <th class="text-end" style="width:96px;">회계연도분<br>/근속가산</th>
+              <th class="text-end" style="width:76px;">발생</th>
+              <th class="text-end" style="width:64px;">이월</th>
+              <th>설명</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>2026</td><td><span class="tag tag-1">①입사년</span></td>
+              <td class="text-end">10</td><td class="text-end">13</td>
+              <td class="text-end"><b>23</b></td><td class="text-end">1</td>
+              <td class="text-muted">3~12월 개근 <b>10일</b> + 회계연도분 <code>round(15×309÷365)=13</code>.
+                  ERP엔 안 올라가고 <b>2027-01-01에 지급</b></td></tr>
+          <tr><td>2027</td><td><span class="tag tag-2">②2년차</span></td>
+              <td class="text-end">10</td><td class="text-end">13</td>
+              <td class="text-end"><b>23</b></td><td class="text-end">1</td>
+              <td class="text-muted">전년 산정분 23일을 실제로 받는 해.
+                  11일 중 <b>1일</b>은 아직 안 왔으므로 다음 해로 넘어감</td></tr>
+          <tr><td>2028</td><td><span class="tag tag-3">③이후</span></td>
+              <td class="text-end">1</td><td class="text-end">15</td>
+              <td class="text-end"><b>16</b></td><td class="text-end">0</td>
+              <td class="text-muted">근속가산 <b>15일</b> + 남았던 이월 <b>1일</b>.
+                  여기서 11일을 다 채워 이월이 끝남</td></tr>
+          <tr><td>2029</td><td><span class="tag tag-3">③이후</span></td>
+              <td class="text-end">0</td><td class="text-end">15</td>
+              <td class="text-end"><b>15</b></td><td class="text-end">0</td>
+              <td class="text-muted">이월이 끝나 근속가산만. 근속 2년이라 아직 15일</td></tr>
+          <tr><td>2030</td><td><span class="tag tag-3">③이후</span></td>
+              <td class="text-end">0</td><td class="text-end">16</td>
+              <td class="text-end"><b>16</b></td><td class="text-end">0</td>
+              <td class="text-muted">근속 3년 → <code>15+(3−1)÷2=16</code>. 이후 2년마다 1일씩,
+                  최대 25일까지 오름</td></tr>
+        </tbody>
+      </table>
+      <div class="text-muted mb-2" style="font-size:.74rem;">
+        ①과 ②의 숫자가 같은 이유는 <b>둘 다 입사연도(2026) 기준으로 산정</b>하기 때문입니다.
+        ①은 “얼마가 산정되는지”를 보여주는 것이고, 실제 지급은 ②에서 일어납니다.
+        <span class="ent-hl">2026-03-03</span> 입사(정태선)라면 한 달 늦어 월할이 9일이 되고, 이월은 2일이 됩니다.
+      </div>
+      <div class="text-muted mt-2" style="font-size:.74rem;">
+        2024~2026년 ERP 402건으로 검증했습니다(2025·2026 구간 93~96% 일치).
+        <b>비고</b>가 붙은 사람은 임원·연차 관리 제외 부서·수기 산정 등이라, 차이가 나도 정상이므로 점검 대상에서 뺐습니다.
+      </div>
+    </div>
+  </details>
+
+  <div class="lc-wrap border rounded">
+    <table class="js-sort table table-sm table-hover mb-0 lc-tbl" id="lcTbl">
+      <thead>
+        <tr>
+          <th>#</th><th>이름</th><th>부서</th><th>입사일</th><th>구분</th><th class="text-end">근속</th>
+          <th class="text-end">월할</th><th class="text-end">회계연도분</th>
+          <th class="text-end">산정 발생</th><th class="text-end">전년차감</th>
+          <th class="text-end">사용가능</th><th class="text-end">사용</th><th class="text-end">잔여</th>
+          <th class="text-end">이월</th>
+          <th class="text-end">시스템 부여</th><th class="text-end">차이</th><th>비고</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td class="fw-bold"><a href="/annual_leave?search={{ r.name }}" style="text-decoration:none;">{{ r.name }}</a></td>
+          <td class="text-muted">{{ r.dept }}</td>
+          <td>{{ r.ent[:4] }}-{{ r.ent[4:6] }}-{{ r.ent[6:] }}</td>
+          {# 원문자(①②③)로 색을 고른다. 예전엔 r.tag[1] 을 봤는데 '①입사년' 의 두 번째 글자가
+             '입' 이라 숫자가 아니어서 ①만 초록으로 잘못 나왔다. (2026-08-05) #}
+          <td><span class="tag tag-{{ {'①':'1','②':'2','③':'3'}.get(r.tag[0], '3') }}"
+                    {% if r.next_year %}title="입사 당해연도라 ERP에는 등록되지 않고 다음 회계연도 1/1에 지급됩니다"{% endif %}>{{ r.tag }}</span>
+              {% if r.next_year %}<span class="text-muted" style="font-size:.66rem;">익년지급</span>{% endif %}</td>
+          <td class="text-end">{{ r.years }}년</td>
+          <td class="text-end text-muted">{{ r.monthly or '' }}</td>
+          <td class="text-end text-muted">{{ r.fiscal or '' }}</td>
+          <td class="text-end">{{ '%g'|format(r.grant) }}</td>
+          <td class="text-end {{ 'text-danger' if r.deduct }}">{{ '' if not r.deduct else '%g'|format(r.deduct) }}</td>
+          <td class="text-end fw-bold">{{ '%g'|format(r.avail) }}</td>
+          <td class="text-end">{{ '%g'|format(r.used) }}</td>
+          <td class="text-end">{{ '%g'|format(r.remain) }}</td>
+          <td class="text-end">{{ r.carry or '' }}</td>
+          <td class="text-end text-muted">{{ '-' if r.cur_total is none else '%g'|format(r.cur_total) }}</td>
+          <td class="text-end {{ 'diff-x' if r.diff and not r.note }}">{{ '' if not r.diff else '%+g'|format(r.diff) }}</td>
+          <td class="text-muted" style="font-size:.72rem;">{{ r.note }}</td>
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr><td colspan="15" class="text-center text-muted py-3">조건에 맞는 인원이 없습니다.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function dlCsv() {
+    var rows = [], t = document.getElementById('lcTbl');
+    t.querySelectorAll('tr').forEach(function(tr) {
+        var c = [];
+        tr.querySelectorAll('th,td').forEach(function(x) {
+            c.push('"' + (x.textContent || '').trim().replace(/"/g, '""') + '"');
+        });
+        rows.push(c.join(','));
+    });
+    // 엑셀이 한글을 깨뜨리지 않도록 BOM 을 붙인다
+    var blob = new Blob(['﻿' + rows.join('\r\n')], {type: 'text/csv;charset=utf-8;'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '연차산정표_{{ year }}.csv';
+    a.click();
+}
+</script>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
+</body>
+</html>

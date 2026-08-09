@@ -19,7 +19,10 @@ _FILE_LABELS = {
     "templates/user_management.html": "사용자관리",
     "templates/leave_approval.html": "휴가결재",
     "templates/leave_plan_view.html": "연차계획",
+    "templates/leave_plan_import.html": "연차계획서 읽기",
+    "templates/leave_calc.html": "연차 산정표",
     "templates/annual_leave.html": "연차관리",
+    "templates/leave_dashboard.html": "연차관리 대시보드",
     "templates/work_schedule.html": "근무표",
     "templates/meal_management.html": "식수관리",
     "templates/document_management.html": "문서관리",
@@ -29,6 +32,12 @@ _FILE_LABELS = {
     "templates/power_dashboard.html": "전력관리",
     "templates/fire_management.html": "화재감시",
     "erp_sync.py": "ERP 동기화",
+    "erp_leave_sync.py": "ERP 연차 동기화",
+    "erp_hr_sync.py": "ERP 인사 동기화",
+    "templates/hr_status.html": "인사현황 화면",
+    "templates/hr_employee.html": "개인 인사카드",
+    "templates/hr_vehicle.html": "차량현황 화면",
+    "templates/hr_roster.html": "전체 재직자 화면",
     "erp_enter_sync.py": "ERP 출입연동",
     "mes_bp.py": "MES",
     "edu_bp.py": "교육관리",
@@ -131,14 +140,27 @@ files = [
     ("Dockerfile", "Dockerfile"),
     ("requirements.txt", "requirements.txt"),
     ("app_maria.py", "app_maria.py"),
+    ("cert_pdf.py", "cert_pdf.py"),
+    ("msg_send.py", "msg_send.py"),
+    ("wht_receipt.py", "wht_receipt.py"),   # 원천징수영수증 생성
+    ("wht_calc.py", "wht_calc.py"),         # 연말정산 계산 엔진
     ("tbm_bp.py", "tbm_bp.py"),
     ("static/style.css", "static/style.css"),
+    # 표 헤더 클릭 정렬 (연차·인사 화면 공용). docker cp 는 static/*.js 를 glob 으로 잡지만
+    # 여기(NAS staging 전송 목록)에 없으면 애초에 NAS 까지 가지 않는다.
+    ("static/table-sort.js", "static/table-sort.js"),
     ("static/LOGO.GIF", "static/LOGO.GIF"),
+    ("static/cert_stamp.png", "static/cert_stamp.png"),   # 증명서 직인
     ("static/manifest.json", "static/manifest.json"),
     ("templates/attendance.html", "templates/attendance.html"),
     ("templates/weekly52.html", "templates/weekly52.html"),
     ("templates/work_schedule.html", "templates/work_schedule.html"),
     ("templates/annual_leave.html", "templates/annual_leave.html"),
+    ("templates/leave_dashboard.html", "templates/leave_dashboard.html"),
+    ("templates/hr_status.html", "templates/hr_status.html"),
+    ("templates/hr_employee.html", "templates/hr_employee.html"),
+    ("templates/hr_vehicle.html", "templates/hr_vehicle.html"),
+    ("templates/hr_roster.html", "templates/hr_roster.html"),
     ("templates/login.html", "templates/login.html"),
     ("templates/change_password.html", "templates/change_password.html"),
     ("templates/log_management.html", "templates/log_management.html"),
@@ -156,11 +178,17 @@ files = [
     ("templates/_survey_q_render.html", "templates/_survey_q_render.html"),
     ("templates/roster.html", "templates/roster.html"),
     ("templates/schedule_record.html", "templates/schedule_record.html"),
+    ("templates/source_verify.html", "templates/source_verify.html"),
     ("templates/dashboard.html", "templates/dashboard.html"),
     ("templates/control_center.html", "templates/control_center.html"),
     ("templates/document_management.html", "templates/document_management.html"),
+    ("templates/message_send.html", "templates/message_send.html"),
     ("templates/_sidebar.html", "templates/_sidebar.html"),
+    ("templates/erp_api_test.html", "templates/erp_api_test.html"),
     ("templates/leave_approval.html", "templates/leave_approval.html"),
+    ("templates/leave_erp.html", "templates/leave_erp.html"),
+    ("templates/leave_plan_import.html", "templates/leave_plan_import.html"),
+    ("templates/leave_calc.html", "templates/leave_calc.html"),
     ("templates/leave_plan_view.html", "templates/leave_plan_view.html"),
     ("templates/work_report.html", "templates/work_report.html"),
     (".env", ".env"),
@@ -173,7 +201,10 @@ files = [
     ("templates/education_detail.html", "templates/education_detail.html"),
     ("tuya_fire.py", "tuya_fire.py"),
     ("erp_sync.py", "erp_sync.py"),
+    ("erp_leave_sync.py", "erp_leave_sync.py"),
+    ("erp_hr_sync.py", "erp_hr_sync.py"),
     ("erp_enter_sync.py", "erp_enter_sync.py"),
+    ("erp_enter_backfill.py", "erp_enter_backfill.py"),
     ("backfill_tenter.py", "backfill_tenter.py"),
     ("fix_tuser_id.py", "fix_tuser_id.py"),
     ("merge_tuser.py", "merge_tuser.py"),
@@ -384,6 +415,10 @@ print("[████████████████░░░░]  80% Docke
 import glob as _glob
 docker_files_main = [
     (f"{STAGE_DIR}/app_maria.py",       f"{DOCKER_APP_DIR}/app_maria.py"),
+    (f"{STAGE_DIR}/cert_pdf.py",        f"{DOCKER_APP_DIR}/cert_pdf.py"),
+    (f"{STAGE_DIR}/msg_send.py",        f"{DOCKER_APP_DIR}/msg_send.py"),
+    (f"{STAGE_DIR}/wht_receipt.py",     f"{DOCKER_APP_DIR}/wht_receipt.py"),
+    (f"{STAGE_DIR}/wht_calc.py",        f"{DOCKER_APP_DIR}/wht_calc.py"),
     (f"{STAGE_DIR}/tuya_fire.py",       f"{DOCKER_APP_DIR}/tuya_fire.py"),
     (f"{STAGE_DIR}/mes_bp.py",           f"{DOCKER_APP_DIR}/mes_bp.py"),
     (f"{STAGE_DIR}/edu_bp.py",           f"{DOCKER_APP_DIR}/edu_bp.py"),
@@ -395,7 +430,10 @@ docker_files_main = [
     (f"{STAGE_DIR}/kepco_collector.py", f"{DOCKER_APP_DIR}/kepco_collector.py"),
     (f"{STAGE_DIR}/kepco_analyzer.py",  f"{DOCKER_APP_DIR}/kepco_analyzer.py"),
     (f"{STAGE_DIR}/erp_sync.py",        f"{DOCKER_APP_DIR}/erp_sync.py"),
+    (f"{STAGE_DIR}/erp_leave_sync.py",  f"{DOCKER_APP_DIR}/erp_leave_sync.py"),
+    (f"{STAGE_DIR}/erp_hr_sync.py",     f"{DOCKER_APP_DIR}/erp_hr_sync.py"),
     (f"{STAGE_DIR}/erp_enter_sync.py",  f"{DOCKER_APP_DIR}/erp_enter_sync.py"),
+    (f"{STAGE_DIR}/erp_enter_backfill.py", f"{DOCKER_APP_DIR}/erp_enter_backfill.py"),
     (f"{STAGE_DIR}/backfill_tenter.py", f"{DOCKER_APP_DIR}/backfill_tenter.py"),
     (f"{STAGE_DIR}/fix_tuser_id.py",    f"{DOCKER_APP_DIR}/fix_tuser_id.py"),
     (f"{STAGE_DIR}/merge_tuser.py",     f"{DOCKER_APP_DIR}/merge_tuser.py"),
@@ -461,27 +499,35 @@ for _cont in (DOCKER_MAIN, DOCKER_TBM):
 
 # ── 4) Docker 재시작 (또는 이미지 재빌드) ────────────────────────
 if REBUILD:
-    print("[████████████████░░░░]  80% 이미지 재빌드 중 (약 3분)...")
-    r_build = sudo_nas(
-        f"cd {STAGE_DIR} && docker compose build app tbm && "
-        f"docker compose up -d --no-deps --force-recreate app tbm && echo RST_OK"
-    )
-    r_main = r_build
-    r_tbm  = r_build
-    time.sleep(15)
+    # 예전에는 여기서 `docker compose build` 를 돌렸는데 Synology 에는 그 명령이
+    # 없어서(하이픈형 docker-compose 도 없다) 조용히 실패했고, 스크립트는 성공으로
+    # 표시했다. 그래서 이미지가 2026-05-26 자에 3개월간 멈춰 있었다.
+    # 이제 rebuild_containers.py 에 맡긴다 — 백업 태그·헬스체크·롤백이 들어 있다.
+    print("[████████████████░░░░]  80% 이미지 재빌드 → rebuild_containers.py 위임")
+    print("=" * 45)
+    c.close()
+    _rc = subprocess.run([sys.executable, "rebuild_containers.py"]).returncode
+    if _rc != 0:
+        print("\n❌ 재빌드 실패 — 컨테이너 상태를 확인하세요.")
+        print("   롤백: python rebuild_containers.py --rollback")
+        sys.exit(_rc)
+    print("\n✅ 재빌드 완료 (코드는 위에서 이미 NAS·컨테이너로 전송됨)")
+    _REBUILT = True
 else:
+    _REBUILT = False
+if not _REBUILT:
     r_main = sudo_nas(f"docker restart {DOCKER_MAIN} && echo RST_OK")
     r_tbm  = sudo_nas(f"docker restart {DOCKER_TBM}  && echo RST_OK")
     time.sleep(8)
 
-# ── 5) 헬스체크 ──────────────────────────────────────────────────
-main_code = sudo_nas("curl -s -o /dev/null -w '%{http_code}' http://localhost:5050/")
-tbm_code  = sudo_nas("curl -s -o /dev/null -w '%{http_code}' http://localhost:5051/tbm/login")
+    # ── 5) 헬스체크 ──────────────────────────────────────────────
+    # 재빌드 경로에서는 rebuild_containers.py 가 이미 확인했고 SSH 도 닫았다.
+    main_code = sudo_nas("curl -s -o /dev/null -w '%{http_code}' http://localhost:5050/")
+    tbm_code  = sudo_nas("curl -s -o /dev/null -w '%{http_code}' http://localhost:5051/tbm/login")
+    c.close()
 
-c.close()
-
-ok = main_code in ("200","302") and tbm_code in ("200","302")
-print(f"[████████████████████] 100% {'✅ 배포 완료! (main:'+main_code+' tbm:'+tbm_code+')' if ok else '⚠️ 확인필요 main:'+main_code+' tbm:'+tbm_code}")
+    ok = main_code in ("200","302") and tbm_code in ("200","302")
+    print(f"[████████████████████] 100% {'✅ 배포 완료! (main:'+main_code+' tbm:'+tbm_code+')' if ok else '⚠️ 확인필요 main:'+main_code+' tbm:'+tbm_code}")
 
 
 # ── 6) .5 대기(standby) 서버 코드 동기화 ─────────────────────────
@@ -492,7 +538,7 @@ STANDBY_HOST = "192.168.100.5"
 STANDBY_KEY = os.path.expanduser("~/.ssh/id_tams_nas")
 STANDBY_DIR = f"/home/{os.environ['NAS_USER']}/attendance"
 STANDBY_PY = [
-    "app_maria.py", "tuya_fire.py", "mes_bp.py", "edu_bp.py", "hazmat_bp.py",
+    "app_maria.py", "cert_pdf.py", "msg_send.py", "wht_receipt.py", "wht_calc.py", "tuya_fire.py", "mes_bp.py", "edu_bp.py", "hazmat_bp.py",
     "safety_ai_bp.py", "tbm_bp.py", "signage_bp.py", "guard_bp.py",
     "kepco_collector.py", "kepco_analyzer.py", "tbm_app.py",
 ]

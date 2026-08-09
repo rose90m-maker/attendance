@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>휴가 ERP 이관</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        .stat-box { border-radius:8px; padding:10px 16px; text-align:center; }
+        .erp-table th, .erp-table td { white-space:nowrap; font-size:0.85rem; vertical-align:middle; }
+        .copy-cell { cursor:pointer; }
+    </style>
+</head>
+<body>
+{% set active_page = 'leave_erp' %}
+{% include '_sidebar.html' %}
+
+<div class="container-fluid mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div class="page-title mb-0"><span class="title-icon">🔗</span><span>휴가 ERP 이관</span></div>
+        <div class="d-flex gap-2">
+            <form method="post" action="{{ url_for('leave_plan_import') }}"
+                  enctype="multipart/form-data" class="d-flex gap-1 align-items-center"
+                  id="planForm">
+                <!-- 연도는 엑셀(시트명·파일명)에서 자동 인식한다. 이 값은 인식 실패 시 대비책 -->
+                <input type="hidden" name="year" value="{{ frm[:4] }}">
+                <input type="file" name="files" accept=".xlsx" multiple
+                       class="form-control form-control-sm" style="width:230px;"
+                       onchange="document.getElementById('planBtn').disabled = !this.files.length;">
+                <button type="submit" class="btn btn-success btn-sm" id="planBtn" disabled
+                        title="연차휴가사용계획서 엑셀에서 동그라미(연차)·삼각형(반차)을 읽어 등록합니다">
+                    📄 계획서 읽기
+                </button>
+            </form>
+            <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">🔄 새로고침</button>
+        </div>
+    </div>
+
+    <div class="alert alert-light border small mb-3">
+        우리 시스템에서 <b>승인된 휴가</b>와 영림원 ERP에 <b>이미 입력된 내역</b>을 실시간 대조해,
+        <b>아직 ERP에 안 들어간 건만</b> 아래에 표시합니다. ERP에 입력하면 새로고침 시 목록에서 사라집니다.
+        <span class="text-muted">(조회범위 {{ frm[:4] }}-{{ frm[4:6] }}-{{ frm[6:] }} ~ {{ to[:4] }}-{{ to[4:6] }}-{{ to[6:] }})</span>
+    </div>
+
+    {% if not erp_ok %}
+    <div class="alert alert-warning">
+        ⚠️ ERP 접속 실패로 <b>대조 없이 승인 휴가 전체</b>를 표시 중입니다. (이미 입력된 건이 섞여 있을 수 있음)<br>
+        <span class="small text-muted">사유: {{ erp_err }}</span>
+    </div>
+    {% endif %}
+
+    <div class="row g-2 mb-3">
+        <div class="col-auto"><div class="stat-box bg-light"><div class="fw-bold fs-5">{{ total_ours }}</div><div class="small text-muted">승인 휴가(범위내)</div></div></div>
+        {% if erp_ok %}
+        <div class="col-auto"><div class="stat-box" style="background:#dcfce7;"><div class="fw-bold fs-5 text-success">{{ matched }}</div><div class="small text-muted">ERP 이미 입력됨</div></div></div>
+        {% endif %}
+        <div class="col-auto"><div class="stat-box" style="background:#fee2e2;"><div class="fw-bold fs-5 text-danger">{{ missing_cnt }}</div><div class="small text-muted">ERP 미입력(입력 필요)</div></div></div>
+        {% if nomap %}
+        <div class="col-auto"><div class="stat-box bg-light"><div class="fw-bold fs-5 text-warning">{{ nomap }}</div><div class="small text-muted">사번 매핑 실패</div></div></div>
+        {% endif %}
+    </div>
+
+    <!-- 검색 / 필터 -->
+    <div class="card shadow-sm mb-3">
+        <div class="card-body py-2">
+            <form method="get" class="d-flex align-items-center gap-2 flex-wrap">
+                {% set qs = (('&q=' ~ q) if q else '') ~ (('&stat=' ~ stat) if stat != 'all' else '') ~ (('&range=' ~ rng) if rng else '') %}
+                <div class="btn-group btn-group-sm" role="group">
+                    <a href="/leave_erp?scope=today{{ qs }}"
+                       class="btn btn-{% if scope == 'today' %}primary{% else %}outline-primary{% endif %}">
+                        📅 오늘 <span class="badge bg-light text-dark ms-1">{{ today_cnt }}</span>
+                    </a>
+                    <a href="/leave_erp?scope=week{{ qs }}"
+                       class="btn btn-{% if scope == 'week' %}primary{% else %}outline-primary{% endif %}"
+                       title="지난 7일 ~ 향후 7일 (소급 입력분까지 보이도록)">±7일</a>
+                    <a href="/leave_erp?scope=all{{ qs }}"
+                       class="btn btn-{% if scope == 'all' %}primary{% else %}outline-primary{% endif %}">
+                        전체 <span class="badge bg-light text-dark ms-1">{{ rows_all_cnt }}</span>
+                    </a>
+                </div>
+                {% set qs2 = ('&scope=' ~ scope) ~ (('&q=' ~ q) if q else '') ~ (('&range=' ~ rng) if rng else '') %}
+                <div class="btn-group btn-group-sm" role="group">
+                    <a href="/leave_erp?stat=all{{ qs2 }}"
+                       class="btn btn-{% if stat == 'all' %}dark{% else %}outline-dark{% endif %}">전체상태</a>
+                    <a href="/leave_erp?stat=pending{{ qs2 }}"
+                       class="btn btn-{% if stat == 'pending' %}danger{% else %}outline-danger{% endif %}">
+                        ⚠ 미등록 {% if stat != 'pending' %}<span class="badge bg-light text-dark ms-1">{{ view_pending }}</span>{% endif %}
+                    </a>
+                    <a href="/leave_erp?stat=done{{ qs2 }}"
+                       class="btn btn-{% if stat == 'done' %}success{% else %}outline-success{% endif %}">
+                        ✓ 등록완료 {% if stat != 'done' %}<span class="badge bg-light text-dark ms-1">{{ view_done }}</span>{% endif %}
+                    </a>
+                </div>
+                <span class="text-muted">|</span>
+                <input type="hidden" name="scope" value="{{ scope }}">
+                <input type="hidden" name="stat" value="{{ stat }}">
+                {% if rng %}<input type="hidden" name="range" value="{{ rng }}">{% endif %}
+                <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm"
+                       style="width:180px;" placeholder="이름 또는 사번 검색" autofocus>
+                <button type="submit" class="btn btn-sm btn-secondary">🔍 검색</button>
+                <a href="/leave_erp?scope=all&range={% if rng == 'year' %}{% else %}year{% endif %}{% if q %}&q={{ q }}{% endif %}"
+                   class="btn btn-sm btn-{% if rng == 'year' %}warning{% else %}outline-warning{% endif %}"
+                   title="누락분 소급 등록 + 계획서 선등록분 확인 — 지난 1년 ~ 향후 1년">
+                    🗓 {% if rng == 'year' %}±1년 조회중{% else %}±1년{% endif %}
+                </a>
+                {% if q or scope != 'today' or stat != 'all' or rng %}
+                <a href="/leave_erp" class="btn btn-sm btn-outline-secondary">✕ 초기화</a>
+                {% endif %}
+                <span class="ms-auto small text-muted">
+                    {% if q %}"<b>{{ q }}</b>" · {% endif %}
+                    {% if scope == 'today' %}오늘({{ today }}) · {% elif scope == 'week' %}지난 7일 ~ 향후 7일 · {% endif %}
+                    <b class="text-danger">미등록 {{ view_pending }}</b> / <span class="text-success">완료 {{ view_done }}</span>
+                </span>
+            </form>
+        </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+        <button class="btn btn-success btn-sm" onclick="copyCol('name')">① 📋 사원</button>
+        <button class="btn btn-success btn-sm" onclick="copyCol('app')">② 📋 신청일</button>
+        <button class="btn btn-success btn-sm" onclick="copyCol('type')">③ 📋 휴가항목</button>
+        <button class="btn btn-success btn-sm" onclick="copyCol('fr')">④ 📋 휴가시작일</button>
+        <button class="btn btn-success btn-sm" onclick="copyCol('to')">⑤ 📋 휴가종료일</button>
+        <span class="mx-1 text-muted">|</span>
+        <button class="btn btn-primary btn-sm" onclick="copyTable()">⚡ 한번에 (사원~종료일)</button>
+        <span id="copyMsg" class="small text-success fw-bold"></span>
+    </div>
+    <div class="alert alert-primary py-2 mb-2" style="font-size:0.82rem;">
+        <b>🔗 영림원 [휴가신청(일괄)] 화면에 붙여넣는 순서</b><br>
+        ERP에서 <span class="badge bg-secondary">급여 → 근태신청 → 휴가신청(일괄)</span> 화면을 연 뒤,
+        그리드 <b>첫 행 「사원」 칸</b>을 클릭하고 <b>Ctrl+V</b> → <b>저장</b>.<br>
+        <b class="text-primary">⚡ 한번에</b> 버튼이면 <b>붙여넣기 1번</b>으로 끝납니다
+        <span class="text-muted">(부서·파견기관은 빈 칸으로 자리만 맞춰 보내고, 사원을 넣으면 ERP가 자동으로 채웁니다)</span>.
+        열이 밀리면 ①~⑤ 버튼으로 한 열씩 나눠 붙여넣으세요.<br>
+        <span class="text-danger fw-bold">⚠ 저장 후 반드시 확정까지</span> —
+        <span class="badge bg-secondary">급여 → 근태신청 → 휴가신청확정</span> 화면에서
+        <b>조회</b> → <b>일괄확정처리</b> 클릭.
+        <span class="text-muted">(확정 안 하면 연차 차감·급여 집계에 반영되지 않습니다. 확정 체크박스는 일괄 화면에서 직접 못 누릅니다)</span>
+    </div>
+
+    <div style="overflow-x:auto;">
+    <table class="js-sort table table-sm table-bordered erp-table" id="erpTbl">
+        <thead class="table-light">
+            <tr>
+                <th style="width:36px;">#</th>
+                <th style="width:90px;">ERP 상태</th>
+                <th class="table-info">사원</th><th>사번</th>
+                <th class="table-primary">신청일</th>
+                <th class="table-warning">휴가항목</th>
+                <th class="table-success">시작일</th><th class="table-success">종료일</th>
+                <th>일수</th><th>요일</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr class="{% if r.in_erp %}erp-done{% else %}erp-pending{% endif %}"
+                {% if r.in_erp %}style="background:#f8fdf9;"{% endif %}>
+                <td class="text-muted">{{ loop.index }}</td>
+                <td>
+                    {% if r.in_erp %}
+                    <span class="badge bg-success">✓ 등록완료</span>
+                    {% else %}
+                    <span class="badge bg-danger">⚠ 미등록</span>
+                    {% endif %}
+                </td>
+                <td class="fw-bold" data-col="name">{{ r.name }}</td>
+                <td data-col="emp_no">{{ r.emp_no }}</td>
+                <td data-col="app">{{ r.app_date }}</td>
+                <td data-col="type"><span class="badge bg-secondary">{{ r.leave_type }}</span></td>
+                <td class="fw-bold" data-col="fr">{{ r.fr_fmt }}</td>
+                <td data-col="to">{{ r.to_fmt }}</td>
+                <td>{{ r.days }}일</td>
+                <td class="text-muted">{{ r.dow }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="text-center text-muted py-4">
+                {% if q or scope != 'all' %}
+                🔍 조건에 맞는 건이 없습니다.
+                <a href="/leave_erp" class="ms-2">전체 보기 ({{ rows_all_cnt }}건)</a>
+                {% else %}
+                ✅ ERP 미입력 건이 없습니다. (모두 이관 완료)
+                {% endif %}
+            </td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<script>
+function _msg(t){ var m=document.getElementById('copyMsg'); m.textContent=t; setTimeout(function(){m.textContent='';},2000); }
+function copyCol(col){
+    // ERP 미등록 행만 복사 (등록완료 건을 다시 넣으면 중복되므로)
+    var cells=document.querySelectorAll('#erpTbl tr.erp-pending td[data-col="'+col+'"]');
+    if(!cells.length){ _msg('⚠ 복사할 미등록 건이 없습니다'); return; }
+    var txt=Array.from(cells).map(function(c){return c.textContent.trim();}).join('\n');
+    navigator.clipboard.writeText(txt).then(function(){_msg('✅ '+cells.length+'행 복사됨 → ERP에 붙여넣기');});
+}
+// ERP [휴가신청(일괄)] 그리드의 '사원' 열부터의 실제 컬럼 순서.
+// 부서·파견기관은 사원 입력 시 ERP가 자동으로 채우므로 빈 칸으로 자리만 맞춘다.
+var ERP_ORDER = ['name', 'emp_no', '', '', 'app', 'type', 'fr', 'to'];
+function copyTable(){
+    var rows=document.querySelectorAll("#erpTbl tbody tr.erp-pending");
+    if(!rows.length){ _msg('⚠ 복사할 미등록 건이 없습니다'); return; }
+    var out=Array.from(rows).map(function(tr){
+        return ERP_ORDER.map(function(col){
+            if(!col) return '';                    // 부서·파견기관 자리(빈칸)
+            var c=tr.querySelector('td[data-col="'+col+'"]');
+            return c ? c.textContent.trim() : '';
+        }).join('\t');
+    }).join('\n');
+    navigator.clipboard.writeText(out).then(function(){
+        _msg('✅ '+rows.length+'행 복사됨 → ERP 사원 칸에 한 번에 붙여넣기');
+    });
+}
+</script>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
+</body>
+</html>

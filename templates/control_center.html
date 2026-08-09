@@ -28,6 +28,7 @@
 .bus-row { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid #f2f2f2; font-size:0.84rem; }
 .bus-row:last-child { border-bottom:none; }
 .bus-cnt { font-weight:700; color:#0d6efd; }
+.bus-sub { font-size:0.74rem; color:#8a8a8a; padding:0 0 7px; margin-top:-4px; }
 /* ── 상태 배지 (정상/경고/위험) ── */
 .st-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; vertical-align:middle; }
 .st-ok     { background:#27ae60; }
@@ -78,11 +79,11 @@
         </div>
         <div class="row g-2 mb-2">
           <div class="col-6">
-            <div class="cc-lbl">오늘 사용량</div>
+            <div class="cc-lbl" id="wUsageLbl">오늘 사용량</div>
             <div><span class="cc-val" id="wUsage">-</span><span class="cc-unit">㎥</span></div>
           </div>
           <div class="col-6">
-            <div class="cc-lbl">오늘 지침</div>
+            <div class="cc-lbl" id="wReadingLbl">오늘 지침</div>
             <div><span class="cc-val" id="wReading">-</span><span class="cc-unit">㎥</span></div>
           </div>
         </div>
@@ -93,7 +94,7 @@
         <div class="wt-wrap mt-2">
           <table class="wt-tbl">
             <thead>
-              <tr><th>일자</th><th>요일</th><th class="num">지침(㎥)</th><th class="num">검침량(㎥)</th><th>비고</th></tr>
+              <tr><th>일자</th><th>요일</th><th>검침시간</th><th class="num">지침(㎥)</th><th class="num">검침량(㎥)</th><th>비고</th></tr>
             </thead>
             <tbody id="wTable"></tbody>
           </table>
@@ -119,6 +120,18 @@
           <div class="col-6">
             <div class="cc-lbl">어제 사용량</div>
             <div><span class="cc-val" id="pYday">-</span><span class="cc-unit">kWh</span></div>
+          </div>
+        </div>
+        <!-- 한전 스마트뷰 실시간 요금 (청구기간 기준) -->
+        <div class="row g-2 mb-2 pt-2" id="pRtRow" style="border-top:1px solid #f2f2f2; display:none;">
+          <div class="col-7">
+            <div class="cc-lbl">⚡ 실시간 요금 <span class="text-muted" id="pRtAt" style="font-weight:400;"></span></div>
+            <div><span class="cc-val" style="font-size:1.25rem;color:#ca8a04;" id="pRtBill">-</span><span class="cc-unit">원</span></div>
+            <div class="cc-sub text-muted" id="pRtPeriod">&nbsp;</div>
+          </div>
+          <div class="col-5">
+            <div class="cc-lbl">청구기간 누적</div>
+            <div><span class="cc-val" style="font-size:1.25rem;" id="pRtKwh">-</span><span class="cc-unit">kWh</span></div>
           </div>
         </div>
         <div class="row g-2 mb-2 pt-2" style="border-top:1px solid #f2f2f2;">
@@ -283,7 +296,7 @@
           <a href="/bus_dispatch" class="cc-more">배차 →</a>
         </div>
         <div class="mb-2">
-          <span class="cc-lbl">등록 인원</span>
+          <span class="cc-lbl">오늘 배정</span>
           <span class="cc-val ms-2" id="bTotal">-</span><span class="cc-unit">명</span>
         </div>
         <div id="bList"></div>
@@ -305,6 +318,8 @@
       <div class="modal-body">
         <label class="form-label mb-1 small">검침일</label>
         <input type="date" id="wDate" class="form-control form-control-sm mb-2" value="{{ today }}">
+        <label class="form-label mb-1 small">검침 시각</label>
+        <input type="time" id="wTime" class="form-control form-control-sm mb-2" value="16:00">
         <label class="form-label mb-1 small">계량기 지침 (㎥)</label>
         <input type="number" id="wInput" class="form-control form-control-sm mb-2" step="0.01" min="0" placeholder="예: 12345.67">
         <label class="form-label mb-1 small">메모 (선택)</label>
@@ -340,6 +355,7 @@ function openWaterForm() {
 function saveWater() {
     var body = {
         read_date: document.getElementById('wDate').value,
+        read_time: document.getElementById('wTime').value,
         reading:   document.getElementById('wInput').value,
         memo:      document.getElementById('wMemo').value
     };
@@ -380,9 +396,16 @@ function loadOverview() {
         // ── 수도 ──
         safe('수도', function() {
             var w = d.water || {};
-            document.getElementById('wUsage').textContent   = fmt(w.today_usage, 2);
-            document.getElementById('wReading').textContent = fmt(w.today_reading, 2);
-            document.getElementById('wEmpty').style.display = w.has_today ? 'none' : '';
+            // 오늘 검침이 없으면 최근 검침일 값을 대신 보여준다 (라벨에 그 날짜를 붙인다)
+            document.getElementById('wUsage').textContent   = fmt(w.shown_usage, 2);
+            document.getElementById('wReading').textContent = fmt(w.shown_reading, 2);
+            var wLbl = w.has_today ? '오늘' : (w.shown_md || '최근');
+            document.getElementById('wUsageLbl').textContent   = wLbl + ' 사용량';
+            document.getElementById('wReadingLbl').textContent = wLbl + ' 지침';
+            var wEmp = document.getElementById('wEmpty');
+            wEmp.style.display = w.has_today ? 'none' : '';
+            wEmp.textContent = '오늘 검침이 아직 입력되지 않았습니다 — '
+                             + (w.shown_md || '이전') + ' 기준으로 표시 중입니다.';
             var wDays = w.days || [];
             var wCtx = document.getElementById('wChart');
             var wData = {
@@ -410,10 +433,13 @@ function loadOverview() {
                     return '<tr>'
                          + '<td>' + x.md + '</td>'
                          + '<td class="' + (isHol ? 'hol' : '') + '">' + x.dow + '</td>'
+                         + '<td class="' + (x.time ? '' : 'text-muted') + '">' + (x.time || '-') + '</td>'
                          + '<td class="num">' + fmt(x.reading, 0) + '</td>'
                          + '<td class="num ' + cls + '">'
                          + (x.usage === null || x.usage === undefined ? '-' : fmt(x.usage, 0)) + '</td>'
-                         + '<td class="text-muted">' + (x.memo || '') + '</td>'
+                         + '<td class="' + (x.memo === '지침 확인' ? 'bad-cell'
+                              : (x.memo === '확인 필요' || x.memo === '주의') ? 'warn-cell'
+                              : 'text-muted') + '">' + (x.memo || '') + '</td>'
                          + '</tr>';
                   }).join('')
                 : '<tr><td colspan="5" class="cc-empty">검침 자료가 없습니다.</td></tr>';
@@ -442,6 +468,19 @@ function loadOverview() {
             };
             if (pChart) { pChart.data = pData; pChart.update(); }
             else { pChart = new Chart(document.getElementById('pChart'), {type: 'line', data: pData, options: chartOpts()}); }
+
+            // 실시간 요금 (한전 스마트뷰) — 청구기간 기준이라 달력월 누적과 범위가 다르다
+            var rtRow = document.getElementById('pRtRow');
+            if (p.rt_bill) {
+                rtRow.style.display = '';
+                document.getElementById('pRtBill').textContent = fmt(p.rt_bill, 0);
+                document.getElementById('pRtKwh').textContent  = fmt(p.rt_kwh, 0);
+                document.getElementById('pRtAt').textContent   = p.rt_at ? '· ' + p.rt_at + ' 기준' : '';
+                document.getElementById('pRtPeriod').textContent = p.rt_period
+                    ? '청구기간 ' + p.rt_period : '';
+            } else {
+                rtRow.style.display = 'none';
+            }
 
             // 이번달 누적 · 최대 수요전력 · 전기요금
             document.getElementById('pMonth').textContent = fmt((p.month_kwh || 0) / 1000, 1);
@@ -531,14 +570,18 @@ function loadOverview() {
         // ── 통근버스 ──
         safe('통근버스', function() {
             var b = d.bus || {};
-            document.getElementById('bTotal').textContent = fmt(b.total, 0);
-            var bl = b.by_bus || [];
-            document.getElementById('bList').innerHTML = bl.length
-                ? bl.map(function(x){
-                    return '<div class="bus-row"><span>' + x.bus_no + '호차</span>'
-                         + '<span class="bus-cnt">' + x.cnt + '명</span></div>';
+            document.getElementById('bTotal').textContent = fmt(b.assigned_total, 0);
+            var sh = b.shifts || [];
+            var any = sh.some(function(s){ return s.total > 0; });
+            document.getElementById('bList').innerHTML = any
+                ? sh.map(function(s){
+                    var icon = s.shift === '주간' ? '☀️' : '🌙';
+                    return '<div class="bus-row"><span>' + icon + ' ' + s.shift + '</span>'
+                         + '<span class="bus-cnt">' + s.total + '명</span></div>'
+                         + '<div class="bus-sub">1호차 ' + s.bus1 + ' · 2호차 ' + s.bus2
+                         + (s.unassigned ? ' · 미배정 ' + s.unassigned : '') + '</div>';
                   }).join('')
-                : '<div class="cc-empty">등록된 탑승자가 없습니다.</div>';
+                : '<div class="cc-empty">오늘 배정된 인원이 없습니다.</div>';
         });
 
         // ── 전산실 온·습도 ──

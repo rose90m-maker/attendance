@@ -4,9 +4,15 @@
 - 웹은 세션 인증, APK는 app_api_tokens 기반 Bearer 토큰 인증
 - 앱이 오프라인에서 작성한 일지는 스냅샷 단위로 멱등 업로드 (/api/guard/sync)
 """
+import base64
+import io
+import json
 import os
 import hashlib
+import re
 import secrets
+import urllib.error
+import urllib.request
 import uuid
 from datetime import datetime, date, timedelta
 from functools import wraps
@@ -201,6 +207,7 @@ def init_guard_db(app):
                 `last_leaver` VARCHAR(255) DEFAULT '',
                 `night_worker` VARCHAR(255) DEFAULT '',
                 `water_meter` VARCHAR(100) DEFAULT '',
+                `water_time` VARCHAR(5) DEFAULT '',
                 `waste_request` VARCHAR(255) DEFAULT '',
                 `status` VARCHAR(12) DEFAULT 'draft',
                 `submitted_at` DATETIME NULL,
@@ -302,6 +309,13 @@ def init_guard_db(app):
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
+        # 이미 만들어진 테이블에 컬럼 추가 (있으면 그냥 넘어간다)
+        try:
+            cur.execute("ALTER TABLE guard_logs ADD COLUMN `water_time` VARCHAR(5) "
+                        "DEFAULT '' AFTER `water_meter`")
+        except Exception:
+            pass
+
         # 점검장소 최초 시드
         cur.execute("SELECT COUNT(*) FROM guard_points")
         if cur.fetchone()[0] == 0:
@@ -347,22 +361,32 @@ def _to_reading(raw):
     return v if v >= 0 else None
 
 
-def _write_water_meter(cur, d, reading, guard_name):
+def _write_water_meter(cur, d, reading, guard_name, read_time=None):
     """경비원이 현장에서 계량기를 보고 적은 값이므로 기존 값이 있어도 덮어쓴다.
+
+    검침 시각은 **일지를 적은 실제 시각**을 남긴다(기본값 = 지금).
+    예전에는 '16:00' 을 고정으로 박았는데, 같은 날 근무자 둘이 새벽·아침에 각각 적어도
+    둘 다 16:00 으로 저장돼 하루 사용량이 실제와 다르게 튀었다 (2026-08-04 사고).
 
     비고(memo)는 건드리지 않는다 — 통합관제의 '정상 / 확인 필요 / 지침 확인' 판정이
     거기 들어 있고, 그걸 지우면 통합관제와 앱의 검침 표에서 비고가 사라진다.
     누가 마지막으로 적었는지는 created_by 로 남는다.
     """
     cur.execute("""
-        INSERT INTO water_meter (read_date, reading, memo, created_by)
-        VALUES (%s,%s,'',%s)
+        INSERT INTO water_meter (read_date, read_time, reading, memo, created_by)
+        VALUES (%s,%s,%s,'',%s)
         ON DUPLICATE KEY UPDATE
             reading    = VALUES(reading),
+            -- 비어 있거나 앞서도 경비일지가 적은 시각이면 실제 시각으로 갱신하고,
+            -- 관리자가 통합관제에서 손으로 넣은 시각은 그대로 둔다.
+            -- (created_by 대입이 아래에 있어야 여기서 '이전 값'으로 평가된다 — 순서 주의)
+            read_time  = IF(read_time = '' OR created_by LIKE %s,
+                            VALUES(read_time), read_time),
             created_by = VALUES(created_by)
-    """, (d, reading,
+    """, (d, read_time or datetime.now().strftime("%H:%M"), reading,
           # created_by 는 VARCHAR(30), STRICT 모드라 초과 시 저장 전체가 실패한다
-          ("%s %s" % (WATER_SRC, guard_name)).strip()[:30]))
+          ("%s %s" % (WATER_SRC, guard_name)).strip()[:30],
+          WATER_SRC + "%"))
 
 
 def _reclaim_water_meter(cur, d):
@@ -374,11 +398,15 @@ def _reclaim_water_meter(cur, d):
     이 경로로 처음 만들어진 행(비고가 비어 있는 행)뿐이다.
     일일관리대장에서 취합된 행은 비고에 판정('정상' 등)이 있어 그대로 남는다.
     """
-    cur.execute("SELECT water_meter, guard_name FROM guard_logs WHERE log_date=%s ORDER BY id", (d,))
-    for raw, name in cur.fetchall():
+    # 되살릴 때는 '지금'이 아니라 그 일지를 적은 시각을 검침 시각으로 쓴다
+    cur.execute("""SELECT water_meter, guard_name,
+                          COALESCE(submitted_at, updated_at, created_at)
+                     FROM guard_logs WHERE log_date=%s ORDER BY id""", (d,))
+    for raw, name, wrote_at in cur.fetchall():
         reading = _to_reading(raw)
         if reading is not None:
-            _write_water_meter(cur, d, reading, name or "")
+            _write_water_meter(cur, d, reading, name or "",
+                               wrote_at.strftime("%H:%M") if wrote_at else None)
             return
     cur.execute("""
         DELETE FROM water_meter
@@ -386,7 +414,7 @@ def _reclaim_water_meter(cur, d):
     """, (d, WATER_SRC + "%"))
 
 
-def _sync_water_meter(cur, d, raw, guard_name):
+def _sync_water_meter(cur, d, raw, guard_name, read_time=""):
     """경비일지의 상수도 지침을 통합관제 water_meter 테이블에 반영한다.
 
     숫자로 읽히지 않으면(값을 지웠거나 옛 일지의 자유 입력이면) 그날 다른 일지의
@@ -396,14 +424,14 @@ def _sync_water_meter(cur, d, raw, guard_name):
     if reading is None:
         _reclaim_water_meter(cur, d)
         return
-    _write_water_meter(cur, d, reading, guard_name)
+    _write_water_meter(cur, d, reading, guard_name, read_time)
 
 
 def _load_log(cur, log_id):
     cur.execute("""
         SELECT id, log_date, weekday, guard_e_id, guard_name, instructions, remarks,
                phone_memo, last_leaver, night_worker, water_meter, waste_request,
-               status, submitted_at, created_by, created_at, updated_at
+               status, submitted_at, created_by, created_at, updated_at, water_time
           FROM guard_logs WHERE id=%s
     """, (log_id,))
     r = cur.fetchone()
@@ -416,6 +444,7 @@ def _load_log(cur, log_id):
         "water_meter": r[10] or "", "waste_request": r[11] or "", "status": r[12],
         "submitted_at": _fmt_dt(r[13]), "created_by": r[14],
         "created_at": _fmt_dt(r[15]), "updated_at": _fmt_dt(r[16]),
+        "water_time": r[17] or "",
     }
     cur.execute("""
         SELECT point_id, round_key, result, note, checked_at
@@ -435,9 +464,14 @@ def _load_log(cur, log_id):
         SELECT id, filename, orig_name, filesize, uploaded_at
           FROM guard_photos WHERE log_id=%s ORDER BY id
     """, (log_id,))
-    log["photos"] = [{"id": p[0], "filename": p[1], "orig_name": p[2] or "",
-                      "filesize": p[3], "uploaded_at": _fmt_dt(p[4]),
-                      "url": "/guard/photo/%d" % p[0]} for p in cur.fetchall()]
+    photos = [{"id": p[0], "filename": p[1], "orig_name": p[2] or "",
+               "filesize": p[3], "uploaded_at": _fmt_dt(p[4]),
+               "url": "/guard/photo/%d" % p[0]} for p in cur.fetchall()]
+    # 앱이 "water_시각.jpg" 이름으로 올리는 계량기 사진은 첨부 목록과 분리해
+    # 인쇄 화면의 상수도 칸 옆에 붙인다 (여러 장이면 마지막 것)
+    water = [p for p in photos if p["orig_name"].startswith("water_")]
+    log["photos"] = [p for p in photos if not p["orig_name"].startswith("water_")]
+    log["water_photo"] = water[-1] if water else None
     return log
 
 
@@ -501,6 +535,8 @@ def _save_snapshot(cur, payload, actor, force=False, allow_any=False):
         last_leaver=payload.get("last_leaver") or "",
         night_worker=payload.get("night_worker") or "",
         water_meter=payload.get("water_meter") or "",
+        # 검침 시각 = 계량기를 찍거나 값을 적은 시각 (앱이 보낸다)
+        water_time=(payload.get("water_time") or "")[:5],
         waste_request=payload.get("waste_request") or "",
     )
 
@@ -514,15 +550,16 @@ def _save_snapshot(cur, payload, actor, force=False, allow_any=False):
         log_id = exist[0]
         cur.execute("""
             UPDATE guard_logs SET weekday=%s, guard_name=%s, instructions=%s, remarks=%s,
-                   phone_memo=%s, last_leaver=%s, night_worker=%s, water_meter=%s, waste_request=%s
+                   phone_memo=%s, last_leaver=%s, night_worker=%s, water_meter=%s,
+                   water_time=%s, waste_request=%s
              WHERE id=%s
         """, tuple(fields.values()) + (log_id,))
     else:
         cur.execute("""
             INSERT INTO guard_logs (log_date, guard_e_id, weekday, guard_name, instructions, remarks,
-                                    phone_memo, last_leaver, night_worker, water_meter, waste_request,
-                                    status, created_by)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'draft',%s)
+                                    phone_memo, last_leaver, night_worker, water_meter, water_time,
+                                    waste_request, status, created_by)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'draft',%s)
         """, (d, e_id) + tuple(fields.values()) + (actor.get("user_id"),))
         log_id = cur.lastrowid
 
@@ -553,7 +590,7 @@ def _save_snapshot(cur, payload, actor, force=False, allow_any=False):
             """, (log_id, pid, rk, res, note, _parse_dt(p.get("checked_at"))))
 
     # 상수도 검침 — 통합관제(water_meter)에 그대로 반영
-    _sync_water_meter(cur, d, fields["water_meter"], guard_name)
+    _sync_water_meter(cur, d, fields["water_meter"], guard_name, fields["water_time"])
 
     # 출입기록 — 스냅샷 전체 교체 (멱등)
     if isinstance(payload.get("visitors"), list):
@@ -669,6 +706,199 @@ def api_guard_instructions():
     return jsonify(ok=True, date=d.strftime("%Y-%m-%d"), instruction=ins)
 
 
+# ── 계량기 사진 판독 (OCR) ─────────────────────────────────
+# AI 안전진단과 같은 Ollama 서버를 쓴다. 앱에서 숫자 부분만 잘라 보내게 된 뒤로는
+# 7b 로도 정확해서 (실사진 검증 2026-08-05) 빠른 7b 를 기본으로 쓴다.
+# 콜드 7초 · 웜 1초 (32b 는 13초/2.5초). 바꾸려면 .env 에 GUARD_OCR_MODEL 지정.
+OCR_HOST = os.environ.get("OLLAMA_HOST", "http://192.168.100.6:11434")
+OCR_MODEL = os.environ.get("GUARD_OCR_MODEL", "qwen2.5vl:7b")
+OCR_TIMEOUT = int(os.environ.get("GUARD_OCR_TIMEOUT", "120"))
+
+OCR_SYSTEM = """너는 상수도 계량기 사진에서 적산 지침(㎥)만 읽어내는 판독기다.
+
+계량기는 숫자 칸이 두 무리로 나뉘어 있다.
+  - 검은색/흰색 칸 : 적산 지침 (㎥). **이것만 읽는다.**
+  - 빨간색 칸      : 소수점 이하. **결과에 절대 포함하지 않는다.**
+
+규칙
+1. 빨간색 칸의 숫자는 몇 자리든 무시한다. 검은색 칸 숫자만 왼쪽부터 순서대로 이어 붙인다.
+2. 마지막 자리 바퀴가 돌아가는 중이어서 두 숫자가 함께 보이면,
+   **창에서 절반 이상을 차지한 숫자**를 그대로 읽는다. 미리 올리거나 반올림하지 않는다.
+   예) 9 가 절반 이상 보이고 아래에 0 이 걸쳐 있으면 → 9 다. 0 으로 올려 읽으면 틀린다.
+   예) 0 이 절반 이상 보이고 위에 9 가 조금 남았으면 → 0 이다 (이때만 자리 올림).
+3. 흐릿하거나 가려져 확신할 수 없으면 지어내지 말고 reading 을 null 로 둔다.
+4. 계량기가 보이지 않으면 reading 을 null 로 두고 note 에 이유를 적는다.
+
+반드시 아래 JSON 형식으로만 답한다. 설명 문장을 덧붙이지 않는다.
+{"reading": 35732, "digits": "035732", "red_digits": "418", "bbox": [120, 95, 560, 200], "confidence": "high", "note": ""}
+
+- reading: 검은색 칸만 이어 붙인 정수. 읽지 못했으면 null
+- digits: 검은색 칸에 보이는 그대로 (앞의 0 포함). 못 읽었으면 ""
+- red_digits: 빨간색 칸 숫자 (참고용, 없으면 "")
+- bbox: 검은색 숫자 칸 전체를 감싸는 사각형 [x1, y1, x2, y2] (사진의 실제 픽셀 좌표).
+        찾지 못했으면 []
+- confidence: "high" | "low"
+- note: 판독이 어려웠던 이유나 특이사항 (한국어, 없으면 "")"""
+
+
+def _ocr_meter(b64: str) -> dict:
+    payload = {
+        "model": OCR_MODEL,
+        "messages": [
+            {"role": "system", "content": OCR_SYSTEM},
+            {"role": "user", "content": "이 계량기의 지침을 읽어줘.", "images": [b64]},
+        ],
+        "stream": False,
+        "format": "json",
+        # 검침은 하루 여러 번 이어질 수 있다 — 모델을 바로 내리지 않아 콜드 로딩(약 10초)을 줄인다
+        "keep_alive": "30m",
+        # 같은 사진엔 같은 값이 나와야 한다 (안전진단에서 검증된 설정)
+        "options": {"temperature": 0, "top_k": 1, "top_p": 1.0, "seed": 42, "num_ctx": 4096},
+        "think": False,
+    }
+    req = urllib.request.Request(
+        OCR_HOST + "/api/chat", data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=OCR_TIMEOUT) as r:
+        d = json.loads(r.read())
+    raw = ((d.get("message") or {}).get("content") or "").strip()
+    t = re.sub(r"^```(?:json)?|```$", "", raw, flags=re.M).strip()
+    try:
+        return json.loads(t)
+    except ValueError:
+        m = re.search(r"\{.*\}", t, re.S)
+        if not m:
+            raise ValueError("판독 결과를 이해할 수 없습니다.")
+        return json.loads(m.group(0))
+
+
+def _crop_digits(raw: bytes, bbox) -> str:
+    """판독한 숫자 부분만 잘라 base64 JPEG 로 돌려준다.
+
+    경비원이 확정하기 전에 계량기와 눈으로 대조할 수 있게 하려는 것이라,
+    좌표가 이상하면 통째로 줄여서라도 사진은 항상 돌려준다.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return ""
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img = img.convert("RGB")
+        W, H = img.size
+
+        box = None
+        if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+            try:
+                x1, y1, x2, y2 = [float(v) for v in bbox]
+            except (TypeError, ValueError):
+                x1 = y1 = x2 = y2 = 0
+            # 0~1 또는 0~1000 정규화 좌표로 주는 모델이 있어 되돌려 놓는다
+            if max(x1, y1, x2, y2) <= 1.5:
+                x1, y1, x2, y2 = x1 * W, y1 * H, x2 * W, y2 * H
+            elif max(x1, y1, x2, y2) <= 1000 and max(W, H) > 1000:
+                x1, y1, x2, y2 = x1 / 1000 * W, y1 / 1000 * H, x2 / 1000 * W, y2 / 1000 * H
+            x1, x2 = sorted((x1, x2))
+            y1, y2 = sorted((y1, y2))
+            # 모델이 주는 좌표는 숫자에 바짝 붙거나 조금 어긋나서, 그대로 자르면
+            # 숫자 윗줄이 날아간다. 넉넉히 띄우고 최소 여백도 보장한다.
+            mx = max((x2 - x1) * 0.12, W * 0.02, 16)
+            my = max((y2 - y1) * 0.70, H * 0.05, 24)
+            x1, y1 = max(0, x1 - mx), max(0, y1 - my)
+            x2, y2 = min(W, x2 + mx), min(H, y2 + my)
+            if x2 - x1 >= W * 0.05 and y2 - y1 >= H * 0.03:
+                box = (int(x1), int(y1), int(x2), int(y2))
+
+        if box:
+            img = img.crop(box)
+        # 화면에서 읽을 만한 크기로 맞춘다 (너무 크면 통신만 무거워진다)
+        tw = 900
+        if img.width > tw:
+            img = img.resize((tw, max(1, int(img.height * tw / img.width))), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return ""
+
+
+@guard_bp.route("/api/guard/water/ocr", methods=["POST"])
+@_api_auth
+def api_guard_water_ocr():
+    """계량기 사진을 받아 지침 숫자를 읽어 돌려준다.
+
+    값을 확정하지는 않는다 — 앱이 화면에 채워 주고 경비원이 확인해 고칠 수 있다.
+    """
+    f = request.files.get("photo")
+    if f and f.filename:
+        raw = f.read()
+    else:
+        data = request.get_json(silent=True) or {}
+        b64raw = (data.get("image_b64") or "").strip()
+        if not b64raw:
+            return jsonify(ok=False, error="사진이 없습니다."), 400
+        try:
+            raw = base64.b64decode(b64raw.split(",")[-1])
+        except Exception:
+            return jsonify(ok=False, error="사진을 읽지 못했습니다."), 400
+
+    if not raw:
+        return jsonify(ok=False, error="사진이 비어 있습니다."), 400
+    if len(raw) > MAX_PHOTO_BYTES:
+        return jsonify(ok=False, error="사진 용량은 10MB 이하여야 합니다."), 400
+
+    b64 = base64.b64encode(raw).decode("ascii")
+    try:
+        res = _ocr_meter(b64)
+    except urllib.error.URLError:
+        return jsonify(ok=False, error="판독 서버에 연결하지 못했습니다. 직접 입력해 주세요."), 503
+    except Exception:
+        return jsonify(ok=False, error="판독에 실패했습니다. 직접 입력해 주세요."), 502
+
+    crop = _crop_digits(raw, res.get("bbox"))
+
+    reading = res.get("reading")
+    try:
+        reading = int(float(reading)) if reading is not None else None
+    except (TypeError, ValueError):
+        reading = None
+    if reading is not None and not (0 <= reading <= 99999999):
+        reading = None
+
+    # 직전 검침과 견줘 본다.
+    #   - 조금 벗어나면 값은 채워주되 경고만 (오입력일 수도, 실제 급증일 수도 있다)
+    #   - 터무니없이 벗어나면 판독 실패로 본다. 빨간 소수부까지 붙여 읽으면 자릿수가 통째로
+    #     늘어나는데(35732 → 35732418), 그 값이 화면에 채워지면 그대로 저장돼 버린다.
+    warn = ""
+    if reading is not None:
+        conn = _conn(); cur = conn.cursor()
+        cur.execute("SELECT read_date, reading FROM water_meter ORDER BY read_date DESC LIMIT 1")
+        prev = cur.fetchone()
+        conn.close()
+        if prev:
+            pv = int(float(prev[1] or 0))
+            diff = reading - pv
+            if abs(diff) > 5000:
+                # 하루 사용량은 수십 ㎥ 수준이라 이만한 차이는 판독 오류다
+                return jsonify(
+                    ok=True, reading=None, digits=str(res.get("digits") or ""),
+                    confidence="low", note="", model=OCR_MODEL, crop_b64=crop,
+                    warn="사진에서 읽은 값(%s)이 직전 검침(%s)과 너무 차이 납니다. 직접 입력해 주세요."
+                         % (format(reading, ","), format(pv, ",")))
+            if diff < 0:
+                warn = "직전 검침(%s · %s)보다 작습니다. 확인해 주세요." % (prev[0], format(pv, ","))
+            elif diff > 200:
+                warn = "직전 검침보다 %s㎥ 늘었습니다. 확인해 주세요." % format(diff, ",")
+
+    return jsonify(ok=True, reading=reading,
+                   digits=str(res.get("digits") or ""),
+                   confidence=str(res.get("confidence") or ""),
+                   note=str(res.get("note") or ""),
+                   # 숫자 부분만 잘라 보낸다 — 앱에서 계량기와 눈으로 대조하고 확정한다
+                   crop_b64=crop,
+                   warn=warn, model=OCR_MODEL)
+
+
 @guard_bp.route("/api/guard/water")
 @_api_auth
 def api_guard_water():
@@ -685,7 +915,7 @@ def api_guard_water():
 
     conn = _conn(); cur = conn.cursor()
     cur.execute("""
-        SELECT a.read_date, a.reading, a.memo,
+        SELECT a.read_date, a.reading, a.memo, a.read_time,
                (SELECT b.reading FROM water_meter b
                  WHERE b.read_date = a.read_date - INTERVAL 1 DAY)
           FROM water_meter a
@@ -696,12 +926,13 @@ def api_guard_water():
     conn.close()
 
     readings = []
-    for rd, rg, memo, prev in rows:
+    for rd, rg, memo, rt, prev in rows:
         reading = float(rg or 0)
         readings.append({
             "date": rd.strftime("%Y-%m-%d"),
             "md": rd.strftime("%m/%d"),
             "weekday": _weekday_kr(rd),
+            "time": (rt or "").strip(),
             "reading": reading,
             "usage": round(reading - float(prev), 2) if prev is not None else None,
             "memo": memo or "",
@@ -1120,15 +1351,21 @@ def guard_list():
                (SELECT COUNT(*) FROM guard_patrol p WHERE p.log_id=l.id AND p.result<>'미점검'),
                (SELECT COUNT(*) FROM guard_patrol p WHERE p.log_id=l.id AND p.result='이상'),
                (SELECT COUNT(*) FROM guard_visitors v WHERE v.log_id=l.id),
-               (SELECT COUNT(*) FROM guard_photos g WHERE g.log_id=l.id)
+               (SELECT COUNT(*) FROM guard_photos g WHERE g.log_id=l.id),
+               DATEDIFF(DATE(l.created_at), l.log_date), DATE(l.created_at)
           FROM guard_logs l
          WHERE l.log_date BETWEEN %s AND %s
          ORDER BY l.log_date DESC, l.id DESC
     """, (first, last))
+    # 일지 날짜와 실제 작성일이 벌어지면 표시만 한다(막지는 않음).
+    # 앱이 날짜를 잘못 보내도 서버는 그대로 저장하므로, 눈에 띄게 해서 사람이 잡게 한다.
+    # 야간 근무 후 다음날 아침 작성은 정상이라 차단하지 않는다. (2026-08-05 김호경 사례)
     logs = [{"id": r[0], "log_date": r[1], "weekday": r[2], "guard_name": r[3],
              "status": r[4], "submitted_at": r[5], "patrol_done": r[6],
              "patrol_total": total_slots, "abnormal_cnt": r[7],
-             "visitor_cnt": r[8], "photo_cnt": r[9]} for r in cur.fetchall()]
+             "visitor_cnt": r[8], "photo_cnt": r[9],
+             "date_gap": r[10] or 0,
+             "written_on": r[11].strftime("%m-%d") if r[11] else ""} for r in cur.fetchall()]
     conn.close()
 
     prev_ym = (first - timedelta(days=1)).strftime("%Y-%m")
@@ -1171,6 +1408,12 @@ def guard_print(log_id):
         SELECT id FROM guard_logs WHERE log_date > %s ORDER BY log_date ASC, id ASC LIMIT 1
     """, (log["log_date"],))
     r = cur.fetchone(); next_id = r[0] if r else None
+
+    # 상수도 검침 시각 — 양식에 '16:00분 검침'을 박아두면 실제와 달라진다.
+    # 통합관제에 반영된 실제 검침 시각을 그대로 인쇄한다. (2026-08-05)
+    cur.execute("SELECT read_time FROM water_meter WHERE read_date=%s", (log["log_date"],))
+    r = cur.fetchone()
+    water_time = (r[0] or "").strip() if r else ""
     conn.close()
 
     visitors = [v for v in log["visitors"] if v["block"] == "visitor"]
@@ -1180,6 +1423,7 @@ def guard_print(log_id):
     return render_template("guard_print.html", active_page="guard", log=log, rows=rows,
                            rounds=GUARD_ROUNDS, visitors=visitors, staff=staff,
                            blank_rows=blank, prev_id=prev_id, next_id=next_id,
+                           water_time=water_time,
                            result_ng=RESULT_NG, result_ok=RESULT_OK)
 
 

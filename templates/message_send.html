@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>문자 보내기</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        /* 업무용 화면 — 밀도 우선. 카드는 얇은 테두리로만 구분하고 그림자는 쓰지 않는다 */
+        .ms-wrap { max-width:1560px; }
+        .ms-box { background:#fff; border:1px solid #e5e7eb; border-radius:11px; padding:14px 16px; margin-bottom:12px; }
+        .ms-box > .bh { font-size:.95rem; font-weight:700; color:#111827; margin-bottom:10px;
+                        display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .ms-box > .bh .t { display:flex; align-items:center; gap:7px; }
+        .ms-box > .bh .n { width:20px; height:20px; border-radius:5px; background:#eff6ff; color:#1d4ed8;
+                           font-size:.72rem; font-weight:700; display:inline-flex; align-items:center; justify-content:center; }
+        .page-h { font-size:1.32rem; font-weight:700; color:#111827; margin:0; }
+        .page-sub { font-size:.8rem; color:#6b7280; margin:2px 0 0; }
+
+        /* 칩 */
+        .chip-sm { display:inline-block; padding:2px 9px; margin:0 4px 4px 0; border-radius:13px;
+                   border:1px solid #d1d5db; background:#fff; font-size:.76rem; line-height:1.5;
+                   cursor:pointer; user-select:none; white-space:nowrap; }
+        .chip-sm:hover { border-color:#2563eb; color:#1d4ed8; background:#f8fbff; }
+        .chip-sm.on { background:#2563eb; border-color:#2563eb; color:#fff; font-weight:600; }
+        .chip-sm.danger { border-color:#fca5a5; color:#b91c1c; }
+        .chip-sm.danger.on { background:#dc2626; border-color:#dc2626; color:#fff; }
+        .rcpt { display:inline-flex; align-items:center; gap:4px; padding:2px 6px 2px 9px; margin:0 4px 4px 0;
+                border-radius:12px; background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af;
+                font-size:.75rem; white-space:nowrap; }
+        .rcpt .x { cursor:pointer; opacity:.6; font-weight:700; padding:0 2px; }
+        .rcpt .x:hover { opacity:1; color:#b91c1c; }
+        .more-link { font-size:.75rem; color:#2563eb; cursor:pointer; text-decoration:underline; }
+
+        .statbar { display:flex; align-items:center; justify-content:space-between;
+                   border-top:1px solid #f1f5f9; margin-top:8px; padding-top:8px; font-size:.8rem; }
+        .statbar b { color:#1d4ed8; }
+
+        /* 직원 명단 — 6~8명 보이는 높이로 두고 안에서 스크롤한다 */
+        #empList { max-height:232px; overflow-y:auto; font-size:.82rem; }
+        #empList .dh { padding:3px 9px; background:#f9fafb; font-weight:600; font-size:.73rem; color:#4b5563;
+                       border-bottom:1px solid #f1f5f9; position:sticky; top:0; z-index:1; }
+        #empList label { display:flex; align-items:center; gap:8px; margin:0; cursor:pointer;
+                         padding:5px 9px; border-bottom:1px solid #f8fafc; }
+        #empList label:hover { background:#f8fbff; }
+        #empList label.sel { background:#eff6ff; }
+        #empList label input { flex:0 0 auto; width:15px; height:15px; }
+        #empList .nm { flex:0 0 74px; font-weight:600; color:#111827; }
+        #empList .dp { flex:1; min-width:0; color:#6b7280; font-size:.78rem;
+                       overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        #empList .ps { flex:0 0 58px; color:#374151; font-size:.78rem; }
+        #empList .tl { flex:0 0 76px; text-align:right; color:#9ca3af; font-size:.75rem; }
+        .rcpt .ps2 { opacity:.65; font-size:.72rem; }
+
+        /* 내용 */
+        #body { font-size:.9rem; line-height:1.6; min-height:190px; resize:vertical; }
+        .tok { font-size:.74rem; padding:1px 8px; }
+        .metaline { font-size:.8rem; color:#4b5563; display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; }
+        .metaline .kind { font-weight:700; color:#1d4ed8; }
+        .metaline .over { color:#c2410c; font-weight:700; }
+
+        /* 발송 요약 */
+        .sum-tb { width:100%; font-size:.83rem; }
+        .sum-tb td { padding:5px 0; border-bottom:1px solid #f3f4f6; }
+        /* 오른쪽 열이 좁아 "메시지 유형" 같은 라벨이 두 줄로 깨지므로 붙여 둔다 */
+        .sum-tb td:first-child { color:#6b7280; white-space:nowrap; padding-right:10px; }
+        .sum-tb td:last-child { text-align:right; font-weight:600; color:#111827; }
+        .sum-tb tr:last-child td { border-bottom:none; }
+        .pv-mini { background:#f0f4f8; border:1px solid #e5e7eb; border-radius:9px; padding:9px 11px;
+                   font-size:.8rem; line-height:1.55; white-space:pre-wrap; word-break:break-all;
+                   max-height:200px; overflow-y:auto; color:#111827; }
+        .pv-mini.empty { color:#9ca3af; font-style:italic; }
+        .pv-mini .subj { font-weight:700; border-bottom:1px dashed #cbd5e1; padding-bottom:4px; margin-bottom:4px; }
+        .btn-send { height:50px; font-size:.98rem; font-weight:700; }
+        .confirm-line { font-size:.79rem; color:#4b5563; text-align:center; margin-bottom:7px; }
+
+        .st-ok{color:#059669;font-weight:600;} .st-fail{color:#dc2626;font-weight:600;} .st-drop{color:#d97706;font-weight:600;}
+        .tbl { font-size:.79rem; } .tbl th { background:#f3f4f6; font-size:.75rem; white-space:nowrap; }
+        #toastWrap { position:fixed; top:70px; right:20px; z-index:1090; }
+
+        @media (max-width:991.98px){ #body{min-height:150px;} }
+    </style>
+</head>
+<body>
+{% set active_page = 'msg_send' %}
+{% include '_sidebar.html' %}
+
+<div id="toastWrap"></div>
+
+<div class="container-fluid mt-3 ms-wrap">
+    <!-- 헤더 -->
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+        <div>
+            <h1 class="page-h">문자 보내기</h1>
+            <p class="page-sub">직원 또는 부서를 선택하여 SMS/LMS 문자를 발송합니다.</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            {% if balance.ok %}
+            <span class="text-muted" style="font-size:.83rem;">잔액
+                <b style="color:#111827;">{{ '{:,.0f}'.format(balance.balance) }}원</b></span>
+            {% endif %}
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadHistory()">보낸 내역</button>
+        </div>
+    </div>
+
+    {% if not kakao_channels %}
+    <div class="d-flex align-items-center gap-2 mb-2" style="font-size:.78rem; color:#6b7280;">
+        <span style="color:#2563eb;">ⓘ</span>
+        카카오 알림톡은 채널 등록 후 사용할 수 있습니다. 현재는 문자로 발송됩니다.
+    </div>
+    {% endif %}
+
+    <div class="row g-3">
+        <!-- 왼쪽 -->
+        <div class="col-lg-8">
+            <!-- 1. 받는 사람 -->
+            <div class="ms-box">
+                <div class="bh">
+                    <span class="t"><span class="n">1</span> 받는 사람</span>
+                    <span style="font-size:.8rem; color:#374151;">
+                        선택된 수신자 <b id="cntSel" style="color:#1d4ed8;">0</b>명</span>
+                </div>
+
+                <!-- 탐색 방식 -->
+                <div class="btn-group btn-group-sm mb-2" role="group">
+                    <button class="btn btn-outline-secondary" id="tabAll"  onclick="setMode('all')">재직자 전원</button>
+                    <button class="btn btn-outline-secondary active" id="tabDept" onclick="setMode('dept')">부서별</button>
+                    <button class="btn btn-outline-secondary" id="tabPos"  onclick="setMode('pos')">직급별</button>
+                </div>
+
+                <input type="text" class="form-control form-control-sm mb-2" id="nameSearch"
+                       autocomplete="off" placeholder="🔍 이름 · 부서 · 직급 검색"
+                       oninput="onSearch()">
+
+                <!-- 그룹 칩 (부서 또는 직급) -->
+                <div class="mb-2" id="groupChips"></div>
+
+                <!-- 직원 명단 -->
+                <div class="border rounded" id="empBox" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center px-2 py-1"
+                         style="background:#f9fafb; border-bottom:1px solid #e5e7eb;">
+                        <span style="font-size:.82rem; font-weight:600;" id="empTitle">—</span>
+                        <span>
+                            <span style="font-size:.76rem; color:#6b7280;" id="empCnt"></span>
+                            <button class="btn btn-link btn-sm p-0 ms-2" style="font-size:.76rem;"
+                                    onclick="selGroup(true)" id="btnGroupAll">전체 선택</button>
+                            <button class="btn btn-link btn-sm p-0 ms-2 text-secondary" style="font-size:.76rem;"
+                                    onclick="selGroup(false)">해제</button>
+                        </span>
+                    </div>
+                    <div id="empList"></div>
+                </div>
+
+                <!-- 선택 목록 -->
+                <div class="statbar">
+                    <div id="rcptArea" style="flex:1; min-width:0;">
+                        <span class="text-muted" style="font-size:.79rem;">선택된 수신자: 0명</span>
+                    </div>
+                    <span class="more-link ms-2" onclick="clearAll()" id="btnClearSel"
+                          style="display:none; color:#b91c1c;">비우기</span>
+                </div>
+            </div>
+
+            <!-- 2. 내용 -->
+            <div class="ms-box">
+                <div class="bh">
+                    <span class="t"><span class="n">2</span> 내용</span>
+                    <span>
+                        <button class="btn btn-outline-secondary btn-sm tok" onclick="insVar('{이름}')">+ 이름</button>
+                        <button class="btn btn-outline-secondary btn-sm tok" onclick="insVar('{부서}')">+ 부서</button>
+                        <button class="btn btn-outline-secondary btn-sm tok" onclick="insVar('{직급}')">+ 직급</button>
+                    </span>
+                </div>
+
+                {% if kakao_channels %}
+                <select class="form-select form-select-sm mb-2" id="channel" onchange="draw()">
+                    <option value="auto">문자 (길이에 따라 SMS/LMS 자동)</option>
+                    {% for c in kakao_channels %}
+                    <option value="ata" data-pf="{{ c.pf_id }}">카카오 알림톡 ({{ c.search_id }})</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <input type="hidden" id="channel" value="auto">
+                {% endif %}
+
+                <textarea class="form-control mb-1" id="body" oninput="draw()"
+                          placeholder="{이름}님, 내일 오전 10시 안전교육이 있습니다. 참석 부탁드립니다."></textarea>
+
+                <div id="titleWrap" class="mb-2" style="display:none;">
+                    <input type="text" class="form-control form-control-sm" id="title"
+                           placeholder="장문(LMS) 제목 — 선택" oninput="draw()">
+                </div>
+
+                <div class="metaline mb-1">
+                    <span id="charInfo">0자 · 0byte</span>
+                    <span class="kind" id="kindInfo">SMS</span>
+                    <span id="cntInfo" class="text-muted">0명 발송</span>
+                    <span id="costInfo" class="text-muted">예상 0원</span>
+                </div>
+                <div style="font-size:.74rem; color:#9ca3af;">
+                    {이름}, {부서}, {직급}은 수신자별 정보로 자동 변경됩니다.
+                </div>
+
+                <div class="d-flex align-items-center gap-2 mt-2 pt-2" style="border-top:1px solid #f1f5f9;">
+                    <span style="font-size:.78rem; color:#6b7280; white-space:nowrap;">테스트</span>
+                    <input type="text" class="form-control form-control-sm" id="testPhone"
+                           placeholder="010-0000-0000" style="max-width:160px;">
+                    <button class="btn btn-outline-primary btn-sm" onclick="doTest()" id="btnTest">내게 1건 발송</button>
+                    <span style="font-size:.73rem; color:#9ca3af;">대상자에게는 가지 않습니다</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 오른쪽: 발송 요약 -->
+        <div class="col-lg-4">
+            <div class="ms-box" style="position:sticky; top:14px;">
+                <div class="bh"><span class="t"><span class="n">3</span> 발송 요약</span></div>
+
+                <table class="sum-tb mb-2">
+                    <tr><td>수신자</td><td id="sRcpt">0명</td></tr>
+                    <tr><td>메시지 유형</td><td id="sKind">SMS</td></tr>
+                    <tr><td>예상 건수</td><td id="sCnt">0건</td></tr>
+                    <tr><td>예상 비용</td><td id="sCost">0원</td></tr>
+                    <tr><td>현재 잔액</td><td>{% if balance.ok %}{{ '{:,.0f}'.format(balance.balance) }}원{% else %}—{% endif %}</td></tr>
+                </table>
+
+                <div style="border-top:1px solid #f1f5f9; padding-top:10px;">
+                    <div class="d-flex justify-content-between align-items-baseline mb-1">
+                        <span style="font-size:.82rem; font-weight:600; color:#374151;">미리보기</span>
+                        <span style="font-size:.73rem; color:#9ca3af;" id="pvWho">—</span>
+                    </div>
+                    <div class="pv-mini empty" id="bubble">내용을 입력하면 표시됩니다.</div>
+                </div>
+
+                <div class="mt-3">
+                    <div class="confirm-line" id="confirmLine">받는 사람과 내용을 입력하세요.</div>
+                    {% if can_send %}
+                    <button class="btn btn-primary w-100 btn-send" id="btnSend" onclick="askSend()" disabled>문자 발송하기</button>
+                    {% else %}
+                    <button class="btn btn-secondary w-100 btn-send" disabled>발송 권한이 없습니다</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 발송 확인 -->
+<div class="modal fade" id="mdConfirm" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header py-2"><h6 class="modal-title">문자를 발송하시겠습니까?</h6>
+            <button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body py-2">
+            <table class="sum-tb">
+                <tr><td>수신자</td><td id="cRcpt">-</td></tr>
+                <tr><td>유형</td><td id="cKind">-</td></tr>
+                <tr><td>예상 비용</td><td id="cCost">-</td></tr>
+            </table>
+            <div class="pv-mini mt-2" id="cPreview" style="max-height:120px;"></div>
+        </div>
+        <div class="modal-footer py-2">
+            <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+            <button class="btn btn-primary btn-sm" id="cGo" onclick="doSend()">발송</button>
+        </div>
+    </div></div>
+</div>
+
+<!-- 보낸 내역 -->
+<div class="modal fade" id="mdHistory" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header py-2"><h6 class="modal-title">보낸 내역</h6>
+            <button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body"><div id="histBody">불러오는 중…</div></div>
+    </div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const ROSTER = {{ roster|tojson }};
+/* 이름을 몰라도 고를 수 있어야 한다 —
+   [부서/직급 고르기] → [그 안의 사람 보기] → [체크] 순서로 간다.
+   화면에 보이는 것(탐색)과 실제 받는 사람(selected)은 별개다. */
+let selected = new Set();     // 실제로 받을 사람 id
+let mode = 'dept';            // dept | pos | all
+let curGroup = null;          // 지금 펼쳐 본 부서/직급
+let searchQ = '';
+let showAllRcpt = false;
+let firstTarget = null;
+let lastValid = 0;
+
+const DEPTS = [...new Set(ROSTER.map(r=>r.dept).filter(Boolean))].sort();
+const POSES = [...new Set(ROSTER.map(r=>r.position).filter(Boolean))].sort();
+
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function empOf(id){ return ROSTER.find(r=>r.id===id); }
+
+/* ── 탐색 방식 ── */
+function setMode(m){
+    mode = m; curGroup = null;
+    document.getElementById('nameSearch').value = ''; searchQ = '';
+    ['tabAll','tabDept','tabPos'].forEach(id=>document.getElementById(id).classList.remove('active'));
+    document.getElementById(m==='all'?'tabAll':m==='dept'?'tabDept':'tabPos').classList.add('active');
+    drawGroups(); drawEmp();
+}
+function drawGroups(){
+    const box = document.getElementById('groupChips');
+    if (mode === 'all'){ box.innerHTML = ''; return; }
+    const list = mode === 'dept' ? DEPTS : POSES;
+    box.innerHTML = list.map(g=>{
+        const rows = rowsOf(g);
+        const sel = rows.filter(r=>selected.has(r.id)).length;
+        return `<span class="chip-sm ${curGroup===g?'on':''}" onclick="openGroup('${esc(g)}')">
+                  ${esc(g)} <span style="opacity:.7;">${sel?sel+'/':''}${rows.length}</span></span>`;
+    }).join('');
+}
+function rowsOf(g){
+    return ROSTER.filter(r => (mode==='dept' ? r.dept : r.position) === g);
+}
+function openGroup(g){ curGroup = (curGroup===g) ? null : g; drawGroups(); drawEmp(); }
+
+/* ── 통합 검색 (이름·부서·직급) ── */
+function onSearch(){
+    searchQ = document.getElementById('nameSearch').value.trim();
+    if (searchQ) curGroup = null;
+    drawGroups(); drawEmp();
+}
+
+/* ── 직원 명단 ── */
+function visibleRows(){
+    if (searchQ){
+        const q = searchQ;
+        return ROSTER.filter(r => (r.name||'').includes(q) || (r.dept||'').includes(q)
+                                || (r.position||'').includes(q));
+    }
+    if (mode === 'all') return ROSTER;
+    if (curGroup) return rowsOf(curGroup);
+    return null;                      // 그룹을 아직 안 골랐다
+}
+
+function drawEmp(){
+    const rows = visibleRows();
+    const box = document.getElementById('empBox');
+    if (!rows){ box.style.display = 'none'; return; }
+    box.style.display = '';
+
+    const title = searchQ ? `"${esc(searchQ)}" 검색 결과`
+                : mode === 'all' ? '재직자 전원' : esc(curGroup);
+    const sel = rows.filter(r=>selected.has(r.id)).length;
+    document.getElementById('empTitle').textContent = title;
+    document.getElementById('empCnt').textContent = `${rows.length}명 중 ${sel}명 선택`;
+    document.getElementById('btnGroupAll').textContent =
+        (searchQ ? '검색결과' : mode==='all' ? '전원' : curGroup) + ' 전체 선택';
+
+    // 전원/검색일 때는 부서 머리글로 묶어 어디 소속인지 보이게 한다
+    const grouped = (mode === 'all' || searchQ);
+    let html = '';
+    if (grouped){
+        const by = {};
+        rows.forEach(r => (by[r.dept||'(부서없음)'] ||= []).push(r));
+        html = Object.keys(by).sort().map(d =>
+            `<div class="dh">${esc(d)} <span class="text-muted">(${by[d].length})</span></div>` +
+            by[d].map(empRow).join('')).join('');
+    } else {
+        html = rows.map(empRow).join('');
+    }
+    document.getElementById('empList').innerHTML = html || '<div class="p-2 text-muted">해당하는 직원이 없습니다.</div>';
+}
+
+function empRow(r){
+    const on = selected.has(r.id);
+    const dis = r.has_phone === false;
+    return `<label class="${on?'sel':''}" style="${dis?'cursor:not-allowed;':''}">
+        <input type="checkbox" ${on?'checked':''} ${dis?'disabled':''} onchange="toggleEmp(${r.id})">
+        <span class="nm">${esc(r.name)}</span>
+        <span class="dp">${esc(r.dept||'')}</span>
+        <span class="ps">${esc(r.position||'')}</span>
+        <span class="tl">${dis ? '<span class="st-drop">번호없음</span>' : '****-'+r.tail}</span>
+      </label>`;
+}
+
+/* ── 선택 ── */
+function toggleEmp(id){
+    const r = empOf(id); if(!r || r.has_phone === false) return;
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    afterSelect();
+}
+function selGroup(v){
+    const rows = visibleRows(); if(!rows) return;
+    rows.forEach(r=>{
+        if (r.has_phone === false) return;
+        if (v) selected.add(r.id); else selected.delete(r.id);
+    });
+    afterSelect();
+}
+function dropOne(id){ selected.delete(id); afterSelect(); }
+function clearAll(){ selected.clear(); showAllRcpt = false; afterSelect(); }
+function afterSelect(){ drawGroups(); drawEmp(); drawSelected(); refresh(); }
+
+function drawSelected(){
+    const ids = [...selected];
+    document.getElementById('cntSel').textContent = ids.length;
+    document.getElementById('btnClearSel').style.display = ids.length ? '' : 'none';
+    const area = document.getElementById('rcptArea');
+    if (!ids.length){
+        area.innerHTML = '<span class="text-muted" style="font-size:.79rem;">선택된 수신자: 0명</span>';
+        return;
+    }
+    const people = ids.map(empOf).filter(Boolean);
+    const LIMIT = 8;
+    const show = showAllRcpt ? people : people.slice(0, LIMIT);
+    const rest = people.length - show.length;
+    area.innerHTML =
+        `<div style="font-size:.78rem; color:#6b7280; margin-bottom:3px;">선택된 수신자 <b style="color:#1d4ed8;">${people.length}명</b></div>` +
+        show.map(p=>`<span class="rcpt">${esc(p.name)}<span class="ps2"> · ${esc(p.position||'')}</span>
+                     <span class="x" onclick="dropOne(${p.id})">×</span></span>`).join('') +
+        (rest > 0 ? `<span class="more-link" onclick="showAllRcpt=true;drawSelected()">+ ${rest}명</span>`
+                  : (showAllRcpt && people.length > LIMIT
+                     ? `<span class="more-link" onclick="showAllRcpt=false;drawSelected()">접기</span>` : ''));
+}
+
+function cond(){
+    const c = { body: document.getElementById('body').value,
+                title: (document.getElementById('title')||{}).value || '',
+                channel: document.getElementById('channel').value };
+    if (selected.size) c.emp_ids = [...selected];
+    return c;
+}
+
+/* ── 미리보기·집계 (한글 2바이트, 서버와 같은 기준) ── */
+function bytesOf(s){ let n=0; for(const ch of s) n += (ch.charCodeAt(0)<128?1:2); return n; }
+function insVar(v){
+    const t = document.getElementById('body');
+    const p = t.selectionStart;
+    t.value = t.value.slice(0,p) + v + t.value.slice(t.selectionEnd);
+    t.focus(); t.selectionStart = t.selectionEnd = p + v.length;
+    draw();
+}
+function unitOf(kind){ return kind==='알림톡' ? 9 : kind==='LMS' ? 43 : 20; }
+
+function draw(){
+    let pv = document.getElementById('body').value;
+    if (firstTarget) pv = pv.replace(/\{이름\}/g, firstTarget.name||'')
+                           .replace(/\{부서\}/g, firstTarget.dept||'')
+                           .replace(/\{직급\}/g, firstTarget.position||'');
+    pv = pv.replace(/\{[가-힣A-Za-z_][가-힣A-Za-z0-9_]*\}/g,'');
+
+    const title = (document.getElementById('title')||{}).value || '';
+    const b = bytesOf(pv);
+    const isKakao = document.getElementById('channel').value === 'ata';
+    const kind = isKakao ? '알림톡' : (b > 90 || title) ? 'LMS' : 'SMS';
+    const cost = unitOf(kind) * lastValid;
+
+    const bub = document.getElementById('bubble');
+    if (pv.trim()){
+        bub.className = 'pv-mini';
+        bub.innerHTML = (title ? `<div class="subj">${esc(title)}</div>` : '') + esc(pv);
+    } else {
+        bub.className = 'pv-mini empty';
+        bub.textContent = '내용을 입력하면 표시됩니다.';
+    }
+
+    document.getElementById('charInfo').innerHTML =
+        `${pv.length}자 · <span class="${b>2000?'over':''}">${b}byte</span>`;
+    document.getElementById('kindInfo').textContent = kind;
+    document.getElementById('cntInfo').textContent = `${lastValid}명 발송`;
+    document.getElementById('costInfo').textContent = `예상 ${cost.toLocaleString()}원`;
+
+    document.getElementById('sRcpt').textContent = `${lastValid}명`;
+    document.getElementById('sKind').textContent = kind;
+    document.getElementById('sCnt').textContent  = `${lastValid}건`;
+    document.getElementById('sCost').textContent = `${cost.toLocaleString()}원`;
+
+    // 장문 제목칸은 장문일 때만
+    const tw = document.getElementById('titleWrap');
+    if (tw) tw.style.display = (kind==='LMS') ? '' : 'none';
+
+    const ready = lastValid > 0 && pv.trim();
+    const bs = document.getElementById('btnSend');
+    if (bs) bs.disabled = !ready;
+    document.getElementById('confirmLine').textContent = ready
+        ? `${lastValid}명에게 ${kind} ${lastValid}건을 발송합니다.`
+        : (!lastValid ? '받는 사람을 선택하세요.' : '내용을 입력하세요.');
+}
+
+async function refresh(){
+    const r = await fetch('/api/msg_targets',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(cond())}).then(r=>r.json());
+    lastValid = r.valid;
+    firstTarget = r.rows.find(x=>x.valid) || null;
+    document.getElementById('pvWho').textContent = firstTarget ? `${firstTarget.name}님 기준` : '—';
+    draw();
+}
+
+/* ── 알림 ── */
+function toast(msg, type){
+    const el = document.createElement('div');
+    el.className = 'toast align-items-center text-white border-0 show mb-2 ' +
+                   (type==='error' ? 'bg-danger' : type==='warn' ? 'bg-warning text-dark' : 'bg-success');
+    el.innerHTML = `<div class="d-flex"><div class="toast-body" style="font-size:.85rem;">${msg}</div>
+        <button class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+    document.getElementById('toastWrap').appendChild(el);
+    setTimeout(()=>el.remove(), 6000);
+}
+
+/* ── 테스트 발송 ── */
+async function doTest(){
+    const c = cond();
+    c.phone = document.getElementById('testPhone').value;
+    if (!c.body.trim()){ toast('내용을 먼저 입력하세요.', 'warn'); return; }
+    if (!c.phone.trim()){ toast('테스트로 받을 번호를 입력하세요.', 'warn'); return; }
+    const b = document.getElementById('btnTest');
+    b.disabled = true; b.textContent = '발송 중…';
+    try{
+        const r = await fetch('/api/msg_test',{method:'POST',
+            headers:{'Content-Type':'application/json'},body:JSON.stringify(c)}).then(r=>r.json());
+        if (r.sent) toast('테스트 문자를 보냈습니다. 휴대폰을 확인하세요.');
+        else toast('테스트 실패: ' + (r.error || (r.results&&r.results[0]&&r.results[0].error) || '알 수 없음'), 'error');
+    }catch(e){ toast('오류: ' + e, 'error'); }
+    b.disabled = false; b.textContent = '내게 1건 발송';
+}
+
+/* ── 발송 (확인 모달 경유) ── */
+function askSend(){
+    const kind = document.getElementById('kindInfo').textContent;
+    document.getElementById('cRcpt').textContent = `${lastValid}명`;
+    document.getElementById('cKind').textContent = kind;
+    document.getElementById('cCost').textContent = (unitOf(kind)*lastValid).toLocaleString() + '원';
+    document.getElementById('cPreview').innerHTML = document.getElementById('bubble').innerHTML;
+    document.getElementById('cGo').textContent = `${lastValid}명에게 발송`;
+    new bootstrap.Modal(document.getElementById('mdConfirm')).show();
+}
+
+async function doSend(){
+    const c = cond();
+    if (!c.body.trim()){ toast('내용을 입력하세요.', 'warn'); return; }
+    const md = bootstrap.Modal.getInstance(document.getElementById('mdConfirm'));
+    const go = document.getElementById('cGo');
+    go.disabled = true; go.textContent = '발송 중…';
+    const ch = document.getElementById('channel');
+    if (ch.selectedOptions && ch.selectedOptions[0] && ch.selectedOptions[0].dataset.pf)
+        c.pf_id = ch.selectedOptions[0].dataset.pf;
+    try{
+        const r = await fetch('/api/msg_send',{method:'POST',
+            headers:{'Content-Type':'application/json'},body:JSON.stringify(c)}).then(r=>r.json());
+        if (md) md.hide();
+        if (!r.sent && r.error){ toast('발송 실패: ' + r.error, 'error'); }
+        else if (r.failed || (r.dropped||[]).length){
+            let m = `${r.sent}건 성공 / ${r.failed}건 실패`;
+            if ((r.dropped||[]).length) m += ` · ${r.dropped.length}건 제외`;
+            toast(m, 'warn');
+            document.getElementById('body').value = ''; clearAll();
+        } else {
+            toast(`${r.sent}명에게 문자를 발송했습니다.`);
+            document.getElementById('body').value = '';
+            clearAll();          // 명단까지 비워 중복 발송을 막는다
+        }
+    }catch(e){ if (md) md.hide(); toast('오류: ' + e, 'error'); }
+    go.disabled = false; draw();
+}
+
+/* ── 보낸 내역 ── */
+async function loadHistory(){
+    new bootstrap.Modal(document.getElementById('mdHistory')).show();
+    const r = await fetch('/api/msg_history').then(r=>r.json());
+    if (!r.rows.length){ document.getElementById('histBody').innerHTML='<p class="text-muted">보낸 내역이 없습니다.</p>'; return; }
+    window._hist = {};
+    document.getElementById('histBody').innerHTML =
+        `<table class="table table-sm tbl"><thead><tr><th>일시</th><th>종류</th><th>내용</th><th>대상</th>
+         <th>성공</th><th>실패</th><th>보낸이</th><th></th></tr></thead><tbody>` +
+        r.rows.map(x=>{ window._hist[x.id]=x.body;
+            return `<tr><td>${x.at}</td><td>${x.kind||x.channel}</td>
+            <td style="max-width:280px;">${esc((x.body||'').slice(0,50))}${(x.body||'').length>50?'…':''}</td>
+            <td>${x.total}</td><td class="st-ok">${x.sent}</td>
+            <td class="${x.failed?'st-fail':''}">${x.failed}</td><td>${x.by||''}</td>
+            <td class="text-nowrap">
+              <button class="btn btn-outline-primary btn-sm py-0" onclick="reuse(${x.id})">다시 쓰기</button>
+              <button class="btn btn-outline-secondary btn-sm py-0" onclick="detail(${x.id})">상세</button>
+            </td></tr>`; }).join('') +
+        `</tbody></table><div id="detailBox"></div>`;
+}
+function reuse(id){
+    document.getElementById('body').value = window._hist[id] || '';
+    bootstrap.Modal.getInstance(document.getElementById('mdHistory')).hide();
+    draw();
+    document.getElementById('body').focus();
+}
+async function detail(cid){
+    const r = await fetch('/api/msg_history?cid='+cid).then(r=>r.json());
+    document.getElementById('detailBox').innerHTML =
+        `<hr><h6 style="font-size:.85rem;">받는 사람별 결과</h6>
+         <table class="table table-sm tbl"><thead><tr><th>이름</th><th>부서</th><th>번호</th><th>결과</th><th>사유</th></tr></thead><tbody>` +
+        r.rows.map(x=>{
+            const cls = x.status==='ok'?'st-ok':x.status==='fail'?'st-fail':'st-drop';
+            const lbl = x.status==='ok'?'성공':x.status==='fail'?'실패':'제외';
+            return `<tr><td>${x.name||''}</td><td>${x.dept||''}</td>
+                    <td>${(x.phone||'').replace(/(\d{3})(\d{4})(\d{4})/,'$1-****-$3')}</td>
+                    <td class="${cls}">${lbl}</td><td>${x.error||''}</td></tr>`; }).join('') +
+        `</tbody></table>`;
+    document.getElementById('detailBox').scrollIntoView({behavior:'smooth'});
+}
+
+/* 첫 진입: 부서 칩을 그려 두고, 내 번호를 테스트칸에 채운다 */
+setMode('dept');
+drawSelected();
+fetch('/api/msg_my_phone').then(r=>r.json()).then(j=>{
+    if (j.phone) document.getElementById('testPhone').value =
+        j.phone.replace(/(\d{3})(\d{4})(\d{4})/,'$1-$2-$3');
+});
+refresh();
+</script>
+</body>
+</html>

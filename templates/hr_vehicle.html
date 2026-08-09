@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>차량현황</title>
+    <link rel="icon" type="image/gif" href="/static/LOGO.GIF">
+    <link rel="apple-touch-icon" href="/static/LOGO.GIF">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}?v=26" rel="stylesheet">
+    <style>
+        :root {
+            --ink:#0f172a; --sub:#64748b; --faint:#94a3b8;
+            --line:#e8edf4; --brand:#2563eb; --brand-dk:#1e40af;
+            --ok:#16a34a; --warn:#f59e0b; --bad:#dc2626;
+        }
+        .vh-wrap { max-width:1560px; }
+        .vh-head { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; }
+        .vh-head h4 { margin:0; font-weight:800; color:var(--ink); letter-spacing:-.02em; }
+        .vh-head .sub { font-size:.8rem; color:var(--faint); margin-top:3px; }
+
+        .panel {
+            background:#fff; border:1px solid var(--line); border-radius:16px;
+            padding:18px 20px; height:100%;
+            box-shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px -18px rgba(15,23,42,.35);
+        }
+        .panel h6 {
+            font-weight:700; color:var(--ink); font-size:.92rem;
+            margin:0 0 16px; display:flex; align-items:center; gap:7px;
+        }
+        .panel h6 .tag { font-size:.72rem; font-weight:600; color:var(--faint); margin-left:auto; }
+
+        .hero {
+            border-radius:16px; padding:20px; color:#fff; height:100%;
+            background:linear-gradient(140deg,#334155 0%,#475569 55%,#64748b 100%);
+            box-shadow:0 10px 30px -14px rgba(51,65,85,.6);
+            display:flex; align-items:center; gap:20px;
+        }
+        .ring { position:relative; width:112px; height:112px; flex:none; }
+        .ring .bg {
+            position:absolute; inset:0; border-radius:50%;
+            background:conic-gradient(#fff 0 {{ '%.1f'|format(s.rate) }}%, rgba(255,255,255,.22) {{ '%.1f'|format(s.rate) }}% 100%);
+        }
+        .ring .hole {
+            position:absolute; inset:13px; border-radius:50%; background:rgba(30,41,59,.6);
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+        }
+        .ring .pct { font-size:1.4rem; font-weight:800; line-height:1; }
+        .ring .cap { font-size:.66rem; opacity:.82; margin-top:3px; }
+        .hero .big { font-size:2rem; font-weight:800; line-height:1.1; letter-spacing:-.03em; }
+        .hero .big small { font-size:.85rem; font-weight:600; opacity:.85; margin-left:3px; }
+        .hero .t { font-size:.8rem; opacity:.85; }
+        .hero-chip {
+            display:inline-block; background:rgba(255,255,255,.16); border-radius:999px;
+            padding:4px 11px; font-size:.74rem; margin:9px 5px 0 0; white-space:nowrap;
+        }
+
+        .stat {
+            background:#fff; border:1px solid var(--line); border-radius:14px;
+            padding:14px 15px; height:100%; position:relative; overflow:hidden;
+        }
+        .stat::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--c,#cbd5e1); }
+        .stat .lbl { font-size:.76rem; color:var(--sub); }
+        .stat .val { font-size:1.5rem; font-weight:800; color:var(--ink); line-height:1.15; margin-top:5px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+        .stat .val small { font-size:.76rem; font-weight:600; color:var(--faint); margin-left:2px; }
+
+        .bar-row { display:grid; grid-template-columns:minmax(84px,1fr) 2.2fr auto; gap:12px; align-items:center; padding:7px 0; font-size:.84rem; }
+        .bar-row + .bar-row { border-top:1px dashed #eef2f7; }
+        .bar-row .who { font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .bar-row .who span { font-weight:500; color:var(--faint); font-size:.76rem; margin-left:4px; }
+        .track { background:#f1f5f9; border-radius:999px; height:9px; overflow:hidden; }
+        .track > i { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#94a3b8,#475569); }
+        .bar-num { text-align:right; color:var(--faint); font-size:.76rem; white-space:nowrap; font-variant-numeric:tabular-nums; }
+        .bar-num b { color:var(--ink); font-size:.85rem; margin-left:3px; }
+
+        .vh-tools { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+        .vh-tools input, .vh-tools select {
+            border:1px solid var(--line); border-radius:9px; padding:7px 11px;
+            font-size:.84rem; color:var(--ink); background:#fff;
+        }
+        .vh-tools input { min-width:200px; }
+        .vh-tools input:focus, .vh-tools select:focus {
+            outline:none; border-color:var(--brand); box-shadow:0 0 0 3px rgba(37,99,235,.13);
+        }
+        .vh-count { font-size:.8rem; color:var(--faint); margin-left:auto; }
+
+        .vh-table { width:100%; border-collapse:separate; border-spacing:0; font-size:.85rem; }
+        .vh-table th {
+            background:#f8fafc; color:var(--sub); font-weight:600; font-size:.74rem;
+            padding:9px 11px; border-bottom:1px solid var(--line); white-space:nowrap;
+            position:sticky; top:0; z-index:1;
+        }
+        .vh-table td { padding:9px 11px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+        .vh-table tbody tr:hover td { background:#f8fbff; }
+        .vh-row.hide { display:none; }
+        .plate {
+            display:inline-block; background:#0f172a; color:#fff; border-radius:7px;
+            padding:3px 11px; font-size:.86rem; font-weight:700; letter-spacing:.04em;
+            font-variant-numeric:tabular-nums; white-space:nowrap;
+        }
+        .dept-tag { font-size:.73rem; color:var(--sub); background:#f1f5f9; border-radius:6px; padding:2px 7px; }
+        .biz-tag { font-size:.73rem; color:#1d4ed8; background:#dbeafe; border-radius:6px; padding:2px 7px; }
+        .name-link { color:var(--brand-dk); text-decoration:none; font-weight:600; }
+        .name-link:hover { text-decoration:underline; }
+        .scroll { max-height:520px; overflow-y:auto; }
+        .sync-note { font-size:.78rem; color:var(--faint); display:flex; align-items:center; gap:7px; flex-wrap:wrap; padding:12px 2px; }
+        .sync-note .dot { width:6px; height:6px; border-radius:50%; background:var(--ok); flex:none; }
+    </style>
+</head>
+<body>
+
+{% include '_sidebar.html' %}
+
+<div class="container-fluid px-3 mt-4 vh-wrap">
+
+    <div class="vh-head">
+        <div>
+            <h4>🚗 차량현황</h4>
+            <div class="sub">직원이 등록한 차량입니다 · ERP 사원정보 기준</div>
+        </div>
+    </div>
+
+    <!-- 요약 -->
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-xl-5">
+            <div class="hero">
+                <div class="ring">
+                    <div class="bg"></div>
+                    <div class="hole">
+                        <div class="pct">{{ '%.0f'|format(s.rate) }}<span style="font-size:.85rem">%</span></div>
+                        <div class="cap">등록률</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="t">등록된 차량</div>
+                    <div class="big">{{ s.cars }}<small>대</small></div>
+                    <div>
+                        <span class="hero-chip">재직 {{ s.people }}명</span>
+                        <span class="hero-chip">미등록 {{ s.none }}명</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-7">
+            <div class="row g-3 h-100">
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#334155">
+                        <div class="lbl">🚗 전체 차량</div>
+                        <div class="val">{{ s.cars }}<small>대</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#64748b">
+                        <div class="lbl">👥 재직 인원</div>
+                        <div class="val">{{ s.people }}<small>명</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#f59e0b">
+                        <div class="lbl">➖ 미등록</div>
+                        <div class="val">{{ s.none }}<small>명</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat" style="--c:#2563eb">
+                        <div class="lbl">🏢 사업부</div>
+                        <div class="val">{{ bizs|length }}<small>개</small></div>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="panel" style="padding:14px 16px">
+                        <h6 style="margin-bottom:10px">🏢 사업부별 차량 <span class="tag">차량 / 인원</span></h6>
+                        {% for g in bizs %}
+                        <div class="bar-row">
+                            <div class="who">{{ g.name }}<span>{{ g.n }}명</span></div>
+                            <div class="track">
+                                <i style="width:{{ (g.cars / biz_max * 100) if biz_max else 0 }}%"></i>
+                            </div>
+                            <div class="bar-num">{{ '%.0f'|format(g.rate) }}% <b>{{ g.cars }}대</b></div>
+                        </div>
+                        {% endfor %}
+                        {% if not bizs %}<div class="text-muted small">자료가 없습니다.</div>{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 부서별 -->
+    <div class="panel mb-3">
+        <h6>🏭 부서별 차량 등록현황 <span class="tag">{{ depts|length }}개 부서</span></h6>
+        <div class="row">
+            {% for g in depts %}
+            <div class="col-12 col-lg-6">
+                <div class="bar-row">
+                    <div class="who">{{ g.name }}<span>{{ g.n }}명</span></div>
+                    <div class="track">
+                        <i style="width:{{ (g.cars / dept_max * 100) if dept_max else 0 }}%"></i>
+                    </div>
+                    <div class="bar-num">{{ '%.0f'|format(g.rate) }}% <b>{{ g.cars }}대</b></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 차량 목록 -->
+    <div class="panel mb-3">
+        <h6>🚙 차량 목록 <span class="tag">차량번호로도 찾을 수 있습니다</span></h6>
+        <div class="vh-tools">
+            <input type="search" id="vhSearch" placeholder="차량번호 · 이름 · 부서 검색" oninput="vhFilter()">
+            <select id="vhBiz" onchange="vhFilter()">
+                <option value="">전체 사업부</option>
+                {% for b in biz_list %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+            </select>
+            <select id="vhDept" onchange="vhFilter()">
+                <option value="">전체 부서</option>
+                {% for d in dept_list %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+            </select>
+            <span class="vh-count"><b id="vhShown">{{ owners|length }}</b> / {{ owners|length }}대</span>
+        </div>
+        <div class="table-responsive scroll">
+            <table class="js-sort vh-table">
+                <thead>
+                    <tr>
+                        <th style="width:44px">#</th><th style="width:150px">차량번호</th>
+                        <th>이름</th><th>사업부</th><th>부서</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for p in owners %}
+                    <tr class="vh-row" data-biz="{{ p.biz }}" data-dept="{{ p.dept }}"
+                        data-key="{{ p.car }} {{ p.car|replace(' ','') }} {{ p.name }} {{ p.dept }}">
+                        <td class="text-muted vh-no">{{ loop.index }}</td>
+                        <td><span class="plate">{{ p.car }}</span></td>
+                        <td><a class="name-link" href="/hr_employee/{{ p.seq }}">{{ p.name }}</a></td>
+                        <td><span class="biz-tag">{{ p.biz }}</span></td>
+                        <td><span class="dept-tag">{{ p.dept }}</span></td>
+                    </tr>
+                {% endfor %}
+                {% if not owners %}
+                    <tr><td colspan="5" class="text-center text-muted py-4">등록된 차량이 없습니다.</td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 미등록자 -->
+    <div class="panel mb-3">
+        <h6>➖ 차량 미등록 <span class="tag">{{ nones|length }}명</span></h6>
+        <div class="table-responsive scroll" style="max-height:320px">
+            <table class="js-sort vh-table">
+                <thead><tr><th style="width:44px">#</th><th>이름</th><th>사업부</th><th>부서</th></tr></thead>
+                <tbody>
+                {% for p in nones %}
+                    <tr>
+                        <td class="text-muted">{{ loop.index }}</td>
+                        <td><a class="name-link" href="/hr_employee/{{ p.seq }}">{{ p.name }}</a></td>
+                        <td><span class="biz-tag">{{ p.biz }}</span></td>
+                        <td><span class="dept-tag">{{ p.dept }}</span></td>
+                    </tr>
+                {% endfor %}
+                {% if not nones %}<tr><td colspan="4" class="text-center text-muted py-3">전원 등록되어 있습니다.</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="sync-note mb-4">
+        <span class="dot"></span>
+        ERP 사원정보의 '차량번호' 항목 기준 · 매일 18:40 자동 반영 ·
+        차량번호 형태가 아닌 값(없음·지역명 등)은 미등록으로 봅니다
+    </div>
+
+</div>
+
+<script>
+// 차량번호·이름·부서 검색 + 사업부/부서 거르기 (띄어쓰기 없이 쳐도 찾도록 한다)
+function vhFilter() {
+    const raw = document.getElementById('vhSearch').value.trim().toLowerCase();
+    const q = raw.replace(/\s+/g, '');
+    const b = document.getElementById('vhBiz').value;
+    const d = document.getElementById('vhDept').value;
+    let shown = 0;
+    document.querySelectorAll('.vh-row').forEach(function (tr) {
+        const key = tr.dataset.key.toLowerCase();
+        const okQ = !q || key.replace(/\s+/g, '').includes(q);
+        const okB = !b || tr.dataset.biz === b;
+        const okD = !d || tr.dataset.dept === d;
+        const on = okQ && okB && okD;
+        tr.classList.toggle('hide', !on);
+        if (on) { shown++; tr.querySelector('.vh-no').textContent = shown; }
+    });
+    document.getElementById('vhShown').textContent = shown;
+}
+</script>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
+</body>
+</html>

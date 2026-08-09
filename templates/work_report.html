@@ -390,6 +390,37 @@
                         <option value="반려" {{ 'selected' if status_filter=='반려' }}>반려</option>
                     </select>
                 </div>
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.78rem;">그룹</label>
+                    <select name="fgid" class="form-select form-select-sm" style="min-width:110px;"
+                            onchange="this.form.submit()">
+                        <option value="">전체</option>
+                        {% for g in groups %}
+                        <option value="{{ g.id }}" {{ 'selected' if filter_gid == g.id|string }}>{{ g.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.78rem;">작성자</label>
+                    <select name="writer" class="form-select form-select-sm" style="min-width:120px;"
+                            onchange="this.form.submit()">
+                        <option value="">전체</option>
+                        {% for w in writer_list %}
+                        <option value="{{ w.name }}" {{ 'selected' if filter_writer == w.name }}>
+                            {{ w.name }} ({{ w.cnt }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label mb-0" style="font-size:0.78rem;">표시</label>
+                    <select name="per_page" class="form-select form-select-sm" style="width:88px;"
+                            onchange="this.form.submit()">
+                        {% for n in [10, 20, 50, 100] %}
+                        <option value="{{ n }}" {{ 'selected' if per_page == n }}>{{ n }}건</option>
+                        {% endfor %}
+                    </select>
+                </div>
                 {% if is_reviewer %}
                 <div class="col-auto d-flex align-items-end">
                     <div class="form-check" style="padding-left:1.7em;">
@@ -409,7 +440,15 @@
             </form>
 
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <div class="text-muted" style="font-size:0.78rem;">총 <strong>{{ wr_total }}</strong>건{% if recent_mode and wr_total_pages > 1 %} · 최근 10건씩{% endif %}</div>
+                <div class="text-muted" style="font-size:0.78rem;">
+                    총 <strong>{{ wr_total }}</strong>건
+                    {% if wr_total_pages > 1 %}
+                    · {{ (wr_page - 1) * per_page + 1 }}~{{ [wr_page * per_page, wr_total] | min }}번째 표시
+                    {% endif %}
+                    {% if filter_gid or filter_writer or status_filter != 'all' %}
+                    <span class="badge bg-info text-dark ms-1" style="font-size:0.68rem;">필터 적용중</span>
+                    {% endif %}
+                </div>
                 {% if is_admin or has_wr_perm %}
                 <div class="d-flex align-items-center gap-2">
                     <label class="form-check-label" style="font-size:0.75rem;cursor:pointer;"><input type="checkbox" class="form-check-input" id="chkAll" onchange="toggleAllReports(this.checked)"> 전체선택</label>
@@ -473,21 +512,53 @@
             {% endif %}
 
             {% if wr_total_pages > 1 %}
-            {% set base_url = '/work_report?' ~ ('month=' ~ sel_month ~ '&' if not recent_mode else '') ~ 'status=' ~ status_filter ~ ('&gid=' ~ sel_group if sel_group else '') %}
+            {# 필터를 모두 유지하는 기본 URL #}
+            {% set base_url = '/work_report?' ~ ('month=' ~ sel_month ~ '&' if not recent_mode else '')
+                              ~ 'status=' ~ status_filter
+                              ~ ('&fgid=' ~ filter_gid if filter_gid else '')
+                              ~ ('&writer=' ~ filter_writer if filter_writer else '')
+                              ~ ('&mine_pending=1' if mine_pending else '')
+                              ~ '&per_page=' ~ per_page
+                              ~ ('&gid=' ~ sel_group if sel_group else '') %}
+            {# 현재 페이지 주변만 표시 (페이지가 많아도 목록이 지저분해지지 않게) #}
+            {% set win_start = [1, wr_page - 2] | max %}
+            {% set win_end = [wr_total_pages, wr_page + 2] | min %}
             <nav class="mt-3">
-                <ul class="pagination pagination-sm justify-content-center flex-wrap mb-0">
+                <ul class="pagination pagination-sm justify-content-center mb-1">
                     <li class="page-item {% if wr_page == 1 %}disabled{% endif %}">
-                        <a class="page-link" href="{{ base_url }}&wr_page={{ wr_page - 1 }}">◀ 이전</a>
+                        <a class="page-link" href="{{ base_url }}&wr_page=1" title="첫 페이지">«</a>
                     </li>
-                    {% for p in range(1, wr_total_pages + 1) %}
+                    <li class="page-item {% if wr_page == 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ base_url }}&wr_page={{ wr_page - 1 }}">이전</a>
+                    </li>
+                    {% if win_start > 1 %}
+                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                    {% endif %}
+                    {% for p in range(win_start, win_end + 1) %}
                     <li class="page-item {% if p == wr_page %}active{% endif %}">
                         <a class="page-link" href="{{ base_url }}&wr_page={{ p }}">{{ p }}</a>
                     </li>
                     {% endfor %}
+                    {% if win_end < wr_total_pages %}
+                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                    {% endif %}
                     <li class="page-item {% if wr_page == wr_total_pages %}disabled{% endif %}">
-                        <a class="page-link" href="{{ base_url }}&wr_page={{ wr_page + 1 }}">다음 ▶</a>
+                        <a class="page-link" href="{{ base_url }}&wr_page={{ wr_page + 1 }}">다음</a>
+                    </li>
+                    <li class="page-item {% if wr_page == wr_total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ base_url }}&wr_page={{ wr_total_pages }}" title="마지막 페이지">»</a>
                     </li>
                 </ul>
+                <div class="text-center text-muted" style="font-size:0.75rem;">
+                    {{ wr_page }} / {{ wr_total_pages }} 페이지
+                    <span class="ms-2">
+                        <input type="number" id="jumpPage" min="1" max="{{ wr_total_pages }}"
+                               value="{{ wr_page }}" style="width:64px;font-size:0.75rem;"
+                               class="form-control form-control-sm d-inline-block"
+                               onkeydown="if(event.key==='Enter'){location.href='{{ base_url }}&wr_page='+this.value;}">
+                        <span style="font-size:0.72rem;">페이지로 이동 (Enter)</span>
+                    </span>
+                </div>
             </nav>
             {% endif %}
         </div>

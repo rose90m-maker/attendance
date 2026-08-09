@@ -123,7 +123,7 @@
 
     <!-- 테이블 -->
     <div class="table-wrap" style="max-height:none;">
-        <table class="table table-sm table-bordered table-hover roster-table mb-0" id="rosterTable">
+        <table class="js-sort table table-sm table-bordered table-hover roster-table mb-0" id="rosterTable">
             <thead>
                 <tr>
                     <th style="width:40px;" data-col="0" data-type="num">No<span class="sort-arrow"></span></th>
@@ -503,5 +503,6 @@ function uploadFile(input) {
     input.value = '';
 }
 </script>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
 </body>
 </html>

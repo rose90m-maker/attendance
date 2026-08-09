@@ -49,6 +49,10 @@
         @media (max-width: 767.98px) { .sel-dates-list { max-width: 45%; font-size: 0.72rem; } }
         .remain-ok { color: var(--c-success); font-weight: 600; }
         .remain-warn { color: var(--c-danger); font-weight: 600; }
+        /* ERP 미등록 → 회계연도 기준 수기 산정 표시 */
+        .mg-badge { display:inline-block; margin-left:4px; padding:1px 5px; border-radius:6px;
+                    background:#e0e7ff; color:#3730a3; font-size:.66rem; font-weight:700;
+                    vertical-align:middle; cursor:help; }
         @media (max-width: 767.98px) {
             .cal-table { font-size: 0.65rem; }
             .cal-table th { font-size: 0.65rem; padding: 4px 1px; }
@@ -67,6 +71,17 @@
 {% set active_page = 'annual_leave' %}
 {% include '_sidebar.html' %}
 {% set can_edit = can_edit if can_edit is defined else (session.get('role') == 'admin') %}
+{% if leave_locked %}
+<div class="container-fluid px-3 mt-3">
+    <div style="background:linear-gradient(90deg,#fffbeb,#fff);border:1px solid #fde68a;
+                border-left:4px solid #f59e0b;border-radius:12px;padding:11px 16px;
+                font-size:.85rem;color:#92400e;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:1rem">🔒</span>
+        <b>연차 신청은 ERP 에서 합니다.</b>
+        <span style="color:#a16207">여기서 넣은 값은 매일 18:30 ERP 동기화 때 사라지기 때문입니다. 조회와 삭제는 됩니다.</span>
+    </div>
+</div>
+{% endif %}
 
 <div class="container-fluid px-3 mt-4">
     {% if can_edit %}
@@ -133,7 +148,7 @@
     <div class="emp-section summary-card">
         <h6 class="mb-3 fw-bold">📊 {{ year }}년 연차 현황 요약</h6>
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;" id="summaryTable1">
+            <table class="js-sort table table-sm table-hover mb-0" style="font-size:0.82rem;" id="summaryTable1">
                 <thead class="table-primary">
                     <tr>
                         <th style="width:36px;">#</th>
@@ -153,7 +168,11 @@
                         <td><a href="javascript:void(0)" onclick="toggleCal({{ emp.id }})" style="text-decoration:none; cursor:pointer;">{{ emp.name }}</a></td>
                         <td>{{ emp.dept }}</td>
                         <td class="text-center">{{ emp.deduct_prev }}</td>
-                        <td class="text-center">{{ emp.generated }}</td>
+                        <td class="text-center">
+                            {{ emp.generated }}
+                            {% if emp.manual_grant %}<span class="mg-badge"
+                                title="ERP에 발생연차가 없어 회계연도 기준으로 수기 산정했습니다.&#10;사용가능연차 = 월할발생 + 회계연도분">수기산정</span>{% endif %}
+                        </td>
                         <td class="text-center fw-bold">{{ emp.total }}</td>
                         <td class="text-center text-primary fw-bold">{{ emp.used }}</td>
                         <td class="text-center {% if emp.remain >= 0 %}remain-ok{% else %}remain-warn{% endif %}">{{ emp.remain }}</td>
@@ -169,7 +188,7 @@
     <div class="emp-section summary-card mt-3">
         <h6 class="mb-3 fw-bold">📅 {{ year }}년 월별 사용연차 현황</h6>
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;" id="summaryTable2">
+            <table class="js-sort table table-sm table-hover mb-0" style="font-size:0.82rem;" id="summaryTable2">
                 <thead>
                     <tr style="background: linear-gradient(135deg, #1e40af, #2563eb); color: #fff;">
                         <th style="width:36px;">#</th>
@@ -249,9 +268,9 @@
                     {% set dl = emp.days[i] %}
                     <td class="{% if di.is_sun %}sun{% elif di.is_sat %}sat{% elif di.is_holiday %}hol{% endif %}"
                         {% if emp.id == user_eid and is_lp_member and not di.is_sun and not di.is_sat and not di.is_holiday %}
-                        data-ds="{{ di.ds }}" data-day="{{ di.day }}" data-has-leave="{{ dl|length }}" onclick="toggleDateSel(this)"
+                        data-ds="{{ di.ds }}" data-day="{{ di.day }}" data-has-leave="{{ dl|length }}" {% if not leave_locked %}onclick="toggleDateSel(this)"{% endif %}
                         {% elif not can_edit and emp.id == user_eid and not di.is_sun and not di.is_sat and not di.is_holiday %}
-                        data-ds="{{ di.ds }}" data-day="{{ di.day }}" data-has-leave="{{ dl|length }}" onclick="toggleDateSel(this)"
+                        data-ds="{{ di.ds }}" data-day="{{ di.day }}" data-has-leave="{{ dl|length }}" {% if not leave_locked %}onclick="toggleDateSel(this)"{% endif %}
                         {% endif %}>
                         <div class="day-num {% if di.is_sun %}sun-num{% elif di.is_sat %}sat-num{% elif di.is_holiday %}hol-num{% endif %}">{{ di.day }}</div>
                         {% if di.hol_name %}<span class="hol-label">{{ di.hol_name }}</span>{% endif %}
@@ -279,10 +298,12 @@
                                 <span class="badge-rejected">{{ lt }}(반려)</span>
                             {% endif %}
                         {% endfor %}
+                        {% if not leave_locked %}
                         {% if can_edit and not di.is_sun and not di.is_sat and not di.is_holiday and ns_approved.count == 0 %}
                         <span class="badge-add" onclick="event.stopPropagation(); addLeave({{ emp.id }},'{{ di.ds }}','{{ emp.name }}',{{ di.day }})">+</span>
                         {% elif not can_edit and emp.id == user_eid and not di.is_sun and not di.is_sat and not di.is_holiday and dl|length == 0 %}
                         <span class="badge-add" onclick="event.stopPropagation(); toggleDateSel(this.closest('td'))">+</span>
+                        {% endif %}
                         {% endif %}
                     </td>
                     {% set ns.cell = ns.cell + 1 %}
@@ -633,5 +654,6 @@ function moveMonth(delta, empId) {
     }
 })();
 </script>
+<script src="{{ url_for('static', filename='table-sort.js') }}?v=1"></script>
 </body>
 </html>

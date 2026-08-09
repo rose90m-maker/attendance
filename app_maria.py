@@ -74,8 +74,10 @@ def inject_lp_member():
         today_str = today_str.replace(e, k)
     uid = session.get("e_id")
     is_admin = session.get("role") == "admin"
+    # 사이드바가 권한그룹 매트릭스를 따르도록 판정 함수를 넘긴다 (admin 은 전부 True)
+    base = {"today_date_str": today_str, "is_admin": is_admin, "can_menu": _menu_perm}
     if not uid:
-        return {"is_lp_member": False, "today_date_str": today_str, "is_admin": is_admin}
+        return {"is_lp_member": False, **base}
     try:
         conn = _conn(); cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM lp_group_members WHERE user_id=%s", (uid,))
@@ -83,9 +85,9 @@ def inject_lp_member():
         cur.execute("SELECT COUNT(*) FROM lp_group_reviewers WHERE user_id=%s", (uid,))
         c2 = cur.fetchone()[0]
         conn.close()
-        return {"is_lp_member": (c1 + c2) > 0, "today_date_str": today_str, "is_admin": is_admin}
+        return {"is_lp_member": (c1 + c2) > 0, **base}
     except Exception:
-        return {"is_lp_member": False, "today_date_str": today_str, "is_admin": is_admin}
+        return {"is_lp_member": False, **base}
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
@@ -121,6 +123,25 @@ DEPT_MAP = {
     "0007000000000000": "경영기획팀",
 }
 
+# 연차 관리 대상이 아닌 부서 (연차관리 화면 · 대시보드 · ERP 동기화에서 모두 제외)
+LEAVE_EXCLUDE_COMPANIES = ("0007000000000000",)   # 경영기획팀
+
+# 근무보고서 결재분을 근무표기록관리·연차에 반영하지 않는 인원 (2026-08-06)
+# 이 사람들의 근무표기록은 schedule_excel_load.py 가 근무표 엑셀에서만 적재한다.
+# 보고서는 작성·결재까지만 하고 실데이터에는 손대지 않는다 (연습용).
+WR_NO_APPLY_NAMES = ("임동훈", "정민재")
+
+# 연차관리 화면의 신청·추가 잠금.
+#   2026-08-02 에 "동기화 때 덮어써진다"는 이유로 True 로 막았으나,
+#   erp_leave_sync 는 memo='ERP' 인 행만 지우고 화면 신청분은 memo 가 비어 있어
+#   실제로는 사라지지 않는다. 게다가 휴가 ERP 이관 화면이 생겨,
+#   여기서 신청한 건이 '미등록'으로 떠서 ERP 로 옮기는 흐름이 만들어졌다.
+#   → 2026-08-04 사용자 요청으로 해제.
+# ※ annual_leave.used(사용일수 집계)는 여전히 ERP 가 정본이라, ERP 에 넣기 전까지는
+#    화면 신청분이 사용일수에 반영되지 않는다. 날짜 기록만 남는다.
+LEAVE_ENTRY_LOCKED = False
+LEAVE_LOCK_MSG = "연차는 ERP 에서 신청합니다. 여기서는 넣을 수 없습니다."
+
 
 def _conn():
     return pymysql.connect(**MARIA)
@@ -155,9 +176,12 @@ def _sync_leave_from_other(cur, e_id, e_date, value):
     cur.execute("SELECT name FROM tuser WHERE id=%s", (e_id,))
     row = cur.fetchone()
     e_name = row[0] if row else ""
+    # total 을 반드시 명시한다 — 컬럼 기본값이 15 라서 생략하면 새로 생기는 행에
+    # 발생연차 15일이 저절로 붙는다. 실제로 2026-08-03 박승규(7/2 입사)가 무급 결재만으로
+    # 15일을 받았다. 이미 있는 행의 total 은 건드리면 안 되므로 UPDATE 절에는 넣지 않는다.
     cur.execute("""
-        INSERT INTO annual_leave (e_id, e_name, year, used)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO annual_leave (e_id, e_name, year, used, total)
+        VALUES (%s, %s, %s, %s, 0)
         ON DUPLICATE KEY UPDATE used=%s, e_name=%s, updated_at=NOW()
     """, (e_id, e_name, year_val, total_used, total_used, e_name))
 
@@ -639,12 +663,12 @@ def _check_attendance_sync(cur):
     if _today_record_cnt() > 0:
         return
 
-    # ── 조기 체크: 07:30 이후, 금일 근태기록 0건 ──
-    if not day_flags.get("early_alerted") and (now.hour > 7 or (now.hour == 7 and now.minute >= 30)):
+    # ── 조기 체크: 07:00 이후, 금일 근태기록 0건 ──
+    if not day_flags.get("early_alerted") and now.hour >= 7:
         _send_telegram(
             f"🚨 출근 데이터 이상 (조기 경보)!\n"
             f"📅 {today_str}\n"
-            f"⏰ 07:30 기준 금일 근태기록: 0건\n"
+            f"⏰ 07:00 기준 금일 근태기록: 0건\n"
             f"➡️ CAPS 서버/출입단말기 상태를 확인하세요.",
             "sync_check"
         )
@@ -732,6 +756,20 @@ def _init_db():
         row = cur.fetchone()
         if row and row[0].upper() != 'VARCHAR':
             cur.execute("ALTER TABLE work_override MODIFY `value` VARCHAR(20) NOT NULL")
+        # 보조 출입카드 → 사원 매핑.
+        # tuser.cardnum 은 카드 1장만 담는데 실제로 2장을 번갈아 쓰는 사람이 있다.
+        # 등록 안 된 카드로 찍은 날은 ERP 연동에서 사원을 못 찾아 근무표에서 통째로 빠졌다.
+        # (2026-08-06 이동천 37건·하재임 21건) erp_enter_sync.py 가 이 표를 함께 본다.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS `tuser_card_alias` (
+                `card` VARCHAR(20) NOT NULL,
+                `e_id` INT NOT NULL,
+                `memo` VARCHAR(100) DEFAULT '',
+                `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`card`),
+                KEY `idx_alias_eid` (`e_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS `annual_leave` (
                 `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -1147,6 +1185,17 @@ def _init_db():
                 `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+        # 담당업무 — 재직/경력증명서의 '담당업무' 칸에 찍힌다.
+        # 직원이 신청할 때 적거나, 담당자가 처리하면서 채운다.
+        try:
+            cur.execute("""SELECT COUNT(*) FROM information_schema.COLUMNS
+                           WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='doc_requests'
+                             AND COLUMN_NAME='job_task'""")
+            if not cur.fetchone()[0]:
+                cur.execute("ALTER TABLE doc_requests ADD COLUMN `job_task` "
+                            "VARCHAR(200) NOT NULL DEFAULT ''")
+        except Exception as _e:
+            print(f"[init] doc_requests.job_task 추가 실패 (무시): {_e}")
         # ERP 동기화 로그
         cur.execute("""
             CREATE TABLE IF NOT EXISTS `erp_sync_log` (
@@ -1431,6 +1480,12 @@ def _init_db():
                 UNIQUE KEY `uq_water_date` (`read_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+        # 검침 시각 (없으면 추가) — 경비일지 양식이 16:00 검침 기준이라 기본값을 그렇게 둔다
+        try:
+            cur.execute("ALTER TABLE water_meter ADD COLUMN `read_time` VARCHAR(5) "
+                        "NOT NULL DEFAULT '' AFTER `read_date`")
+        except Exception:
+            pass
         # it_requests 사용장소(위치) 컬럼 추가 (없으면)
         try:
             cur.execute("ALTER TABLE it_requests ADD COLUMN `location` VARCHAR(100) NOT NULL DEFAULT '' AFTER `category`")
@@ -1488,12 +1543,149 @@ def _admin_required(f):
     return decorated
 
 
+# 레거시 CSV 키 ↔ 매트릭스 동등 권한.
+# `_has_perm(csv키)` 호출부 40여 곳을 그대로 두고, 권한그룹 매트릭스에서
+# 아래 (메뉴키, 액션) 중 하나라도 허용이면 같은 권한으로 인정한다.
+# 관리 성격 키는 update/create 로 매핑해 조회전용 그룹이 편집권을 얻지 않게 한다.
+_CSV_MATRIX_EQUIV = {
+    "schedule": [("schedule_record", "update"), ("work_schedule", "update")],
+    "meal": [("meal_mgmt", "update")],
+    "bus": [("bus_members", "view"), ("bus_dispatch", "view"), ("bus_sms", "view")],
+    "leave": [("annual_leave", "create")],
+    "leave_erp": [("leave_erp", "view")],
+    "document": [("document_mgmt", "update")],
+    "work_report": [("work_report", "create")],
+    "guard": [("guard_log", "view")],
+}
+
+
 def _has_perm(perm):
-    """admin은 모든 권한, 일반 사용자는 permissions 필드 확인"""
+    """admin 전부 허용 → 레거시 CSV → 권한그룹 매트릭스 동등권한 순으로 판정.
+
+    CSV 는 더하기만 한다(있으면 통과). 그룹 기반으로 통제하려면 계정관리에서
+    해당 사용자의 CSV 권한을 비우고 그룹만 지정할 것.
+    """
     if session.get("role") == "admin":
         return True
     perms = session.get("permissions", "")
-    return perm in [p.strip() for p in perms.split(",") if p.strip()]
+    if perm in [p.strip() for p in perms.split(",") if p.strip()]:
+        return True
+    # 매트릭스 동등 권한 (그룹 지정 사용자)
+    for mk, act in _CSV_MATRIX_EQUIV.get(perm, []):
+        if _menu_perm(mk, act):
+            return True
+    return False
+
+
+# ── 메뉴키 기반 권한 (권한그룹 매트릭스) ──────────────────────────
+# 2026-08-07: 권한그룹 매트릭스가 DB에만 저장되고 실제 차단에 쓰이지 않던 것을
+# 여기서 연결한다. 판정 원칙:
+#   · admin           → 전부 허용
+#   · 그룹 지정 사용자  → perm_group_permissions 가 정본
+#   · 그룹 미지정 사용자 → 종전 동작 유지(공개 메뉴 + 레거시 CSV 확장)
+#   · user_perm_overrides(allow/deny) 가 최종 우선
+# 그룹 미지정자 154명(2026-08-07 기준)이 기존과 똑같이 동작하는 것이 안전선이다.
+
+# 지금 로그인만으로 열리는 화면들 — 그룹 미지정자의 기본 조회 범위 (종전 동작 보존)
+_PUBLIC_MENUS = {
+    "dashboard", "control_center",
+    "attendance_record", "weekly52", "work_schedule",
+    "leave_dashboard", "annual_leave",
+    "welfare", "document_mgmt",
+    "mes_realtime", "pacemaker", "mes_report", "mes_env",
+    "power_dashboard", "power_history", "power_alerts",
+    "it_request", "survey_my",
+    "tbm_sign", "tbm_history",
+    "edu_main", "fire_mgmt", "hazmat", "safety_ai", "hazmat_alerts",
+}
+
+# 레거시 CSV 키 → 메뉴키 (그룹 미지정자의 CSV 권한을 새 체계로 해석)
+_LEGACY_EXPAND = {
+    "meal": ["meal_mgmt"],
+    "bus": ["bus_members", "bus_dispatch", "bus_sms"],
+    "schedule": ["work_schedule", "schedule_record", "source_verify", "work_report"],
+    "work_report": ["work_report"],
+    "leave": ["annual_leave", "leave_plan", "leave_calc", "leave_erp", "leave_approval"],
+    "leave_erp": ["leave_erp"],
+    "document": ["document_mgmt"],
+    "guard": ["guard_log"],
+}
+
+
+def _load_menu_perms():
+    """현재 사용자의 {menu_key: set(actions)} — 요청당 1회 계산해 g 에 캐시"""
+    from flask import g
+    if hasattr(g, "_menu_perms"):
+        return g._menu_perms
+    allowed = {}
+    uid = session.get("user_id")
+    if uid and session.get("role") != "admin":
+        try:
+            conn = _conn(); cur = conn.cursor()
+            cur.execute("SELECT perm_group_id, IFNULL(permissions,'') FROM app_users WHERE id=%s", (uid,))
+            row = cur.fetchone()
+            gid, csv = (row or (None, ""))
+            if gid:
+                # 그룹 지정 — 매트릭스가 정본
+                cur.execute("""SELECT menu_key, can_view, can_create, can_update, can_delete
+                               FROM perm_group_permissions WHERE group_id=%s""", (gid,))
+                for mk, v, c_, u_, d_ in cur.fetchall():
+                    acts = set()
+                    if v: acts.add("view")
+                    if c_: acts.add("create")
+                    if u_: acts.add("update")
+                    if d_: acts.add("delete")
+                    if acts:
+                        allowed[mk] = acts
+            else:
+                # 그룹 미지정 — 종전 동작: 공개 메뉴 view + CSV 확장(가용 액션 전부)
+                for mk in _PUBLIC_MENUS:
+                    allowed[mk] = {"view"}
+                for key in [p.strip() for p in csv.split(",") if p.strip()]:
+                    for mk in _LEGACY_EXPAND.get(key, []):
+                        acts = next((set(a) for k, _p, _l, a in MENU_STRUCTURE if k == mk), set())
+                        allowed[mk] = allowed.get(mk, set()) | acts
+            # 개인 오버라이드 최종 적용
+            cur.execute("""SELECT menu_key, action, grant_type
+                           FROM user_perm_overrides WHERE user_id=%s""", (uid,))
+            for mk, act, gt in cur.fetchall():
+                if gt == "allow":
+                    allowed.setdefault(mk, set()).add(act)
+                else:
+                    allowed.get(mk, set()).discard(act)
+            conn.close()
+        except Exception as _e:
+            print(f"[menu perm] 계산 실패 (레거시 폴백): {_e}")
+            allowed = None       # 판정 불가 → _menu_perm 이 레거시로 폴백
+    g._menu_perms = allowed
+    return allowed
+
+
+def _menu_perm(menu_key, action="view"):
+    """메뉴키 기반 권한 판정. admin 항상 허용."""
+    if session.get("role") == "admin":
+        return True
+    allowed = _load_menu_perms()
+    if allowed is None:          # 계산 실패 시 안전하게 종전 방식
+        return False
+    return action in allowed.get(menu_key, set())
+
+
+def _menu_required(menu_key, action="view"):
+    """라우트 가드 — 로그인 + 메뉴 권한. admin 은 통과."""
+    from functools import wraps
+
+    def deco(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            if "user_id" not in session:
+                return redirect(url_for("login"))
+            if not _menu_perm(menu_key, action):
+                flash("접근 권한이 없습니다.", "danger")
+                return redirect(url_for("dashboard"))
+            return f(*args, **kwargs)
+        return wrapped
+    return deco
 
 
 # ════════════════════════════════════════════════════════
@@ -1505,29 +1697,45 @@ def _has_perm(perm):
 MENU_STRUCTURE = [
     ("dashboard", None, "대시보드", ["view"]),
 
+    # 통합관제는 사이드바 맨 위 그룹이다. 식수관리를 여기로 옮겼다 (2026-08-02).
+    ("cat_control", None, "통합관제", []),
+    ("control_center", "cat_control", "관제 대시보드", ["view"]),
+    ("meal_mgmt", "cat_control", "식수관리", ["view", "create", "update", "delete"]),
+    ("bus_members", "cat_control", "탑승자명단", ["view", "create", "update", "delete"]),
+    ("bus_dispatch", "cat_control", "배차조회", ["view", "update"]),
+    ("bus_sms", "cat_control", "발송이력", ["view", "create"]),
+    ("guard_log", "cat_control", "경비일지", ["view", "create", "update", "delete"]),
+
     ("cat_attendance", None, "근태관리", []),
     ("attendance_record", "cat_attendance", "근태기록", ["view"]),
     ("weekly52", "cat_attendance", "주52시간", ["view"]),
     ("work_schedule", "cat_attendance", "근무표", ["view", "update"]),
     ("schedule_record", "cat_attendance", "근무표기록관리", ["view", "create", "update", "delete"]),
+    ("source_verify", "cat_attendance", "3소스 검증", ["view"]),
+
+    # 연차는 대시보드를 1차로 두고 그 아래 2차로 묶는다
+    ("cat_leave", None, "연차관리", []),
+    ("leave_dashboard", "cat_leave", "연차관리 대시보드", ["view"]),
+    ("annual_leave", "cat_leave", "연차관리", ["view", "create"]),
+    ("leave_plan", "cat_leave", "연차사용계획 (개발중)", ["view", "create", "update", "delete"]),
+    ("leave_calc", "cat_leave", "연차 산정표", ["view"]),
+    ("leave_erp", "cat_leave", "휴가 ERP 이관", ["view"]),
+    ("leave_approval", "cat_leave", "휴가 결재", ["view", "update"]),
 
     ("cat_hr", None, "인사관리", []),
+    ("hr_status", "cat_hr", "인사현황", ["view"]),
+    ("hr_roster", "cat_hr", "전체 재직자", ["view"]),
+    ("hr_vehicle", "cat_hr", "차량현황", ["view"]),
     ("welfare", "cat_hr", "복지혜택", ["view"]),
-    ("annual_leave", "cat_hr", "연차관리", ["view", "create"]),
-    ("leave_plan", "cat_hr", "연차사용계획", ["view", "create", "update", "delete"]),
-    ("meal_mgmt", "cat_hr", "식수관리", ["view", "create", "update", "delete"]),
     ("work_report", "cat_hr", "근무보고서", ["view", "create", "update", "delete"]),
     ("document_mgmt", "cat_hr", "공문서관리", ["view", "create", "update", "delete"]),
-
-    ("cat_bus", None, "배차관리", []),
-    ("bus_members", "cat_bus", "탑승자명단", ["view", "create", "update", "delete"]),
-    ("bus_dispatch", "cat_bus", "배차조회", ["view", "update"]),
-    ("bus_sms", "cat_bus", "발송이력", ["view", "create"]),
+    ("msg_send", "cat_hr", "단체 문자·알림톡", ["view", "create"]),
 
     ("cat_mes", None, "MES관리", []),
     ("mes_realtime", "cat_mes", "실시간카운트", ["view"]),
     ("pacemaker", "cat_mes", "페이스메이커", ["view"]),
     ("mes_report", "cat_mes", "생산리포트", ["view"]),
+    ("mes_env", "cat_mes", "온습도 현황", ["view"]),
     ("mes_devices", "cat_mes", "장치관리", ["view", "create", "update", "delete"]),
 
     ("cat_energy", None, "에너지", []),
@@ -1551,10 +1759,33 @@ MENU_STRUCTURE = [
 
     ("cat_tbm", None, "TBM", []),
     ("tbm_sign", "cat_tbm", "서명 참여", ["view", "create"]),
+    ("tbm_history", "cat_tbm", "내 이력", ["view"]),
     ("tbm_admin", "cat_tbm", "TBM 관리", ["view", "create", "update", "delete"]),
+    ("tbm_templates", "cat_tbm", "템플릿 관리", ["view", "create", "update", "delete"]),
+
+    ("cat_edu", None, "교육관리", []),
+    ("edu_main", "cat_edu", "교육 현황", ["view"]),
+    ("edu_sessions", "cat_edu", "실시 기록", ["view", "create", "update", "delete"]),
+    ("edu_courses", "cat_edu", "과정 관리", ["view", "create", "update", "delete"]),
+
+    ("cat_safety", None, "안전관리", []),
+    ("fire_mgmt", "cat_safety", "소방관리", ["view", "update"]),
+    ("hazmat", "cat_safety", "위험물관리", ["view", "create", "update", "delete"]),
+    ("safety_ai", "cat_safety", "AI 안전진단", ["view", "create", "update", "delete"]),
+    ("hazmat_recipients", "cat_safety", "알림 수신자", ["view", "create", "update", "delete"]),
+    ("hazmat_alerts", "cat_safety", "알림 이력", ["view"]),
 
     ("cat_signage", None, "디지털 사이니지", []),
     ("signage", "cat_signage", "사이니지 관리", ["view", "create", "update", "delete", "publish"]),
+
+    # 시스템 — 사이드바 맨 아래. 지금은 전부 is_admin 으로만 막혀 있다
+    ("cat_system", None, "시스템", []),
+    ("roster_mgmt", "cat_system", "명부관리", ["view", "create", "update", "delete"]),
+    ("log_mgmt", "cat_system", "로그관리", ["view"]),
+    ("user_mgmt", "cat_system", "계정관리", ["view", "create", "update", "delete"]),
+    ("perm_groups", "cat_system", "권한그룹관리", ["view", "create", "update", "delete"]),
+    ("erp_api_test", "cat_system", "ERP API 테스트", ["view"]),
+    ("dev_history", "cat_system", "개발이력", ["view"]),
 ]
 
 # 기존 CSV 권한 → 새 메뉴키 매핑 (마이그레이션용)
@@ -1698,15 +1929,52 @@ def _backfill_perm_group_menus():
                 c_ = 1 if "create" in acts else 0
                 u_ = 1 if "update" in acts else 0
                 d_ = 1 if "delete" in acts else 0
-            # 조회전용 그룹은 view만 on (설정/삭제 제외)
+            # 조회전용 그룹은 view만 on (설정/삭제 제외).
+            # 단 시스템 메뉴(계정·권한그룹·로그·ERP테스트 등)는 조회도 주지 않는다.
             elif gname == "조회전용":
-                v = 1 if "view" in acts else 0
+                v = 1 if ("view" in acts and _p != "cat_system") else 0
                 c_ = u_ = d_ = 0
             else:
                 v = c_ = u_ = d_ = 0
             cur.execute("""INSERT INTO perm_group_permissions
                            (group_id, menu_key, can_view, can_create, can_update, can_delete)
                            VALUES (%s,%s,%s,%s,%s,%s)""", (gid, mk, v, c_, u_, d_))
+    conn.commit(); conn.close()
+
+
+def _init_msg_db():
+    """단체 발송(문자·알림톡) 이력 테이블. 앱 시작 때마다 돌아도 안전하다."""
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS msg_campaigns (
+            id          INT AUTO_INCREMENT PRIMARY KEY,
+            title       VARCHAR(200) DEFAULT '',
+            channel     VARCHAR(10)  NOT NULL,          -- auto/sms/lms/ata/cta
+            kind        VARCHAR(10)  DEFAULT '',        -- 실제 발송된 종류
+            body        TEXT,
+            total       INT DEFAULT 0,
+            sent        INT DEFAULT 0,
+            failed      INT DEFAULT 0,
+            dropped     INT DEFAULT 0,
+            group_id    VARCHAR(64) DEFAULT '',
+            error       VARCHAR(500) DEFAULT '',
+            created_by  VARCHAR(50) DEFAULT '',
+            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_created (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS msg_logs (
+            id          INT AUTO_INCREMENT PRIMARY KEY,
+            campaign_id INT NOT NULL,
+            name        VARCHAR(50)  DEFAULT '',
+            dept        VARCHAR(80)  DEFAULT '',
+            phone       VARCHAR(20)  DEFAULT '',
+            status      VARCHAR(10)  DEFAULT '',        -- ok/fail/drop
+            error       VARCHAR(300) DEFAULT '',
+            INDEX idx_campaign (campaign_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
     conn.commit(); conn.close()
 
 
@@ -1717,6 +1985,10 @@ try:
     _migrate_csv_to_overrides()
 except Exception as _e:
     print(f"[perm init] {_e}")
+try:
+    _init_msg_db()
+except Exception as _e:
+    print(f"[msg init] {_e}")
 
 
 def _time_to_sec(t):
@@ -1776,6 +2048,9 @@ def _merge_night_shifts(day_emp):
                 # 새벽 퇴근을 전날 전날분으로 이동
                 morning_out = rec["out_time"]
                 morning_gate = rec.get("out_gate", "")
+                # 사번·부서를 같이 물고 가야 복원 행에서 빈칸으로 뜨지 않는다
+                morning_emp_no = rec.get("emp_no", "")
+                morning_er_dept = rec.get("er_dept", "")
                 rec["out_time"] = None
                 if "out_gate" in rec:
                     rec["out_gate"] = ""
@@ -1798,6 +2073,7 @@ def _merge_night_shifts(day_emp):
                     lost_morning_outs[prev_key] = {
                         "date": prev_date, "id": eid,
                         "name": rec["name"], "dept": rec.get("dept", ""),
+                        "emp_no": morning_emp_no, "er_dept": morning_er_dept,
                         "out_time": morning_out, "out_gate": morning_gate,
                     }
         # 2단계: 연속 미러링 - 전날 출근만+퇴근없음 / 다음날 출근없음+퇴근만
@@ -1832,7 +2108,11 @@ def _merge_night_shifts(day_emp):
         if key not in day_emp:
             day_emp[key] = {
                 "date": info["date"], "id": info["id"],
+                "date_fmt": _fmt_date(info["date"]),
                 "name": info["name"], "dept": info.get("dept", ""),
+                # 원본 행이 없어 새로 만드는 자리 — 사번/부서를 빠뜨리면 화면에 빈칸으로 뜬다
+                "emp_no": info.get("emp_no", "") or str(info["id"]),
+                "er_dept": info.get("er_dept", ""),
                 "in_time": None, "out_time": info["out_time"],
                 "in_gate": "", "out_gate": info.get("out_gate", ""),
                 "night_next_day": True,
@@ -1866,6 +2146,13 @@ def _merge_night_shifts(day_emp):
         rec["date"] = new_key[0]
         rec["night_next_day"] = True
         day_emp[new_key] = rec
+
+    # 3·4단계에서 새로 만들거나 옮긴 행은 dict 끝에 붙는다.
+    # 화면이 이 순서를 그대로 쓰기 때문에 7/5 행이 7/31 아래에 나오는 일이 생겼다(2026-08-05).
+    # 날짜순으로 되돌린다 — sorted 는 안정 정렬이라 같은 날 안의 기존 순서는 유지된다.
+    ordered = sorted(day_emp.items(), key=lambda kv: kv[1]["date"])
+    day_emp.clear()
+    day_emp.update(ordered)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -1971,7 +2258,7 @@ def change_password():
 
 
 @app.route("/user_management")
-@_admin_required
+@_menu_required("user_mgmt")
 def user_management():
     conn = _conn(); cur = conn.cursor()
     # company, last_login 컬럼 존재 여부 확인 및 추가
@@ -2126,7 +2413,7 @@ def save_user_perm():
 # ════════════════════════════════════════════════════════
 
 @app.route("/perm_groups")
-@_admin_required
+@_menu_required("perm_groups")
 def perm_groups_page():
     """권한 그룹 관리 화면"""
     conn = _conn(); cur = conn.cursor()
@@ -2345,11 +2632,8 @@ def api_user_perm_save():
 # ════════════════════════════════════════════════════════
 
 def _survey_can_admin():
-    """관리자이거나 survey_admin 권한(view)이 있으면 True. Phase 6에서 세분화 예정."""
-    if session.get("role") == "admin":
-        return True
-    # 기존 _has_perm 기반 임시 체크 (신 권한 시스템 연동은 권한 체크 전환 후)
-    return False
+    """관리자이거나 권한그룹 매트릭스에서 survey_admin(view)을 받은 사람"""
+    return _menu_perm("survey_admin")
 
 
 @app.route("/surveys")
@@ -3603,8 +3887,8 @@ def dashboard():
                     SELECT work_date, basic_h, ot_h, night_h, etc, source_type
                     FROM schedule_record
                     WHERE emp_name=%s AND work_date LIKE %s
-                      AND source_type IN ('보고서','수정')
-                    ORDER BY work_date, source_type
+                      AND source_type IN ('보고서','수정','수정근무보고서')
+                    ORDER BY work_date, FIELD(source_type,'보고서','수정','수정근무보고서')
                 """, (login_name, f"{month_str_my}%"))
                 def _sr_cat(bh, oh, nh, etc):
                     if etc == "스킵": return "스킵"
@@ -3986,15 +4270,15 @@ def api_my_schedule():
             SELECT work_date, basic_h, ot_h, night_h, etc, source_type
             FROM schedule_record
             WHERE emp_name=%s AND work_date LIKE %s
-              AND source_type IN ('보고서','수정')
-            ORDER BY work_date, source_type
+              AND source_type IN ('보고서','수정','수정근무보고서')
+            ORDER BY work_date, FIELD(source_type,'보고서','수정','수정근무보고서')
         """, (login_name, f"{month}%"))
     else:
         cur.execute("""
             SELECT work_date, basic_h, ot_h, night_h, etc, source_type
             FROM schedule_record
-            WHERE emp_name=%s AND source_type IN ('보고서','수정')
-            ORDER BY work_date, source_type
+            WHERE emp_name=%s AND source_type IN ('보고서','수정','수정근무보고서')
+            ORDER BY work_date, FIELD(source_type,'보고서','수정','수정근무보고서')
         """, (login_name,))
     from collections import OrderedDict
     date_records = OrderedDict()
@@ -4104,42 +4388,46 @@ def api_schedule_events():
         login_name = session.get("user_name", "")
         month_str = f"{year}{month:02d}"
         if login_name:
+            # 엑셀 적재분('수정'·'원본')도 함께 본다 — 근무보고서를 쓰지 않는 인원은
+            # 근무표 엑셀에서만 기록이 오기 때문이다 (schedule_excel_load.py)
             cur.execute("""
                 SELECT work_date, basic_h, ot_h, night_h, etc, sheet_name, source_type
                 FROM schedule_record
-                WHERE emp_name=%s AND work_date LIKE %s AND source_type IN ('보고서','수정')
-                ORDER BY work_date, source_type
+                WHERE emp_name=%s AND work_date LIKE %s
+                ORDER BY work_date
             """, (login_name, f"{month_str}%"))
             from collections import OrderedDict
+            # 날짜별로 source_type → 카테고리를 모아 둔다. 배지는 뒤에서 하나만 고른다
             sr_by_date = OrderedDict()
             for sr_date, sr_basic, sr_ot, sr_night, sr_etc, sr_sheet, sr_src in cur.fetchall():
                 wd = str(sr_date)
                 formatted = f"{wd[:4]}-{wd[4:6]}-{wd[6:8]}" if len(wd) == 8 else wd
-                if formatted not in sr_by_date:
-                    sr_by_date[formatted] = {"cats": [], "is_revision": False}
-                if sr_src == "수정근무보고서":
-                    sr_by_date[formatted]["is_revision"] = True
                 # 카테고리 역추출
                 if sr_etc == "스킵":
-                    sr_by_date[formatted]["cats"].append("스킵")
+                    cat = "스킵"
                 elif sr_etc in ("연차", "무급"):
-                    sr_by_date[formatted]["cats"].append(sr_etc)
+                    cat = sr_etc
                 elif sr_etc and sr_etc not in ('0', ''):
                     try:
                         float(sr_etc)
-                        sr_by_date[formatted]["cats"].append("공제")
+                        cat = "공제"
                     except (ValueError, TypeError):
-                        sr_by_date[formatted]["cats"].append(sr_etc)
+                        cat = sr_etc
                 elif sr_basic > 0 and sr_ot > 0 and sr_night > 0:
-                    sr_by_date[formatted]["cats"].append("야간연장")
+                    cat = "야간연장"
                 elif sr_basic > 0 and sr_night > 0:
-                    sr_by_date[formatted]["cats"].append("야간기본")
+                    cat = "야간기본"
                 elif sr_basic > 0 and sr_ot > 0:
-                    sr_by_date[formatted]["cats"].append("주간연장")
+                    cat = "주간연장"
                 elif sr_basic > 0:
-                    sr_by_date[formatted]["cats"].append("주간기본")
+                    cat = "주간기본"
                 else:
-                    sr_by_date[formatted]["cats"].append("근무")
+                    # 0/0/0 에 기타표기도 없으면 근무가 없는 날이다.
+                    # 수정보고서에서 빠진 인원을 0/0/0 으로 확정한 기록이 여기 해당한다.
+                    # 예전엔 이걸 '근무' 배지로 띄워 취소된 날이 근무한 것처럼 보였다
+                    # (2026-08-01 지훈구).
+                    cat = None
+                sr_by_date.setdefault(formatted, {}).setdefault(sr_src, cat)
             _cat_colors = {
                 "주간기본": "#6366f1", "주간연장": "#3b82f6",
                 "야간기본": "#8b5cf6", "야간연장": "#7c3aed",
@@ -4153,14 +4441,27 @@ def api_schedule_events():
                 "공제": "➖", "스킵": "⛔",
             }
             _no_schedule_cats = {"연차", "무급", "스킵"}
-            for formatted, info in sr_by_date.items():
-                base_type = "work_report_revision" if info["is_revision"] else "work_report"
-                for cat in info["cats"]:
-                    icon = _cat_icons.get(cat, "📋")
-                    color = _cat_colors.get(cat, "#6366f1")
-                    title = f"{icon} {cat}"
-                    ev_type = "work_report_leave" if cat in _no_schedule_cats else base_type
-                    events.append({"id": None, "title": title, "date": formatted, "color": color, "created_by": "", "type": ev_type})
+            for formatted, recs in sr_by_date.items():
+                # 하루에 배지 하나. 수정근무보고서 → 근무보고서 → 엑셀 적재 순으로 고른다.
+                # 예전에는 원본과 수정본 배지를 둘 다 띄워서, 근무가 취소된 날
+                # (수정본 0/0/0)에도 원본 배지가 남아 근무한 것처럼 보였다
+                # (2026-08-01 지훈구).
+                cat = picked = None
+                for _src in ("수정근무보고서", "보고서", "수정", "원본"):
+                    if _src in recs:
+                        cat, picked = recs[_src], _src
+                        break
+                # 고른 기록이 '근무 없음'이면 배지를 띄우지 않는다.
+                # 아래 순위로 내려가면 안 된다 — 취소된 근무의 원본이 되살아난다.
+                if cat is None:
+                    continue
+                is_revision = picked == "수정근무보고서"
+                icon = _cat_icons.get(cat, "📋")
+                color = _cat_colors.get(cat, "#6366f1")
+                ev_type = ("work_report_leave" if cat in _no_schedule_cats
+                           else ("work_report_revision" if is_revision else "work_report"))
+                events.append({"id": None, "title": f"{icon} {cat}", "date": formatted,
+                               "color": color, "created_by": "", "type": ev_type})
 
         conn.close()
 
@@ -5034,10 +5335,13 @@ def work_schedule():
         cur = conn.cursor()
         # 1단계: e_id 조회 (부서 필터를 SQL에서 처리)
         params = []
-        sql = "SELECT DISTINCT t.e_id FROM tenter t"
+        # 근무표는 '리얼 데이터' 화면이라 ERP 출입기록(tenter_erp)만 본다. (2026-08-05)
+        # CAPS(tenter)는 인증실패·카드없음 로그가 섞여 있고, ERP 는 정상 출입만 남긴다.
+        # 근무보고서(schedule_record)는 여기서 쓰지 않는다 — 그건 근무표기록관리 화면 몫이다.
+        sql = "SELECT DISTINCT t.e_id FROM tenter_erp t"
         if sel_dept:
             sql += " LEFT JOIN employee_roster er ON t.e_name = er.name"
-        sql += " WHERE t.e_date >= %s AND t.e_date <= %s AND t.e_id <> -1"
+        sql += " WHERE t.e_date >= %s AND t.e_date <= %s AND t.e_id IS NOT NULL AND t.e_id <> -1"
         params += [q_start, q_end]
         if search:
             sql += " AND (t.e_name LIKE %s OR t.e_idno LIKE %s)"
@@ -5062,8 +5366,7 @@ def work_schedule():
             cur.execute(f"""
                 SELECT t.e_date, t.e_time, t.e_id, t.e_idno, t.e_name,
                                              t.e_mode, u.company, er.dept
-                FROM tenter t
-                     LEFT JOIN tgate g ON t.g_id = g.id
+                FROM tenter_erp t
                      LEFT JOIN tuser u ON t.e_id = u.id
                                          LEFT JOIN employee_roster er ON t.e_name = er.name
                 WHERE t.e_id IN ({ph})
@@ -5159,70 +5462,11 @@ def work_schedule():
                 "night": ni_h, "other": etc_h,
                 "is_holiday": is_hol,
             }
-        # ── schedule_record(보고서 결재분) 병합 ──
-        month_str_sr = f"{year}{mon:02d}"
-        # tuser name→id 매핑
-        cur.execute("SELECT id, name, idno, company FROM tuser WHERE name IS NOT NULL AND name <> ''")
-        name_to_eid = {}
-        for uid, uname, uidno, ucomp in cur.fetchall():
-            n = (uname or "").strip()
-            if n and n not in name_to_eid:
-                name_to_eid[n] = uid
-        # sel_dept 필터용 허용 이름 집합 (부서 필터 선택 시 다른 부서 결재분 제외)
-        dept_allowed_names = None
-        if sel_dept:
-            cur.execute("SELECT name FROM employee_roster WHERE dept = %s AND name IS NOT NULL AND name <> ''", (sel_dept,))
-            dept_allowed_names = {(r[0] or "").strip() for r in cur.fetchall()}
-        # 현재 페이지 eids 집합 (페이지네이션 정합성: 이 집합 외 직원은 emp_info에 추가하지 않음)
-        eids_set = set(eids)
-        cur.execute("""
-            SELECT emp_name, work_date, basic_h, ot_h, night_h, etc
-            FROM schedule_record
-            WHERE work_date LIKE %s AND source_type IN ('보고서','수정')
-            ORDER BY source_type
-        """, (f"{month_str_sr}%",))
-        for sr_name, sr_date, sr_basic, sr_ot, sr_night, sr_etc in cur.fetchall():
-            sr_name = (sr_name or "").strip()
-            if dept_allowed_names is not None and sr_name not in dept_allowed_names:
-                continue
-            sr_eid = name_to_eid.get(sr_name)
-            if not sr_eid:
-                continue
-            day_num_sr = int(str(sr_date)[6:8])
-            dt_sr = datetime(year, mon, day_num_sr)
-            wd_sr = dt_sr.weekday()
-            is_hol_sr = wd_sr >= 5 or bool(KR_HOLIDAYS.get(dt_sr.date(), ""))
-            # 보고서 결재 데이터가 출입기록보다 우선 적용
-            # (현재 페이지 eids에 없는 직원은 emp_info 추가 생략 → 페이지네이션 정합성 유지)
-            if sr_eid not in emp_info and sr_eid in eids_set:
-                cur.execute(
-                    """
-                    SELECT tu.id, tu.name, tu.idno, tu.company, er.dept
-                    FROM tuser tu
-                    LEFT JOIN employee_roster er ON er.name = tu.name
-                    WHERE tu.id=%s
-                    """,
-                    (sr_eid,),
-                )
-                tu = cur.fetchone()
-                if tu:
-                    emp_info[sr_eid] = {
-                        "name": (tu[1] or "").strip(),
-                        "emp_no": (tu[2] or "").strip() or str(tu[0]),
-                        "dept": (tu[4] or "").strip() or DEPT_MAP.get((tu[3] or "").strip(), ""),
-                    }
-            # emp_days 업데이트는 emp_info에 있는 직원(현재 페이지)만 처리
-            if sr_eid in emp_info:
-                other_val = sr_etc if sr_etc else 0
-                emp_days[sr_eid][day_num_sr] = {
-                    "basic": sr_basic or 0, "overtime": sr_ot or 0,
-                    "night": sr_night or 0, "other": other_val,
-                    "is_holiday": is_hol_sr,
-                }
-        # 오버라이드 로딩
-        # schedule_record에서 추가된 인원도 eids에 포함
-        sr_extra_eids = [eid for eid in emp_days if eid not in eids]
-        all_eids_for_ov = list(eids) + sr_extra_eids
+        # 근무표는 '리얼 데이터' 화면이라 근무보고서(schedule_record)를 섞지 않는다. (2026-08-05)
+        # 예전엔 보고서 결재분을 출입기록 위에 덮어써서, 아직 오지 않은 날짜에도 8시간이 찍혔다
+        # (2026-08 변기숙 7~10일). 보고서 기준 표는 근무표기록관리 화면에서 본다.
+        # 오버라이드 로딩 — 보고서 병합을 뺐으므로 대상은 현재 페이지 인원뿐이다
+        all_eids_for_ov = list(eids)
         overrides = {}
         override_memos = {}
         override_updates = {}
@@ -5483,12 +5727,15 @@ def schedule_record(fname=None):
         conn = _conn(); cur = conn.cursor()
         month_str = f"{year}{mon:02d}"
         # 수정 우선, 원본 fallback
+        # 아직 오지 않은 날짜는 뺀다 — 보고서에 예정분이 미리 올라오면 실적처럼 보인다.
+        # (2026-08 변기숙 7~10일이 8시간으로 찍혔던 건) 2026-08-05
+        today_str = datetime.now().strftime("%Y%m%d")
         cur.execute("""
             SELECT emp_name, work_date, basic_h, ot_h, night_h, etc, source_type
             FROM schedule_record
-            WHERE work_date LIKE %s
+            WHERE work_date LIKE %s AND work_date <= %s
             ORDER BY emp_name, work_date
-        """, (f"{month_str}%",))
+        """, (f"{month_str}%", today_str))
         raw = cur.fetchall()
         # tuser 매칭 (이름과 사번 부분)
         cur.execute("SELECT id, name, idno, company FROM tuser")
@@ -5857,6 +6104,915 @@ def welfare():
     return render_template("welfare.html")
 
 
+# ════════════════════════════════════════════════════════
+# 단체 문자·알림톡 발송
+# ════════════════════════════════════════════════════════
+# 발송 자체는 msg_send.py 가 한다. 여기서는 대상자를 명부에서 뽑아 주고
+# 결과를 msg_campaigns/msg_logs 에 남긴다.
+# 알림톡은 카카오 채널이 등록돼야 열린다 — 없으면 화면에서 문자만 고를 수 있다.
+
+def _msg_roster(depts=None, positions=None, emp_ids=None, only_active=True, send_all=False):
+    """발송 대상 후보를 명부에서 뽑는다. retire_date 가 비어 있으면 재직으로 본다.
+
+    사람을 직접 골랐으면(emp_ids) 그 사람들만 보낸다 — 부서·직급 조건은 무시한다.
+    한 명한테만 보내려는데 부서 칩이 남아 있어 엉뚱하게 여러 명에게 나가는 일을 막는다.
+
+    아무 조건도 없으면 빈 목록을 돌려준다. 전 직원에게 보내려면 send_all 을 명시해야 한다 —
+    조건을 안 고른 상태에서 실수로 160명에게 나가는 것이 가장 위험하다.
+    """
+    if emp_ids:
+        depts = positions = None
+    if not (emp_ids or depts or positions or send_all):
+        return []
+    conn = _conn(); cur = conn.cursor()
+    sql = ["SELECT id, name, dept, position, phone, emp_no, job_title",
+           "FROM employee_roster WHERE 1=1"]
+    args = []
+    if only_active:
+        sql.append("AND (retire_date IS NULL OR retire_date='')")
+    if depts:
+        sql.append("AND dept IN (" + ",".join(["%s"] * len(depts)) + ")")
+        args += list(depts)
+    if positions:
+        sql.append("AND position IN (" + ",".join(["%s"] * len(positions)) + ")")
+        args += list(positions)
+    if emp_ids:
+        sql.append("AND id IN (" + ",".join(["%s"] * len(emp_ids)) + ")")
+        args += list(emp_ids)
+    sql.append("ORDER BY dept, name")
+    cur.execute(" ".join(sql), args)
+    rows = [{"id": r[0], "name": r[1], "dept": r[2], "position": r[3],
+             "phone": r[4], "emp_no": r[5], "job_title": r[6]} for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+@app.route("/message_send")
+@_menu_required("msg_send")
+def message_send():
+    """단체 발송 화면"""
+    import msg_send as MS
+    # 화면에 뿌릴 후보 명단이라 전원을 가져온다. 실제 발송 대상은 사용자가 고른 뒤에 정해진다
+    # (_msg_roster 는 조건이 없으면 빈 목록을 주므로 send_all 을 명시해야 한다).
+    rows = _msg_roster(send_all=True)
+    depts = sorted({r["dept"] for r in rows if r["dept"]})
+    positions = sorted({r["position"] for r in rows if r["position"]})
+    channels = MS.kakao_channels()
+    # 화면 명단에는 번호 전체를 싣지 않는다 — 페이지 소스에 전 직원 연락처가
+    # 그대로 노출되기 때문. 동명이인을 가릴 수 있게 끝 4자리만 준다.
+    # 발송할 때는 서버가 id 로 원본 번호를 다시 조회한다.
+    view_rows = []
+    for r in rows:
+        ph = MS.norm_phone(r["phone"])
+        view_rows.append({"id": r["id"], "name": r["name"], "dept": r["dept"],
+                          "position": r["position"], "has_phone": bool(ph),
+                          "tail": ph[-4:] if ph else ""})
+    return render_template("message_send.html",
+                           active_page="msg_send",
+                           roster=view_rows, depts=depts, positions=positions,
+                           balance=MS.balance(),
+                           kakao_channels=channels,
+                           kakao_templates=MS.kakao_templates() if channels else [],
+                           can_send=_menu_perm("msg_send", "create"))
+
+
+@app.route("/api/msg_targets", methods=["POST"])
+@_menu_required("msg_send")
+def api_msg_targets():
+    """조건에 맞는 대상자 목록 (화면에서 인원수·번호 확인용)"""
+    import msg_send as MS
+    d = request.get_json(force=True, silent=True) or {}
+    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"),
+                       send_all=bool(d.get("send_all")))
+    out = []
+    for r in rows:
+        ph = MS.norm_phone(r["phone"])
+        out.append({**r, "phone": ph or "", "valid": bool(ph)})
+    return jsonify({"ok": True, "rows": out,
+                    "valid": sum(1 for r in out if r["valid"]), "total": len(out)})
+
+
+@app.route("/api/msg_preview", methods=["POST"])
+@_menu_required("msg_send")
+def api_msg_preview():
+    """실제로 보내지 않고 종류(SMS/LMS)·글자수·제외자만 계산한다."""
+    import msg_send as MS
+    d = request.get_json(force=True, silent=True) or {}
+    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"),
+                       send_all=bool(d.get("send_all")))
+    res = MS.send(rows, d.get("body", ""), d.get("title") or None,
+                  channel=d.get("channel", "auto"), dry_run=True)
+    # 건당 단가는 계약에 따라 다르다. 화면에는 대략치로만 보여 준다.
+    unit = {"SMS": 20, "LMS": 43, "알림톡": 9, "친구톡": 15}.get(res.get("kind"), 20)
+    res["est_cost"] = unit * res.get("total", 0)
+    res["unit"] = unit
+    return jsonify(res)
+
+
+@app.route("/api/msg_send", methods=["POST"])
+@_menu_required("msg_send", "create")
+def api_msg_send():
+    """실제 발송 + 이력 기록"""
+    import msg_send as MS
+    d = request.get_json(force=True, silent=True) or {}
+    body = (d.get("body") or "").strip()
+    if not body:
+        return jsonify({"ok": False, "error": "본문을 입력하세요."}), 400
+    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"),
+                       send_all=bool(d.get("send_all")))
+    if not rows:
+        return jsonify({"ok": False, "error": "대상자가 없습니다."}), 400
+
+    channel = d.get("channel", "auto")
+    kakao = None
+    if channel in ("ata", "cta"):
+        kakao = {"pf_id": d.get("pf_id"), "template_id": d.get("template_id"),
+                 "disable_sms": bool(d.get("disable_sms"))}
+
+    pre = MS.send(rows, body, d.get("title") or None, channel=channel, dry_run=True)
+    res = MS.send(rows, body, d.get("title") or None, channel=channel, kakao=kakao)
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""INSERT INTO msg_campaigns
+                   (title, channel, kind, body, total, sent, failed, dropped,
+                    group_id, error, created_by)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (d.get("title") or "", channel, pre.get("kind", ""), body,
+                 res.get("total", 0), res.get("sent", 0), res.get("failed", 0),
+                 len(res.get("dropped") or []), res.get("group_id", ""),
+                 (res.get("error") or "")[:500], session.get("user_name", "")))
+    cid = cur.lastrowid
+    logs = [(cid, r.get("name", ""), r.get("dept", ""), r.get("phone", ""),
+             "ok" if r.get("ok") else "fail", (r.get("error") or "")[:300])
+            for r in (res.get("results") or [])]
+    logs += [(cid, x.get("name", ""), "", str(x.get("phone", ""))[:20], "drop",
+              (x.get("reason") or "")[:300]) for x in (res.get("dropped") or [])]
+    if logs:
+        cur.executemany("""INSERT INTO msg_logs
+                           (campaign_id, name, dept, phone, status, error)
+                           VALUES (%s,%s,%s,%s,%s,%s)""", logs)
+    conn.commit(); conn.close()
+
+    res["campaign_id"] = cid
+    return jsonify(res)
+
+
+@app.route("/api/msg_test", methods=["POST"])
+@_menu_required("msg_send", "create")
+def api_msg_test():
+    """내 번호로 한 통만 보내 본다. 단체 발송 전에 눈으로 확인하는 용도."""
+    import msg_send as MS
+    d = request.get_json(force=True, silent=True) or {}
+    phone = MS.norm_phone(d.get("phone"))
+    if not phone:
+        return jsonify({"ok": False, "error": "휴대폰 번호를 올바르게 입력하세요."}), 400
+    body = (d.get("body") or "").strip()
+    if not body:
+        return jsonify({"ok": False, "error": "본문을 입력하세요."}), 400
+
+    # 치환자가 그대로 나가지 않도록 첫 대상자 값으로 채워 실제 발송본과 같게 만든다
+    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"),
+                       send_all=bool(d.get("send_all")))
+    sample = dict(rows[0]) if rows else {"name": session.get("user_name", ""), "dept": "", "position": ""}
+    sample["phone"] = phone
+    res = MS.send([sample], body, d.get("title") or None, channel=d.get("channel", "auto"))
+    return jsonify(res)
+
+
+@app.route("/api/msg_my_phone")
+@_menu_required("msg_send")
+def api_msg_my_phone():
+    """테스트 발송칸에 기본으로 채워 줄 본인 번호 (명부에서 이름으로 찾는다)"""
+    import msg_send as MS
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT phone FROM employee_roster WHERE name=%s LIMIT 1",
+                (session.get("user_name", ""),))
+    r = cur.fetchone()
+    conn.close()
+    return jsonify({"ok": True, "phone": MS.norm_phone(r[0]) if r else ""})
+
+
+@app.route("/api/msg_history")
+@_menu_required("msg_send")
+def api_msg_history():
+    """최근 발송 이력. cid 를 주면 그 건의 수신자별 결과까지."""
+    cid = request.args.get("cid", type=int)
+    conn = _conn(); cur = conn.cursor()
+    if cid:
+        cur.execute("""SELECT name, dept, phone, status, error
+                       FROM msg_logs WHERE campaign_id=%s
+                       ORDER BY FIELD(status,'fail','drop','ok'), name""", (cid,))
+        rows = [{"name": r[0], "dept": r[1], "phone": r[2],
+                 "status": r[3], "error": r[4]} for r in cur.fetchall()]
+        conn.close()
+        return jsonify({"ok": True, "rows": rows})
+    cur.execute("""SELECT id, title, channel, kind, body, total, sent, failed, dropped,
+                          created_by, DATE_FORMAT(created_at,'%%Y-%%m-%%d %%H:%%i')
+                   FROM msg_campaigns ORDER BY id DESC LIMIT 50""")
+    # body 전문을 함께 준다 — 화면에서 "이 내용 다시 쓰기" 로 불러올 수 있게
+    rows = [{"id": r[0], "title": r[1], "channel": r[2], "kind": r[3],
+             "body": r[4] or "", "total": r[5], "sent": r[6], "failed": r[7],
+             "dropped": r[8], "by": r[9], "at": r[10]} for r in cur.fetchall()]
+    conn.close()
+    return jsonify({"ok": True, "rows": rows})
+
+
+@app.route("/hr_status")
+@_menu_required("hr_status")
+def hr_status():
+    """인사현황 — hr_*(ERP 동기화 결과)를 집계해 보여준다.
+
+    숫자는 전부 hr_employees 등에서 나온다. 화면에서 ERP 를 직접 보지 않는다.
+    근속·나이는 오늘 기준으로 계산한다.
+
+    생년월일·나이가 들어가므로 관리자만 본다 (2026-08-02 사용자 결정).
+    개인 이력 화면을 붙일 때도 재직자만 대상으로 한다.
+    """
+    today = datetime.now().date()
+    ymd = today.strftime("%Y%m%d")
+    year = today.year
+    conn = _conn(); cur = conn.cursor()
+
+    cur.execute("""SELECT emp_seq, name, dept_name, ent_date, retire_date,
+                          birth_date, sex, is_active
+                     FROM hr_employees""")
+    rows = cur.fetchall()
+
+    def years_between(d8, base=ymd):
+        """YYYYMMDD 두 값 사이의 만 나이/근속연수"""
+        if not d8 or len(d8) != 8:
+            return None
+        y = int(base[:4]) - int(d8[:4])
+        if base[4:8] < d8[4:8]:
+            y -= 1
+        return y
+
+    emps = []
+    for es, nm, dept, ent, ret, birth, sex, act in rows:
+        emps.append({"seq": es, "name": nm or "", "dept": dept or "미지정",
+                     "ent": ent or "", "ret": ret or "", "birth": birth or "",
+                     "sex": sex or "", "active": bool(act),
+                     "years": years_between(ent) if ent else None,
+                     "age": years_between(birth) if birth else None})
+    act_emps = [e for e in emps if e["active"]]
+
+    yrs = [e["years"] for e in act_emps if e["years"] is not None]
+    ages = [e["age"] for e in act_emps if e["age"] is not None]
+    s = {
+        "active": len(act_emps),
+        "retired": len(emps) - len(act_emps),
+        "in_this_year": len([e for e in emps if e["ent"][:4] == str(year)]),
+        "out_this_year": len([e for e in emps
+                              if not e["active"] and e["ret"][:4] == str(year)]),
+        "avg_years": (sum(yrs) / len(yrs)) if yrs else 0,
+        "avg_age": (sum(ages) / len(ages)) if ages else 0,
+    }
+
+    # 근속 구간
+    BANDS = [("1년 미만", 0, 1), ("1~3년", 1, 3), ("3~5년", 3, 5),
+             ("5~10년", 5, 10), ("10~20년", 10, 20), ("20년 이상", 20, 999)]
+    bands = []
+    for label, lo, hi in BANDS:
+        # 막대를 누르면 명단이 뜨도록 구간별 인원을 같이 넘긴다 (입사일 오름차순)
+        mem = sorted([e for e in act_emps
+                      if e["years"] is not None and lo <= e["years"] < hi],
+                     key=lambda e: (e["ent"] or "", e["name"]))
+        bands.append({"name": label, "n": len(mem),
+                      "rate": (len(mem) / len(act_emps) * 100) if act_emps else 0,
+                      "members": [{"name": e["name"], "dept": e["dept"],
+                                   "ent": e["ent"], "years": e["years"]}
+                                  for e in mem]})
+    band_max = max([b["n"] for b in bands], default=0)
+
+    # 부서별 인원 — 막대를 누르면 명단이 뜨도록 인원도 같이 넘긴다 (근속 긴 순)
+    agg = {}
+    for e in act_emps:
+        d = agg.setdefault(e["dept"], {"name": e["dept"], "n": 0, "yrs": [], "mem": []})
+        d["n"] += 1
+        d["mem"].append(e)
+        if e["years"] is not None:
+            d["yrs"].append(e["years"])
+    depts = sorted(agg.values(), key=lambda d: -d["n"])
+    for d in depts:
+        d["avg"] = (sum(d["yrs"]) / len(d["yrs"])) if d["yrs"] else 0
+        d["members"] = [{"name": e["name"], "dept": e["dept"],
+                         "ent": e["ent"], "years": e["years"]}
+                        for e in sorted(d.pop("mem"),
+                                        key=lambda e: (e["ent"] or "9999", e["name"]))]
+        d.pop("yrs", None)
+    dept_max = max([d["n"] for d in depts], default=0)
+
+    # 올해·내년 근속 도래자 (10·15·20·25·30년)
+    MILE = (10, 15, 20, 25, 30)
+    miles = []
+    for y in (year, year + 1):
+        people = []
+        for e in act_emps:
+            if not e["ent"]:
+                continue
+            n = y - int(e["ent"][:4])
+            if n in MILE:
+                people.append({"name": e["name"], "dept": e["dept"], "seq": e["seq"],
+                               "n": n, "date": e["ent"]})
+        people.sort(key=lambda p: (-p["n"], p["date"]))
+        miles.append({"year": y, "people": people})
+
+    # 정년(만 60세) 도래 예정 — 올해부터 3년
+    RETIRE_AGE = 60
+    retires = []
+    for y in (year, year + 1, year + 2):
+        people = []
+        for e in act_emps:
+            if e["birth"] and int(e["birth"][:4]) + RETIRE_AGE == y:
+                people.append({"name": e["name"], "dept": e["dept"], "seq": e["seq"],
+                               "birth": e["birth"], "age": e["age"]})
+        people.sort(key=lambda p: p["birth"])
+        retires.append({"year": y, "people": people})
+
+    # 휴직 중 / 복직 예정
+    # 복직이 ERP 에 입력 안 된 사람이 있어, 출근기록으로 추정한 ret_guess 가 있으면 뺀다
+    cur.execute("""SELECT r.emp_seq, e.name, e.dept_name, r.beg_date, r.end_date, e.is_active
+                     FROM hr_rests r LEFT JOIN hr_employees e ON e.emp_seq = r.emp_seq
+                    WHERE r.beg_date <= %s AND (r.end_date = '' OR r.end_date >= %s)
+                      AND IFNULL(r.ret_guess,'') = ''
+                    ORDER BY r.end_date""", (ymd, ymd))
+    rests = [{"name": r[1] or "", "dept": r[2] or "", "beg": r[3], "end": r[4],
+              "seq": r[0] if r[5] else None} for r in cur.fetchall()]
+
+    # 최근 발령
+    cur.execute("SELECT COUNT(*) FROM hr_orders WHERE LEFT(ord_date,4)=%s", (str(year),))
+    order_cnt = cur.fetchone()[0]
+    cur.execute("""SELECT o.ord_date, e.name, o.dept_name, o.contents, o.emp_seq, e.is_active
+                     FROM hr_orders o LEFT JOIN hr_employees e ON e.emp_seq = o.emp_seq
+                    ORDER BY o.ord_date DESC LIMIT 12""")
+    orders = [{"date": r[0], "name": r[1] or "", "dept": r[2] or "", "note": r[3] or "",
+               "seq": r[4] if r[5] else None} for r in cur.fetchall()]
+
+    # 연도별 입·퇴사 추이 (최근 6년)
+    trend = []
+    for y in range(year - 5, year + 1):
+        trend.append({
+            "year": y,
+            "in": len([e for e in emps if e["ent"][:4] == str(y)]),
+            "out": len([e for e in emps if not e["active"] and e["ret"][:4] == str(y)]),
+        })
+    trend_max = max([max(t["in"], t["out"]) for t in trend], default=0)
+
+    # 증명서 발급 (올해)
+    cur.execute("""SELECT COUNT(*) FROM hr_certificates WHERE LEFT(issue_date,4)=%s""",
+                (str(year),))
+    cert_cnt = cur.fetchone()[0]
+    cur.execute("""SELECT c.issue_date, e.name, c.usage_txt, c.submit_to, c.issue_no,
+                          c.emp_seq, e.is_active
+                     FROM hr_certificates c LEFT JOIN hr_employees e ON e.emp_seq=c.emp_seq
+                    ORDER BY c.issue_date DESC LIMIT 10""")
+    certs = [{"date": r[0], "name": r[1] or "", "use": r[2] or "",
+              "to": r[3] or "", "no": r[4] or "",
+              "seq": r[5] if r[6] else None} for r in cur.fetchall()]
+
+    cur.execute("SELECT DATE_FORMAT(MAX(updated_at), '%Y-%m-%d %H:%i') FROM hr_employees")
+    last_sync = cur.fetchone()[0]
+    conn.close()
+
+    return render_template("hr_status.html",
+                           year=year, s=s, bands=bands, band_max=band_max,
+                           depts=depts, dept_max=dept_max, miles=miles,
+                           retires=retires, retire_age=RETIRE_AGE, rests=rests,
+                           orders=orders, order_cnt=order_cnt,
+                           trend=trend, trend_max=trend_max,
+                           cert_cnt=cert_cnt, certs=certs, last_sync=last_sync,
+                           active_page="hr_status")
+
+
+@app.route("/hr_roster")
+@_menu_required("hr_roster")
+def hr_roster():
+    """전체 재직자 명단 — 이름을 누르면 개인 인사카드로 간다.
+
+    인사현황(hr_status)에 붙어 있던 표를 따로 뺐다 (2026-08-02).
+    직급은 ERP 에 없어(PosSeq 전원 0) 명부관리에서, 연차는 태인에서 가져온다.
+    관리자 전용 · 재직자만.
+    """
+    today = datetime.now().date()
+    ymd = today.strftime("%Y%m%d")
+    year = today.year
+    conn = _conn(); cur = conn.cursor()
+
+    def years_between(d8, base=ymd):
+        if not d8 or len(d8) != 8:
+            return None
+        y = int(base[:4]) - int(d8[:4])
+        if base[4:8] < d8[4:8]:
+            y -= 1
+        return y
+
+    # 이메일·차량번호는 ERP 가 우선, 비어 있으면 명부관리 값을 쓴다 (사용자 결정)
+    cur.execute("""SELECT h.emp_seq, h.empid, h.name, h.dept_name, h.ent_date,
+                          h.birth_date, h.sex, r.position, a.total, a.used,
+                          COALESCE(NULLIF(h.car_no,''), r.car_number, '') AS car,
+                          r.phone,
+                          COALESCE(NULLIF(h.email,''), r.email, '')      AS email
+                     FROM hr_employees h
+                     LEFT JOIN employee_roster r ON r.emp_no = h.empid
+                     LEFT JOIN annual_leave a ON a.e_id = h.t_uid AND a.year = %s
+                    WHERE h.is_active = 1
+                    ORDER BY h.dept_name, h.ent_date""", (year,))
+    roster = []
+    for r in cur.fetchall():
+        tot, used = float(r[8] or 0), float(r[9] or 0)
+        roster.append({
+            "seq": r[0], "empid": r[1] or "", "name": r[2] or "",
+            "dept": r[3] or "미지정", "ent": r[4] or "",
+            "pos": r[7] or "", "sex": r[6] or "", "car": (r[10] or "").strip(),
+            "phone": (r[11] or "").strip(), "email": (r[12] or "").strip(),
+            "years": years_between(r[4]) if r[4] else None,
+            "age": years_between(r[5]) if r[5] else None,
+            "rest": (tot - used) if tot else None,
+        })
+    conn.close()
+
+    # 전화번호가 하이픈 없이 들어간 게 섞여 있어 보기 좋게 맞춘다 (원본은 안 고친다)
+    for p in roster:
+        d = "".join(ch for ch in p["phone"] if ch.isdigit())
+        if len(d) == 11 and "-" not in p["phone"]:
+            p["phone"] = "%s-%s-%s" % (d[:3], d[3:7], d[7:])
+        p["miss"] = " ".join(k for k in ("phone", "email", "car") if not p[k])
+
+    yrs = [p["years"] for p in roster if p["years"] is not None]
+    ages = [p["age"] for p in roster if p["age"] is not None]
+    s = {"people": len(roster),
+         "avg_years": (sum(yrs) / len(yrs)) if yrs else 0,
+         "avg_age": (sum(ages) / len(ages)) if ages else 0,
+         "depts": len({p["dept"] for p in roster}),
+         "no_phone": len([p for p in roster if not p["phone"]]),
+         "no_email": len([p for p in roster if not p["email"]]),
+         "no_car": len([p for p in roster if not p["car"]]),
+         "no_any": len([p for p in roster if p["miss"]])}
+
+    return render_template("hr_roster.html",
+                           year=year, s=s, roster=roster,
+                           roster_depts=sorted({p["dept"] for p in roster}),
+                           active_page="hr_roster")
+
+
+@app.route("/api/hr_employee/<int:emp_seq>/field", methods=["POST"])
+@_menu_required("hr_status", "update")
+def api_hr_employee_field(emp_seq):
+    """인사카드 기본정보 수정 — 연락처·이메일·차량번호
+
+    저장은 태인 명부관리(employee_roster)에만 한다. ERP 에는 쓰지 않는다.
+    ERP 에 값이 있으면 화면에는 ERP 값이 나온다 (ERP 우선, 사용자 결정 2026-08-02).
+    값을 비우면 지운 것으로 본다.
+    """
+    ALLOWED = {"phone": 30, "email": 100, "car_number": 30}
+    data = request.get_json(silent=True) or {}
+    field = str(data.get("field", ""))
+    value = " ".join(str(data.get("value", "")).split())
+
+    if field not in ALLOWED:
+        return jsonify(ok=False, error="고칠 수 없는 항목입니다"), 400
+    if len(value) > ALLOWED[field]:
+        return jsonify(ok=False, error="%d자를 넘을 수 없습니다" % ALLOWED[field]), 400
+    if field == "phone" and value and not re.fullmatch(r"[0-9\-+() ]{8,30}", value):
+        return jsonify(ok=False, error="전화번호 형태가 아닙니다"), 400
+    if field == "email" and value and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+        return jsonify(ok=False, error="이메일 형태가 아닙니다"), 400
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT empid, name, is_active FROM hr_employees WHERE emp_seq=%s", (emp_seq,))
+    row = cur.fetchone()
+    if not row or not row[2]:
+        conn.close()
+        return jsonify(ok=False, error="재직자만 고칠 수 있습니다"), 404
+    empid, name = row[0], row[1]
+
+    cur.execute("SELECT id FROM employee_roster WHERE emp_no=%s", (empid,))
+    if cur.fetchone():
+        cur.execute("UPDATE employee_roster SET `%s`=%%s WHERE emp_no=%%s" % field,
+                    (value, empid))
+    else:
+        cur.execute("INSERT INTO employee_roster (name, emp_no, `%s`) VALUES (%%s,%%s,%%s)"
+                    % field, (name, empid, value))
+    conn.commit()
+
+    # ERP 에 값이 있으면 화면에는 ERP 값이 계속 나온다 — 그 사실을 알려 준다
+    erp = ""
+    if field in ("email", "car_number"):
+        col = "email" if field == "email" else "car_no"
+        cur.execute("SELECT IFNULL(`%s`,'') FROM hr_employees WHERE emp_seq=%%s" % col,
+                    (emp_seq,))
+        erp = cur.fetchone()[0]
+    conn.close()
+    return jsonify(ok=True, value=erp or value, src="ERP" if erp else "명부관리",
+                   overridden=bool(erp))
+
+
+@app.route("/hr_vehicle")
+@_menu_required("hr_vehicle")
+def hr_vehicle():
+    """직원 차량현황 — 누가 어떤 차를 갖고 있나.
+
+    차량번호는 ERP 사원 화면의 사용자 정의 항목에서 온다
+    (_TDAEmpUserDefine, 이름표는 _TCOMUserDefine 의 '차량번호').
+    erp_hr_sync.py 가 hr_employees.car_no 로 옮겨 둔다.
+
+    사업부는 태인 기준(tuser.company → DEPT_MAP)을 쓴다.
+    ERP 의 BizUnit 은 전부 '본사' 하나라 나눌 수 없다.
+    """
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT h.emp_seq, h.name, h.dept_name, h.car_no, h.ent_date,
+                          t.company
+                     FROM hr_employees h
+                     LEFT JOIN tuser t ON t.id = h.t_uid
+                    WHERE h.is_active = 1
+                    ORDER BY h.dept_name, h.name""")
+    people = []
+    for seq, nm, dept, car, ent, comp in cur.fetchall():
+        people.append({"seq": seq, "name": nm or "", "dept": dept or "미지정",
+                       "car": (car or "").strip(), "ent": ent or "",
+                       "biz": DEPT_MAP.get(comp, "미지정")})
+    conn.close()
+
+    owners = [p for p in people if p["car"]]
+    s = {"people": len(people), "cars": len(owners),
+         "none": len(people) - len(owners),
+         "rate": (len(owners) / len(people) * 100) if people else 0}
+
+    def group(key):
+        agg = {}
+        for p in people:
+            g = agg.setdefault(p[key], {"name": p[key], "n": 0, "cars": 0})
+            g["n"] += 1
+            if p["car"]:
+                g["cars"] += 1
+        out = list(agg.values())
+        for g in out:
+            g["rate"] = (g["cars"] / g["n"] * 100) if g["n"] else 0
+        out.sort(key=lambda g: (-g["cars"], -g["n"]))
+        return out
+
+    bizs = group("biz")
+    depts = group("dept")
+    biz_max = max([g["cars"] for g in bizs], default=0)
+    dept_max = max([g["cars"] for g in depts], default=0)
+
+    return render_template("hr_vehicle.html",
+                           s=s, bizs=bizs, depts=depts,
+                           biz_max=biz_max, dept_max=dept_max,
+                           owners=sorted(owners, key=lambda p: (p["biz"], p["dept"], p["name"])),
+                           nones=sorted([p for p in people if not p["car"]],
+                                        key=lambda p: (p["biz"], p["dept"], p["name"])),
+                           biz_list=sorted({p["biz"] for p in people}),
+                           dept_list=sorted({p["dept"] for p in people}),
+                           active_page="hr_vehicle")
+
+
+@app.route("/hr_employee/<int:emp_seq>")
+@_menu_required("hr_status")
+def hr_employee(emp_seq):
+    """개인 인사카드 — 한 사람의 이력을 한 장으로 본다.
+
+    세 곳을 합친다.
+      · ERP(hr_*)          부서·입사일·생년월일·발령·부서이동·휴직·증명서
+      · 명부관리(roster)   직급·연락처·주소 — ERP 의 PosSeq 는 전원 0 이라 쓸 수 없다
+      · 태인(annual_leave) 연차 현황·사용 날짜
+
+    재직자만 본다 (2026-08-02 사용자 결정). 관리자 전용.
+    """
+    today = datetime.now().date()
+    ymd = today.strftime("%Y%m%d")
+    year = today.year
+    conn = _conn(); cur = conn.cursor()
+
+    cur.execute("""SELECT emp_seq, empid, name, dept_name, ent_date, retire_date,
+                          birth_date, sex, t_uid, is_active, car_no, email
+                     FROM hr_employees WHERE emp_seq=%s""", (emp_seq,))
+    row = cur.fetchone()
+    if not row or not row[9]:
+        conn.close()
+        flash("재직자만 조회할 수 있습니다.", "warning")
+        return redirect(url_for("hr_status"))
+
+    def yrs(d8, base=ymd):
+        if not d8 or len(d8) != 8:
+            return None
+        y = int(base[:4]) - int(d8[:4])
+        if base[4:8] < d8[4:8]:
+            y -= 1
+        return y
+
+    def months_between(d8, base=ymd):
+        if not d8 or len(d8) != 8:
+            return None
+        return ((int(base[:4]) - int(d8[:4])) * 12 + int(base[4:6]) - int(d8[4:6])
+                - (1 if base[6:8] < d8[6:8] else 0))
+
+    m = months_between(row[4])
+    emp = {
+        "seq": row[0], "empid": row[1], "name": row[2] or "",
+        "dept": row[3] or "미지정", "ent": row[4] or "", "birth": row[6] or "",
+        "sex": row[7] or "", "t_uid": row[8], "car": row[10] or "",
+        "email": row[11] or "",
+        "years": yrs(row[4]), "age": yrs(row[6]),
+        "svc": ("%d년 %d개월" % (m // 12, m % 12)) if m is not None else "",
+    }
+
+    # 명부관리 — ERP 에 없는 직급·연락처 (사번으로 맞춘다)
+    cur.execute("""SELECT position, phone, email, address, gender, dept, car_number
+                     FROM employee_roster WHERE emp_no=%s LIMIT 1""", (emp["empid"],))
+    r = cur.fetchone()
+    roster = ({"pos": r[0] or "", "phone": r[1] or "", "email": r[2] or "",
+               "addr": r[3] or "", "gender": r[4] or "", "dept": r[5] or "",
+               "car": r[6] or ""}
+              if r else {})
+
+    # ERP 가 항상 우선이다 (사용자 결정 2026-08-02). ERP 에 값이 있으면 그것을 쓰고,
+    # 비어 있을 때만 명부관리에 손으로 넣은 값을 쓴다.
+    # 전화번호는 ERP 가 암호문이라 명부관리가 유일한 출처다.
+    fields = {
+        "phone": {"val": roster.get("phone", ""), "src": "명부관리",
+                  "erp": "", "label": "연락처"},
+        "email": {"val": emp["email"] or roster.get("email", ""),
+                  "src": "ERP" if emp["email"] else "명부관리",
+                  "erp": emp["email"], "label": "이메일"},
+        "car_number": {"val": emp["car"] or roster.get("car", ""),
+                       "src": "ERP" if emp["car"] else "명부관리",
+                       "erp": emp["car"], "label": "차량번호"},
+    }
+
+    # 이력 — 입사·부서이동·발령·휴직을 한 줄로 모은다
+    events = []
+    if emp["ent"]:
+        events.append({"date": emp["ent"], "kind": "입사", "title": "입사",
+                       "note": emp["dept"], "tone": "in"})
+    cur.execute("""SELECT beg_date, end_date, dept_name FROM hr_dept_moves
+                    WHERE emp_seq=%s ORDER BY beg_date""", (emp_seq,))
+    for beg, end, dept in cur.fetchall():
+        events.append({"date": beg, "kind": "부서", "title": dept or "부서 이동",
+                       "note": ("~ %s" % end if end and end != "99991231" else "현재"),
+                       "tone": "dept"})
+    cur.execute("""SELECT ord_date, dept_name, contents, remark FROM hr_orders
+                    WHERE emp_seq=%s ORDER BY ord_date""", (emp_seq,))
+    orders = []
+    for d, dept, ct, rm in cur.fetchall():
+        orders.append({"date": d, "dept": dept or "", "note": (ct or "").strip(),
+                       "remark": (rm or "").strip()})
+        events.append({"date": d, "kind": "발령", "title": dept or "발령",
+                       "note": (ct or "").strip()[:80], "tone": "ord"})
+    cur.execute("""SELECT beg_date, end_date, is_ret, remark, ret_guess, ret_days
+                     FROM hr_rests WHERE emp_seq=%s ORDER BY beg_date""", (emp_seq,))
+    rests = []
+    for beg, end, isret, rm, guess, gdays in cur.fetchall():
+        on_now = (beg <= ymd <= (end or "99991231")) and not guess
+        rests.append({"beg": beg, "end": end or "", "now": on_now, "remark": rm or "",
+                      "guess": guess or "", "gdays": gdays or 0})
+        events.append({"date": beg, "kind": "휴직", "title": "휴직 시작", "tone": "rest",
+                       "note": ("복직 예정 %s" % end
+                                if end and end != "99991231" else "복직일 미정")})
+        if guess:
+            events.append({"date": guess, "kind": "복직", "title": "복직 (출근기록 기준)",
+                           "tone": "in", "note": "ERP 에는 복직 처리가 안 되어 있습니다"})
+    events.sort(key=lambda e: e["date"], reverse=True)
+
+    cur.execute("""SELECT issue_date, issue_no, usage_txt, submit_to
+                     FROM hr_certificates WHERE emp_seq=%s ORDER BY issue_date DESC""",
+                (emp_seq,))
+    certs = [{"date": c[0], "no": c[1] or "", "use": c[2] or "", "to": c[3] or ""}
+             for c in cur.fetchall()]
+
+    # 연차 — 태인 시스템 값 (ERP 동기화 결과)
+    leave, leave_days = None, []
+    if emp["t_uid"]:
+        cur.execute("""SELECT generated, total, used, deduct_prev, IFNULL(memo,'')
+                         FROM annual_leave WHERE e_id=%s AND year=%s""",
+                    (emp["t_uid"], year))
+        lv = cur.fetchone()
+        if lv:
+            leave = {"generated": float(lv[0] or 0), "total": float(lv[1] or 0),
+                     "used": float(lv[2] or 0), "prev": float(lv[3] or 0),
+                     "rest": float(lv[1] or 0) - float(lv[2] or 0), "memo": lv[4]}
+            leave["rate"] = (leave["used"] / leave["total"] * 100) if leave["total"] else 0
+        cur.execute("""SELECT leave_date, leave_type FROM leave_records
+                        WHERE e_id=%s AND LEFT(leave_date,4)=%s AND status='승인'
+                        ORDER BY leave_date""", (emp["t_uid"], str(year)))
+        leave_days = [{"date": d, "type": t} for d, t in cur.fetchall()]
+
+    conn.close()
+    return render_template("hr_employee.html",
+                           year=year, emp=emp, roster=roster, fields=fields,
+                           events=events,
+                           orders=orders, rests=rests, certs=certs,
+                           leave=leave, leave_days=leave_days,
+                           active_page="hr_status")
+
+
+def _leave_no_grant_exempt(cur, year):
+    """발생연차가 없어도 정상인 사람 → {이름: 사유}  (2026-08-03 사용자 기준)
+
+      퇴사자        — hr_employees 에 재직 레코드가 없음
+      임원          — 부서가 '임원'. ERP 에서 연차 발생을 관리하지 않는다
+      계약직        — 정년퇴직 후 재입사. 만 58세↑ + 이전 퇴사 이력 + 그 뒤 재입사
+      당해년도 입사자 — 1년 미만이라 1개월 개근당 1일씩만 붙는다
+
+    계약직 판정에 생년월일 일치를 쓰면 안 된다. ERP 는 재입사자를 '이름2' 로 남기는데
+    최호림(1965-08-15) / 최호림2(1965-07-28) 처럼 음력·양력 차이로 며칠 어긋나는 경우가
+    있어 동명이인으로 오판한다. 나이(정년 근접)와 퇴사 이력으로 가른다.
+    40대 재입사자(강민규·박정민 등 8명)와는 나이로 확실히 갈린다.
+    """
+    import re as _re
+    cur.execute("""SELECT name, dept_name, ent_date, retire_date, birth_date, is_active
+                     FROM hr_employees""")
+    rows = cur.fetchall()
+    ymd = datetime.now().strftime("%Y%m%d")
+
+    def _age(b):
+        if not b or len(b) != 8:
+            return None
+        a = int(ymd[:4]) - int(b[:4])
+        return a - 1 if ymd[4:8] < b[4:8] else a
+
+    by_base = {}
+    for r in rows:
+        by_base.setdefault(_re.sub(r"\d+$", "", r[0] or ""), []).append(r)
+
+    active = {}
+    for r in rows:
+        if r[5]:
+            active[r[0]] = r
+
+    out = {}
+    for nm in {r[0] for r in rows}:
+        a = active.get(nm)
+        if a is None:
+            out[nm] = "퇴사자"
+            continue
+        _, dept, ent, _ret, birth, _ = a
+        if (dept or "") == "임원":
+            out[nm] = "임원"
+            continue
+        age = _age(birth)
+        prev = [p for p in by_base.get(_re.sub(r"\d+$", "", nm), [])
+                if not p[5] and p[3] and p[3] != "99991231" and p[3] < (ent or "")]
+        if age is not None and age >= 58 and prev:
+            out[nm] = "계약직"
+            continue
+        if (ent or "")[:4] == str(year):
+            out[nm] = "당해년도 입사자"
+    return out
+
+
+@app.route("/leave_dashboard")
+@_login_required
+def leave_dashboard():
+    """연차관리 대시보드 — annual_leave(ERP 동기화 결과)를 집계해 보여준다.
+
+    숫자는 전부 annual_leave 한 곳에서 나온다. 화면에서 다시 계산하지 않는다.
+    """
+    try:
+        year = int(request.args.get("year", datetime.now().year))
+    except ValueError:
+        year = datetime.now().year
+    conn = _conn(); cur = conn.cursor()
+
+    cur.execute("SELECT DISTINCT year FROM annual_leave ORDER BY year DESC")
+    year_list = [r[0] for r in cur.fetchall()] or [year]
+
+    exc0 = ",".join(["%s"] * len(LEAVE_EXCLUDE_COMPANIES))
+    cur.execute("""SELECT COUNT(*), IFNULL(SUM(a.generated),0), IFNULL(SUM(a.total),0),
+                          IFNULL(SUM(a.used),0)
+                     FROM annual_leave a LEFT JOIN tuser t ON t.id = a.e_id
+                    WHERE a.year=%%s AND IFNULL(t.company,'') NOT IN (%s)""" % exc0,
+                [year] + list(LEAVE_EXCLUDE_COMPANIES))
+    cnt, gen, tot, used = cur.fetchone()
+    s = {"people": cnt, "generated": float(gen), "total": float(tot), "used": float(used),
+         "rest": float(tot) - float(used),
+         "rate": (float(used) / float(tot) * 100) if float(tot) else 0.0}
+
+    # 계산이 어떻게 나오는지 한 카드에 보여주기 위한 값들.
+    #   쓸 수 있는 연차 = 발생연차 + 전년도 차감(음수)
+    # 다만 ERP 에 발생 자료가 아예 없는 사람은 동기화가 건드리지 않아
+    # 예전 태인 값이 그대로 남는다. 그만큼은 위 식으로 설명이 안 되므로 따로 보여준다.
+    cur.execute("""SELECT IFNULL(SUM(a.deduct_prev),0),
+                          IFNULL(SUM(CASE WHEN IFNULL(a.generated,0)=0
+                                          THEN a.total ELSE 0 END),0),
+                          SUM(CASE WHEN IFNULL(a.generated,0)=0 AND IFNULL(a.total,0)<>0
+                                   THEN 1 ELSE 0 END)
+                     FROM annual_leave a LEFT JOIN tuser t ON t.id = a.e_id
+                    WHERE a.year=%%s AND IFNULL(t.company,'') NOT IN (%s)""" % exc0,
+                [year] + list(LEAVE_EXCLUDE_COMPANIES))
+    d_prev, no_erp_amt, no_erp_cnt = cur.fetchone()
+    s["deduct_prev"] = float(d_prev or 0)
+    s["no_erp_amt"] = float(no_erp_amt or 0)
+    s["no_erp_cnt"] = int(no_erp_cnt or 0)
+
+    # 부서는 화면 다른 곳과 같게 tuser.company → DEPT_MAP 으로 묶는다
+    exc = LEAVE_EXCLUDE_COMPANIES
+    exc_ph = ",".join(["%s"] * len(exc))
+    cur.execute("""SELECT t.company, COUNT(*), IFNULL(SUM(a.total),0), IFNULL(SUM(a.used),0)
+                     FROM annual_leave a JOIN tuser t ON t.id = a.e_id
+                    WHERE a.year=%%s AND t.company NOT IN (%s) GROUP BY t.company""" % exc_ph,
+                [year] + list(exc))
+    agg = {}
+    for comp, n, t2, u2 in cur.fetchall():
+        d = agg.setdefault(DEPT_MAP.get(comp, "기타"),
+                           {"people": 0, "total": 0.0, "used": 0.0})
+        d["people"] += n; d["total"] += float(t2); d["used"] += float(u2)
+    depts = []
+    for name, d in agg.items():
+        d["name"] = name
+        d["rest"] = d["total"] - d["used"]
+        d["rate"] = (d["used"] / d["total"] * 100) if d["total"] else 0.0
+        depts.append(d)
+    depts.sort(key=lambda x: -x["total"])
+
+    cur.execute("SELECT %s FROM annual_leave a LEFT JOIN tuser t ON t.id=a.e_id "
+                "WHERE a.year=%%s AND IFNULL(t.company,'') NOT IN (%s)"
+                % (", ".join("IFNULL(SUM(a.m%d),0)" % i for i in range(1, 13)), exc0),
+                [year] + list(LEAVE_EXCLUDE_COMPANIES))
+    mvals = [float(x or 0) for x in cur.fetchone()]
+    mmax = max(mvals) if mvals else 0
+    months = [{"v": v, "h": int(v / mmax * 110) if mmax else 4} for v in mvals]
+
+    cur.execute("""SELECT a.e_name, t.company, a.total, a.used, (a.total - a.used) AS rest
+                     FROM annual_leave a LEFT JOIN tuser t ON t.id = a.e_id
+                    WHERE a.year=%%s AND IFNULL(t.company,'') NOT IN (%s)
+                    ORDER BY rest DESC""" % exc0, [year] + list(LEAVE_EXCLUDE_COMPANIES))
+    rows = []
+    for nm, comp, t2, u2, rest in cur.fetchall():
+        t2, u2, rest = float(t2), float(u2), float(rest)
+        rows.append({"name": nm or "", "dept": DEPT_MAP.get(comp, "기타"),
+                     "total": t2, "used": u2, "rest": rest,
+                     "rate": (u2 / t2 * 100) if t2 else 0.0})
+
+    # ── 발생연차가 없어도 정상인 사유 (2026-08-03 사용자 기준) ──
+    #   퇴사자 / 임원 / 계약직(정년퇴직 후 재입사) / 당해년도 입사자
+    # 이 중 계약직만 '계약직' 표시를 달아 목록에 남기고, 나머지는 경고에서 뺀다.
+    exempt = _leave_no_grant_exempt(cur, year)
+
+    def _keep(r):
+        """경고 목록에 남길지 — 면제 사유가 없거나, 계약직(표시 대상)이면 남긴다"""
+        why = exempt.get(r["name"])
+        return why is None or why == "계약직"
+
+    for r in rows:
+        r["tag"] = exempt.get(r["name"]) if exempt.get(r["name"]) == "계약직" else ""
+
+    negatives = sorted([r for r in rows if r["rest"] < 0 and _keep(r)],
+                       key=lambda r: r["rest"])
+    unused = [r for r in rows if r["used"] == 0 and r["total"] > 0]
+    cur.execute("""SELECT a.e_name FROM annual_leave a LEFT JOIN tuser t ON t.id=a.e_id
+                    WHERE a.year=%%s AND IFNULL(a.generated,0)=0 AND a.used>0
+                      AND IFNULL(t.company,'') NOT IN (%s)
+                    ORDER BY a.e_name""" % exc0, [year] + list(LEAVE_EXCLUDE_COMPANIES))
+    no_grant = [{"name": r[0], "tag": exempt.get(r[0], "")}
+                for r in cur.fetchall()
+                if exempt.get(r[0]) in (None, "계약직")]
+
+    # ── 금일 연차 — 오늘 쉬는 사람 (반차는 0.5일로 센다) ──
+    UNIT = {"연차": 1.0, "반차": 0.5, "반반차": 0.25, "경조": 1.0}
+    cur.execute("""SELECT t.name, r.leave_type, IFNULL(e.dept,'')
+                     FROM leave_records r
+                     JOIN tuser t ON t.id = r.e_id
+                     LEFT JOIN employee_roster e ON e.name = t.name
+                    WHERE r.leave_date=%%s AND IFNULL(t.company,'') NOT IN (%s)
+                    ORDER BY t.name""" % exc0,
+                [datetime.now().strftime("%Y%m%d")] + list(LEAVE_EXCLUDE_COMPANIES))
+    today_leave = [{"name": r[0], "type": r[1], "dept": r[2] or ""} for r in cur.fetchall()]
+    today_days = sum(UNIT.get(p["type"], 1.0) for p in today_leave)
+
+    # 종류별(연차/반차/경조) — 날짜별 기록에서 센다. 반차는 하루의 절반이다.
+    LEAVE_UNIT = {"연차": 1.0, "반차": 0.5, "반반차": 0.25, "경조": 1.0}
+    cur.execute("""SELECT r.leave_type, COUNT(*), COUNT(DISTINCT r.e_id)
+                     FROM leave_records r LEFT JOIN tuser t ON t.id = r.e_id
+                    WHERE LEFT(r.leave_date,4)=%%s AND IFNULL(t.company,'') NOT IN (%s)
+                    GROUP BY r.leave_type""" % exc0,
+                [str(year)] + list(LEAVE_EXCLUDE_COMPANIES))
+    kinds = []
+    for nm, n, ppl in cur.fetchall():
+        kinds.append({"name": nm or "", "cnt": n, "people": ppl,
+                      "days": n * LEAVE_UNIT.get(nm, 1.0)})
+    kinds.sort(key=lambda k: -k["cnt"])
+    half = next((k for k in kinds if k["name"] == "반차"), None)
+    # 반차 사용률 = 쓴 연차 중 반차가 차지하는 비율 (일수 기준)
+    s["half_cnt"] = half["cnt"] if half else 0
+    s["half_days"] = half["days"] if half else 0.0
+    s["half_people"] = half["people"] if half else 0
+    s["half_rate"] = (s["half_days"] / s["used"] * 100) if s["used"] else 0.0
+
+    cur.execute("""SELECT DATE_FORMAT(MAX(updated_at), '%%Y-%%m-%%d %%H:%%i')
+                     FROM annual_leave WHERE year=%s""", (year,))
+    last_sync = cur.fetchone()[0]
+    conn.close()
+
+    return render_template("leave_dashboard.html",
+                           year=year, year_list=year_list, s=s, depts=depts,
+                           months=months, month_max=mmax, kinds=kinds,
+                           negatives=negatives, unused=unused, no_grant=no_grant,
+                           today_leave=today_leave, today_days=today_days,
+                           top_rest=rows[:15], last_sync=last_sync,
+                           active_page="leave_dashboard")
+
+
 @app.route("/annual_leave")
 @_login_required
 def annual_leave():
@@ -5872,7 +7028,8 @@ def annual_leave():
     except (ValueError, IndexError):
         year_int, month_int = datetime.now().year, datetime.now().month
         sel_month = f"{year_int:04d}-{month_int:02d}"
-    dept_list = sorted(set(DEPT_MAP.values()))
+    dept_list = sorted(v for k, v in DEPT_MAP.items()
+                       if k not in LEAVE_EXCLUDE_COMPANIES)
     # 달력 정보
     _, dim = calendar.monthrange(year_int, month_int)
     first_wd = calendar.weekday(year_int, month_int, 1)  # 0=Mon
@@ -5897,8 +7054,8 @@ def annual_leave():
                    FROM tuser WHERE name IS NOT NULL AND name <> ''
                    GROUP BY name
                ) t ON t.name = er.name
-               WHERE 1=1"""
-    params_u = []
+               WHERE t.company NOT IN (%s)""" % ",".join(["%s"] * len(LEAVE_EXCLUDE_COMPANIES))
+    params_u = list(LEAVE_EXCLUDE_COMPANIES)
     if sel_dept:
         dept_codes = [k for k, v in DEPT_MAP.items() if v == sel_dept]
         if dept_codes:
@@ -5987,6 +7144,12 @@ def annual_leave():
             "id": uid, "name": uname, "dept": dept,
             "total": total, "used": used_final, "remain": remain, "memo": memo,
             "deduct_prev": deduct_prev, "generated": generated,
+            # ERP 에 발생이 없어(generated=0) 회계연도 기준으로 수기 산정한 사람.
+            # 그대로 두면 '발생 0 + 차감 0 인데 사용가능 19' 로 셈이 안 맞아 보인다.
+            # memo 가 '수기' 여도 ERP 발생이 정상인 사람(계획서 등록분)은 대상이 아니다.
+            "manual_grant": (str(memo or "").startswith("수기")
+                             and float(generated or 0) == 0
+                             and float(total or 0) > 0),
             "months": sm.get("months", [0]*12),
             "days": days,
         })
@@ -6011,6 +7174,8 @@ def annual_leave():
                            first_wd=first_wd,
                            total_emp=total_emp,
                            can_edit=_has_perm("leave"),
+                           leave_locked=LEAVE_ENTRY_LOCKED,
+                           leave_lock_msg=LEAVE_LOCK_MSG,
                            user_eid=session.get("e_id"),
                            is_lp_member=is_lp_member,
                            pending_count=pending_count,
@@ -6030,6 +7195,9 @@ def save_leave_record():
         leave_date = str(data["date"])
         leave_type = str(data.get("type", "연차"))
         action = str(data.get("action", "add"))
+        # 넣는 것만 막는다. 지우는 건 잘못 들어간 걸 치울 수 있어야 하므로 그대로 둔다.
+        if LEAVE_ENTRY_LOCKED and action != "delete":
+            return jsonify({"ok": False, "error": LEAVE_LOCK_MSG}), 403
         conn = _conn(); cur = conn.cursor()
         if action == "delete":
             cur.execute("DELETE FROM leave_records WHERE e_id=%s AND leave_date=%s AND leave_type=%s",
@@ -6070,8 +7238,8 @@ def save_leave_record():
         row = cur.fetchone()
         e_name = row[0] if row else ""
         cur.execute("""
-            INSERT INTO annual_leave (e_id, e_name, year, used, m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
-            VALUES (%s, %s, %s, %s, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO annual_leave (e_id, e_name, year, used, total, m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
+            VALUES (%s, %s, %s, %s, 0, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON DUPLICATE KEY UPDATE used=%s, e_name=%s,
                 m1=%s,m2=%s,m3=%s,m4=%s,m5=%s,m6=%s,m7=%s,m8=%s,m9=%s,m10=%s,m11=%s,m12=%s,
                 updated_at=NOW()
@@ -6095,6 +7263,8 @@ def save_leave_record():
 @_login_required
 def request_leave():
     """일반 직원 연차 신청 (단일 또는 복수 날짜, 대기 상태로 저장)"""
+    if LEAVE_ENTRY_LOCKED:
+        return jsonify({"ok": False, "error": LEAVE_LOCK_MSG}), 403
     try:
         data = request.get_json()
         e_id = session.get("e_id")
@@ -6155,6 +7325,603 @@ def cancel_leave_request():
         return jsonify({"ok": True})
     except Exception as ex:
         return jsonify({"ok": False, "error": str(ex)}), 500
+
+
+def _erp_conn():
+    """영림원 ERP(MS SQL) 읽기 전용 연결. 컨테이너에서만 접근 가능(사내망)."""
+    import pymssql
+    return pymssql.connect(
+        server=os.environ["ERP_DB_HOST"], port=int(os.environ.get("ERP_DB_PORT", 14233)),
+        user=os.environ["ERP_DB_USER"], password=os.environ["ERP_DB_PASSWORD"],
+        database=os.environ.get("ERP_DB_NAME", "TAEIN"), charset="UTF-8", timeout=15,
+        login_timeout=10)
+
+
+# 휴가항목 → ERP WkItemSeq 매핑 (연차만 확인됨; 나머지는 확인되는 대로 추가)
+_ERP_VAC_WKITEM = {"연차": 1001}
+
+
+def _leave_erp_pending(days_back=45, days_fwd=60):
+    """우리 승인휴가 ↔ ERP 입력분 대조 → ERP 미입력분을 사원·기간 단위로 반환.
+    화면(/leave_erp)과 자동입력 봇(/api/leave_erp_pending)이 같은 로직을 쓴다."""
+    from datetime import date as _date, datetime as _dt, timedelta as _tdelta
+    from collections import defaultdict as _dd
+
+    today = _date.today()
+    frm = (today - _tdelta(days=days_back)).strftime("%Y%m%d")
+    to = (today + _tdelta(days=days_fwd)).strftime("%Y%m%d")
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT lr.e_id, u.name, u.idno, u.company, lr.leave_date, lr.leave_type,
+                          DATE(lr.created_at)
+                   FROM leave_records lr LEFT JOIN tuser u ON lr.e_id=u.id
+                   WHERE lr.status='승인' AND lr.leave_date BETWEEN %s AND %s
+                     AND IFNULL(lr.memo,'') <> '테스트제외'
+                   ORDER BY u.name, lr.leave_type, lr.leave_date""", (frm, to))
+    ours = cur.fetchall()
+    conn.close()
+
+    erp_ok = True; erp_err = ""
+    by_empid = {}; erp_set = set()
+    try:
+        ec = _erp_conn(); ecur = ec.cursor()
+        ecur.execute("SELECT EmpSeq, Empid FROM _TDAEmp")
+        for seq, empid in ecur.fetchall():
+            if empid:
+                by_empid[str(empid).strip()] = seq
+        ecur.execute("""SELECT d.EmpSeq, d.VacDate FROM _TXPRWkVactionAppDtl d
+                        JOIN _TXPRWkVactionApp m ON d.VacAppSeq=m.VacAppSeq
+                        WHERE (m.IsCancel IS NULL OR m.IsCancel<>'1') AND d.VacDate BETWEEN %s AND %s""",
+                     (frm, to))
+        erp_set = {(r[0], str(r[1]).strip()) for r in ecur.fetchall()}
+        ec.close()
+    except Exception as e:
+        erp_ok = False; erp_err = str(e)[:150]
+
+    DOW = ["월", "화", "수", "목", "금", "토", "일"]
+    recs = []; matched = 0; missing_n = 0; nomap = 0
+    app_of = {}          # (사번, 휴가일) → 신청일(휴가 신청 등록일)
+    for e_id, name, idno, company, ldate, ltype, cdate in ours:
+        app_of[(idno, ldate)] = cdate
+        empseq = by_empid.get(str(idno).strip()) if idno else None
+        in_erp = False
+        if erp_ok:
+            if empseq is None:
+                nomap += 1
+            elif (empseq, ldate) in erp_set:
+                in_erp = True
+        if in_erp:
+            matched += 1
+        else:
+            missing_n += 1
+        recs.append((name or f"ID-{e_id}", idno or "", ldate, ltype, in_erp))
+
+    # 사원·휴가항목·ERP등록여부가 같은 것끼리 묶어야 상태가 섞이지 않는다
+    grp = _dd(list)
+    for name, idno, ldate, ltype, in_erp in recs:
+        grp[(name, idno, ltype, in_erp)].append(ldate)
+
+    def _dow(d):
+        return DOW[_dt.strptime(d, "%Y%m%d").weekday()]
+
+    rows = []
+    for (name, idno, ltype, in_erp), dates in grp.items():
+        dates = sorted(set(dates))
+        seg = [dates[0]]; segs = []
+        for prev, cur_d in zip(dates, dates[1:]):
+            if _dt.strptime(cur_d, "%Y%m%d") - _dt.strptime(prev, "%Y%m%d") == _tdelta(days=1):
+                seg.append(cur_d)
+            else:
+                segs.append(seg); seg = [cur_d]
+        segs.append(seg)
+        for s in segs:
+            st, en = s[0], s[-1]
+            # 신청일 = 해당 구간 휴가들의 가장 이른 등록일 (없으면 시작일로 대체)
+            cands = [app_of.get((idno, d)) for d in s]
+            cands = [c for c in cands if c]
+            app_dt = min(cands).isoformat() if cands else f"{st[:4]}-{st[4:6]}-{st[6:]}"
+            rows.append({
+                "name": name, "emp_no": idno, "leave_type": ltype,
+                "wkitem": _ERP_VAC_WKITEM.get(ltype, ""),
+                "fr": st, "to": en,
+                "fr_fmt": f"{st[:4]}-{st[4:6]}-{st[6:]}", "to_fmt": f"{en[:4]}-{en[4:6]}-{en[6:]}",
+                "app_date": app_dt,
+                "days": len(s),
+                "dow": _dow(st) if st == en else f"{_dow(st)}~{_dow(en)}",
+                "same": st == en,
+                "in_erp": in_erp,
+            })
+    # 미등록을 위로, 그 다음 날짜순
+    rows.sort(key=lambda r: (r["in_erp"], r["fr"], r["name"]))
+    return {"rows": rows, "erp_ok": erp_ok, "erp_err": erp_err,
+            "total_ours": len(ours), "matched": matched,
+            "missing_cnt": missing_n, "nomap": nomap,
+            "frm": frm, "to": to, "today": today.isoformat()}
+
+
+@app.route("/api/leave_erp_pending")
+@_login_required
+def api_leave_erp_pending():
+    """자동입력 봇이 읽는 대상자 목록 (ERP 미입력 승인휴가)."""
+    if session.get("role") != "admin" and not _has_perm("leave_erp") and not _has_perm("leave"):
+        return jsonify({"error": "권한 없음"}), 403
+    return jsonify(_leave_erp_pending())
+
+
+# ── 연차휴가사용계획서(엑셀) 읽기 ────────────────────────────
+# 계획서 달력에 도형으로 표시한다: 동그라미=연차(1일), 삼각형=반차(0.5일).
+# 달력 칸 밖의 도형은 범례이므로 세지 않는다.
+# openpyxl 은 도형을 못 읽어서 xlsx(zip) 안의 drawing XML 을 직접 파싱한다.
+_PLAN_SHAPE = {"ellipse": "연차", "triangle": "반차"}
+_PLAN_UNIT = {"연차": 1.0, "반차": 0.5}
+
+
+def _parse_leave_plan(src, year=None, filename=""):
+    """계획서 엑셀 → {name, dept, year, rows:[{date,type,days}], total, warn[...]}
+
+    연도는 자동 인식한다 — 시트명('사무기술 2026') → 파일명('…20260223.xlsx') 순.
+    달력 칸에는 '일' 숫자만 있어서 연도를 못 붙이면 작년 계획서가 올해로 들어간다.
+    시트가 스스로 가진 검산표(월별 사용계획·사용연차 ⓐ)와도 대조해,
+    도형을 잘못 읽으면 조용히 넘어가지 않고 warn 에 남긴다."""
+    import re as _re
+    import zipfile as _zip
+    from openpyxl import load_workbook
+
+    z = _zip.ZipFile(src)
+    wbx = z.read("xl/workbook.xml").decode("utf-8")
+    rl = z.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+    tgt = dict(_re.findall(r'Id="(rId\d+)"[^>]*Target="([^"]+)"', rl))
+    sheet_dwg = {}
+    for nm, rid in _re.findall(r'<sheet name="([^"]+)"[^>]*r:id="(rId\d+)"', wbx):
+        m = _re.search(r"sheet(\d+)\.xml", tgt.get(rid, ""))
+        if not m:
+            continue
+        try:
+            sr = z.read(f"xl/worksheets/_rels/sheet{m.group(1)}.xml.rels").decode("utf-8")
+        except KeyError:
+            continue
+        d = _re.search(r'Target="[^"]*?(drawing\d+\.xml)"', sr)
+        if d:
+            sheet_dwg[nm] = d.group(1)
+
+    try:
+        src.seek(0)
+    except AttributeError:
+        pass
+    wb = load_workbook(src, data_only=True)
+
+    name = dept = ""
+    marks, warn = set(), []
+    plan_m, plan_total = {}, None
+
+    # ── 연도 자동 인식 (날짜를 만들기 전에 정해야 한다) ──
+    year_src = ""
+    sheet_year = None
+    for sn in wb.sheetnames:
+        my = _re.search(r"(20\d{2})", sn)
+        if my:
+            sheet_year = int(my.group(1)); year_src = f"시트명 '{sn}'"
+            break
+    file_year = None
+    mf = _re.search(r"(20\d{2})", filename or "")
+    if mf:
+        file_year = int(mf.group(1))
+    if sheet_year:
+        year = sheet_year
+    elif file_year:
+        year = file_year; year_src = f"파일명 '{filename}'"
+    else:
+        year = year or datetime.now().year
+        year_src = "자동 인식 실패 — 올해로 처리"
+        warn.append("엑셀에서 연도를 찾지 못해 올해로 읽었습니다. 날짜를 꼭 확인하세요.")
+    if sheet_year and file_year and sheet_year != file_year:
+        warn.append(f"시트명은 {sheet_year}년, 파일명은 {file_year}년입니다 "
+                    f"— 시트명 기준 {sheet_year}년으로 읽었습니다")
+
+    for sn in wb.sheetnames:
+        if "계획서" not in sn:
+            continue
+        ws = wb[sn]
+        # 소속·성명 (라벨 오른쪽 첫 값). '지 창 구' 처럼 띄어 쓴 경우가 있어 공백 제거
+        for r in range(1, min(16, ws.max_row + 1)):
+            for c in range(1, min(20, ws.max_column + 1)):
+                lab = str(ws.cell(r, c).value or "").replace(" ", "")
+                if lab not in ("소속", "성명"):
+                    continue
+                for c2 in range(c + 1, min(c + 6, ws.max_column + 1)):
+                    v = str(ws.cell(r, c2).value or "").strip().replace(" ", "")
+                    if v:
+                        if lab == "소속" and not dept:
+                            dept = v
+                        elif lab == "성명" and not name:
+                            name = v
+                        break
+
+        # 달력: 'N월' 라벨이 나오면 그 아래 두 줄이 그 달의 날짜 칸
+        cell_day, cur_m = {}, None
+        for r in range(1, ws.max_row + 1):
+            m = _re.match(r"^(\d{1,2})월$", str(ws.cell(r, 2).value or "").strip())
+            if m:
+                cur_m = int(m.group(1))
+            if cur_m is None:
+                continue
+            for c in range(4, ws.max_column + 1):
+                try:
+                    d = int(float(ws.cell(r, c).value))
+                except (TypeError, ValueError):
+                    continue
+                if 1 <= d <= 31:
+                    cell_day[(r, c)] = (cur_m, d)
+
+        # 아래쪽 검산표: 'N월' 라벨 아래칸 = 계획일수 / '사용연차' 아래칸 = 합계
+        for r in range(1, ws.max_row + 1):
+            for c in range(1, ws.max_column + 1):
+                lab = str(ws.cell(r, c).value or "").replace(" ", "").replace("\n", "")
+                mm = _re.match(r"^(\d{1,2})월$", lab)
+                if mm:
+                    try:
+                        n = float(ws.cell(r + 1, c).value)
+                    except (TypeError, ValueError):
+                        continue
+                    if n > 0:
+                        k = int(mm.group(1))
+                        plan_m[k] = max(plan_m.get(k, 0), n)
+                elif lab.startswith("사용연차"):
+                    # (하) 시트 합계는 상반기까지 누계라 더 크다. 빈 시트의 0 에 덮이면 안 된다
+                    try:
+                        v = float(ws.cell(r + 1, c).value)
+                    except (TypeError, ValueError):
+                        continue
+                    plan_total = v if plan_total is None else max(plan_total, v)
+
+        dwg = sheet_dwg.get(sn)
+        if not dwg:
+            continue
+        x = z.read(f"xl/drawings/{dwg}").decode("utf-8")
+        for mm in _re.finditer(r"<xdr:twoCellAnchor.*?</xdr:twoCellAnchor>", x, _re.S):
+            s = mm.group(0)
+            g = _re.search(r'prstGeom prst="(\w+)"', s)
+            kind = _PLAN_SHAPE.get(g.group(1)) if g else None
+            if kind is None:
+                continue
+            fr = _re.search(r"<xdr:from>\s*<xdr:col>(\d+)</xdr:col>.*?<xdr:row>(\d+)</xdr:row>",
+                            s, _re.S)
+            if not fr:
+                continue
+            # 도형 앵커는 0-based, openpyxl 은 1-based
+            md = cell_day.get((int(fr.group(2)) + 1, int(fr.group(1)) + 1))
+            if md is None:
+                continue          # 달력 칸 밖 = 범례
+            # 실제로 있는 날짜인지 확인한다. 양식을 다른 해에서 복사해 쓰면
+            # 4월 31일·평년 2월 29일 같은 칸이 남아 엉뚱한 날짜가 만들어진다.
+            try:
+                datetime(year, md[0], md[1])
+            except ValueError:
+                warn.append(f"{year}년 {md[0]}월 {md[1]}일은 없는 날짜입니다 — 제외")
+                continue
+            marks.add((f"{year}{md[0]:02d}{md[1]:02d}", kind))
+
+    got = {}
+    for d, k in marks:
+        mo = int(d[4:6])
+        got[mo] = got.get(mo, 0) + _PLAN_UNIT[k]
+    for mo in sorted(set(plan_m) | set(got)):
+        a, b = plan_m.get(mo, 0), got.get(mo, 0)
+        if abs(a - b) > 0.01:
+            warn.append(f"{mo}월 계획표 {a:g}일 ≠ 도형 {b:g}일")
+    total = sum(_PLAN_UNIT[k] for _, k in marks)
+    if plan_total is not None and abs(plan_total - total) > 0.01:
+        warn.append(f"사용연차 합계 {plan_total:g}일 ≠ 도형 {total:g}일")
+
+    return {"name": name, "dept": dept, "total": total, "warn": warn,
+            "year": year, "year_src": year_src,
+            "rows": [{"date": d, "type": k, "days": _PLAN_UNIT[k]}
+                     for d, k in sorted(marks)]}
+
+
+def _leave_grant_calc(ent, year):
+    """회사 연차 기준으로 그 해 부여일수를 산정한다 (2026-08-04 사용자 제시 기준).
+
+    회계연도(1/1) 기준. 3년치 ERP 402건으로 검증(2025·2026 구간 93~96% 일치).
+      ① 입사 당해연도  → 0. 회사는 ERP 에 입사연도 발생을 등록하지 않는다(18명 전원 0)
+      ② 입사 다음 해   → 전년 월할발생 + 회계연도 비례분
+      ③ 그 이후        → 15 + (근속연수-1)//2, 최대 25 (근속연수 = 전년 12/31 기준)
+    이월 = 11 - 월할발생. 1년 미만 11일 중 그 해에 도래하지 못한 몫이다.
+    """
+    if not ent or len(ent) != 8:
+        return None
+    ey, em, ed = int(ent[:4]), int(ent[4:6]), int(ent[6:8])
+    if ey > year:
+        return None
+    monthly = min(11, max(0, 12 - em))
+    carry = 11 - monthly
+    if ey in (year, year - 1):
+        # 1년 미만 산정 — 월할발생 + 회계연도 비례분. 두 해 모두 '입사연도' 기준으로 센다.
+        # 입사 당해연도(①)는 ERP 에 등록되지 않고 다음 회계연도 1/1 에 지급되지만,
+        # 총무부가 참고하는 표라 '얼마가 산정되는지'를 보여준다.
+        try:
+            days = (date(ey, 12, 31) - date(ey, em, ed)).days + 1
+        except ValueError:
+            return None
+        fiscal = round(15 * days / 365)
+        return {"tag": "①입사년" if ey == year else "②2년차",
+                "monthly": monthly, "fiscal": fiscal,
+                "grant": float(monthly + fiscal), "carry": carry,
+                "years": 0 if ey == year else 1,
+                "next_year": ey == year}
+    # ③ 1년 이상 — 근속 가산 + '1년 미만 11일' 중 아직 못 준 이월분
+    # 11일은 입사 다음달부터 11개월에 걸쳐 도래하는데, 회계연도 도래시까지만 지급하고
+    # 남은 몫을 다음 회계연도에 준다. 그래서 2024년 입사자가 2026년에 15가 아니라
+    # 20~26 을 받는다 (3년치 검증에서 이 이월을 빼면 +8~+11 씩 어긋났다).
+    def _acc(upto):
+        return max(0, min(11, (upto - ey) * 12 + (12 - em)))
+
+    n = (year - 1) - ey
+    fiscal = min(25, 15 + max(0, (n - 1) // 2))
+    monthly = _acc(year - 1) - _acc(year - 2)
+    return {"tag": "③이후", "monthly": monthly, "fiscal": fiscal,
+            "grant": float(monthly + fiscal), "carry": 11 - _acc(year - 1),
+            "years": n}
+
+
+@app.route("/leave_calc")
+@_login_required
+def leave_calc():
+    """전사원 연차 산정표 — 회사 기준으로 계산한 값과 시스템 실제값을 나란히 본다.
+    총무부가 연차를 계산할 때 참고하는 화면이라 '왜 이 숫자인지'가 보이게 만든다."""
+    if not (session.get("role") == "admin" or _has_perm("leave")):
+        flash("접근 권한이 없습니다.", "danger")
+        return redirect(url_for("dashboard"))
+    year = int(request.args.get("year") or datetime.now().year)
+    q = (request.args.get("q") or "").strip()
+    f_dept = (request.args.get("dept") or "").strip()
+    f_tag = (request.args.get("tag") or "").strip()      # ①입사년 | ②2년차 | ③이후
+    f_stat = (request.args.get("stat") or "").strip()    # gap(점검) | note(비고) | ok(일치)
+
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""SELECT h.name, h.dept_name, h.ent_date
+                     FROM hr_employees h WHERE h.is_active=1 AND h.ent_date<>''
+                    ORDER BY h.ent_date, h.name""")
+    hr = cur.fetchall()
+    cur.execute("""SELECT u.name, a.total, a.used, a.generated, a.deduct_prev, IFNULL(a.memo,'')
+                     FROM annual_leave a JOIN tuser u ON u.id=a.e_id WHERE a.year=%s""", (year,))
+    db = {r[0]: r[1:] for r in cur.fetchall()}
+    # 연차 관리 대상이 아닌 부서 (다른 연차 화면과 같은 기준)
+    ph = ",".join(["%s"] * len(LEAVE_EXCLUDE_COMPANIES))
+    cur.execute("SELECT name FROM tuser WHERE IFNULL(company,'') IN (%s)" % ph,
+                LEAVE_EXCLUDE_COMPANIES)
+    excluded = {r[0] for r in cur.fetchall()}
+    conn.close()
+
+    dept_list = sorted({(d or "미지정") for _, d, _ in hr})
+    rows, s = [], {"n": 0, "grant": 0.0, "used": 0.0, "carry": 0}
+    for nm, dept, ent in hr:
+        if q and q not in (nm or "") and q not in (dept or ""):
+            continue
+        if f_dept and (dept or "미지정") != f_dept:
+            continue
+        c = _leave_grant_calc(ent, year)
+        if c is None:
+            continue
+        if f_tag and c["tag"] != f_tag:
+            continue
+        d = db.get(nm)
+        cur_total = float(d[0] or 0) if d else None
+        used = float(d[1] or 0) if d else 0.0
+        gen = float(d[2] or 0) if d else 0.0
+        deduct = float(d[3] or 0) if d else 0.0   # 전년도에서 당겨 쓴 양 (음수)
+        memo = d[4] if d else ""
+        # 시스템 '사용가능' = 발생 + 전년차감. 산정값도 같은 식으로 맞춰야 비교가 된다.
+        avail = c["grant"] + deduct
+        # 차이가 나도 이상한 게 아닌 사람들 — 이유를 적어 두고 '점검 대상' 집계에서 뺀다.
+        # 안 그러면 차이 62명처럼 부풀려져 진짜 볼 것을 못 찾는다.
+        if nm in excluded:
+            note = "연차 관리 제외 부서"
+        elif (dept or "") == "임원":
+            note = "임원 · ERP 연차 미관리"
+        elif "재입사" in str(memo or ""):
+            # 퇴사 후 재입사자 — ERP 는 이전 근속을 승계해 연차를 주는데
+            # 여기 산정은 명부의 (재)입사일만 보므로 차이가 나는 게 정상이다.
+            # 대상자는 annual_leave.memo 에 '재입사' 를 넣어 표시한다. (2026-08-05)
+            note = "재입사 · 근속 승계"
+        elif str(memo or "").startswith("수기"):
+            note = "수기 산정"
+        elif gen == 0 and c["tag"] != "①입사년":
+            note = "ERP 발생 미등록"
+        else:
+            note = ""
+        diff = None if cur_total is None else round(cur_total - avail, 1)
+        if f_stat == "gap" and not (diff and not note):
+            continue
+        if f_stat == "note" and not note:
+            continue
+        if f_stat == "ok" and (diff or note):
+            continue
+        rows.append({
+            "name": nm, "dept": dept or "", "ent": ent, **c,
+            "deduct": deduct, "avail": avail,
+            "used": used, "remain": avail - used,
+            "cur_total": cur_total, "generated": gen, "memo": memo, "note": note,
+            "diff": diff,
+        })
+        s["n"] += 1; s["grant"] += c["grant"]; s["used"] += used; s["carry"] += c["carry"]
+        s["avail"] = s.get("avail", 0.0) + avail
+    s["remain"] = s.get("avail", 0.0) - s["used"]
+    s["gap"] = len([r for r in rows if r["diff"] not in (None, 0) and not r["note"]])
+    s["noted"] = len([r for r in rows if r["note"]])
+
+    return render_template("leave_calc.html", active_page="leave_calc",
+                           rows=rows, year=year, q=q, s=s,
+                           dept_list=dept_list, f_dept=f_dept,
+                           f_tag=f_tag, f_stat=f_stat,
+                           years=[year + 1, year, year - 1, year - 2])
+
+
+def _leave_plan_guard():
+    return (session.get("role") == "admin" or _has_perm("leave_erp") or _has_perm("leave"))
+
+
+@app.route("/leave_plan_import", methods=["POST"])
+@_login_required
+def leave_plan_import():
+    """계획서 엑셀 업로드 → 파싱 결과 미리보기. 이 단계에서는 아무것도 저장하지 않는다."""
+    if not _leave_plan_guard():
+        flash("접근 권한이 없습니다.", "danger")
+        return redirect(url_for("dashboard"))
+    # 연도는 파일마다 엑셀에서 자동 인식한다. 폼 값은 인식 실패 시 대비책일 뿐
+    fallback_year = int(request.form.get("year") or datetime.now().year)
+    files = [f for f in request.files.getlist("files") if f and f.filename]
+    if not files:
+        flash("파일을 선택하세요.", "warning")
+        return redirect(url_for("leave_erp"))
+
+    conn = _conn(); cur = conn.cursor()
+    people = []
+    for f in files:
+        item = {"file": f.filename, "rows": [], "warn": [], "err": "",
+                "name": "", "dept": "", "total": 0, "e_id": None,
+                "year": fallback_year, "year_src": ""}
+        try:
+            p = _parse_leave_plan(f, fallback_year, f.filename)
+        except Exception as ex:
+            item["err"] = f"엑셀을 읽지 못했습니다: {str(ex)[:120]}"
+            people.append(item); continue
+        year = p["year"]
+        item.update({"name": p["name"], "dept": p["dept"], "total": p["total"],
+                     "warn": p["warn"], "year": year, "year_src": p["year_src"]})
+        if not p["name"]:
+            item["err"] = "계획서에서 성명을 찾지 못했습니다."
+            people.append(item); continue
+        if not p["rows"]:
+            item["err"] = "달력에 표시된 연차(동그라미)·반차(삼각형)가 없습니다."
+            people.append(item); continue
+        # 이름으로 사원 찾기. 동명이인이면 사람이 판단해야 하므로 중단한다
+        cur.execute("SELECT id FROM tuser WHERE name=%s", (p["name"],))
+        hit = cur.fetchall()
+        if len(hit) != 1:
+            item["err"] = ("사원을 찾지 못했습니다." if not hit
+                           else f"같은 이름이 {len(hit)}명이라 자동 매칭할 수 없습니다.")
+            people.append(item); continue
+        item["e_id"] = hit[0][0]
+        cur.execute("""SELECT leave_date, leave_type FROM leave_records
+                        WHERE e_id=%s AND LEFT(leave_date,4)=%s""", (item["e_id"], str(year)))
+        exist = {r[0]: r[1] for r in cur.fetchall()}
+        # 요일·휴일 표시 — 양식을 다른 해에서 복사해 쓰면 요일 배치가 어긋나
+        # 토·일·공휴일에 동그라미가 남는다. 미리보기에서 눈에 띄어야 잡을 수 있다.
+        DOWK = ["월", "화", "수", "목", "금", "토", "일"]
+        for x in p["rows"]:
+            x = dict(x)
+            x["exist"] = exist.get(x["date"], "")
+            x["skip"] = bool(x["exist"])
+            _d = datetime.strptime(x["date"], "%Y%m%d").date()
+            x["dow"] = DOWK[_d.weekday()]
+            x["hol"] = KR_HOLIDAYS.get(_d) or ""
+            x["off"] = bool(x["hol"]) or _d.weekday() >= 5
+            item["rows"].append(x)
+        item["off_cnt"] = len([x for x in item["rows"] if x["off"] and not x["skip"]])
+        people.append(item)
+    conn.close()
+
+    return render_template("leave_plan_import.html", active_page="leave_erp",
+                           people=people,
+                           payload=json.dumps(people, ensure_ascii=False))
+
+
+@app.route("/leave_plan_apply", methods=["POST"])
+@_login_required
+def leave_plan_apply():
+    """미리보기에서 확인한 내용을 leave_records 에 '승인'으로 등록.
+
+    memo 는 '계획서' 로 남긴다 — erp_leave_sync 가 매일 밤 memo='ERP' 인 행만 지우므로
+    이 표시가 있어야 살아남는다. 등록되면 휴가 ERP 이관 목록에 '미등록'으로 뜬다."""
+    if not _leave_plan_guard():
+        return jsonify(ok=False, error="권한이 없습니다."), 403
+    try:
+        people = json.loads(request.form.get("payload") or "[]")
+    except ValueError:
+        flash("전달된 내용을 읽지 못했습니다.", "danger")
+        return redirect(url_for("leave_erp"))
+
+    conn = _conn(); cur = conn.cursor()
+    added = skipped = 0
+    who = []
+    for it in people:
+        if it.get("err") or not it.get("e_id"):
+            continue
+        n_add = 0
+        for x in it.get("rows", []):
+            if x.get("skip"):
+                skipped += 1
+                continue
+            cur.execute("""INSERT IGNORE INTO leave_records
+                               (e_id, leave_date, leave_type, status, memo)
+                           VALUES (%s,%s,%s,'승인','계획서')""",
+                        (it["e_id"], x["date"], x["type"]))
+            if cur.rowcount:
+                n_add += 1
+            else:
+                skipped += 1
+        if n_add:
+            # annual_leave 는 건드리지 않는다. 그쪽 used 는 ERP 가 정본이라
+            # erp_leave_sync 가 매일 채운다. 여기서 손대면 ERP 값과 싸운다.
+            who.append(f"{it['name']} {n_add}건")
+        added += n_add
+    conn.commit(); conn.close()
+    flash(f"등록 {added}건 · 건너뜀 {skipped}건" + (f" — {', '.join(who)}" if who else ""),
+          "success" if added else "warning")
+    return redirect(url_for("leave_erp", scope="all", stat="pending"))
+
+
+@app.route("/leave_erp")
+@_login_required
+def leave_erp():
+    """우리 시스템 '승인' 휴가 vs 영림원 ERP 입력분 대조 → ERP 미입력분만 표시.
+    담당자의 '일괄 취합+대조' 수고를 없앤다. ERP가 정본이라 입력하면 목록에서 자동 사라짐."""
+    if session.get("role") != "admin" and not _has_perm("leave_erp") and not _has_perm("leave"):
+        flash("접근 권한이 없습니다.", "danger")
+        return redirect(url_for("dashboard"))
+    from datetime import date as _date
+    # 조회기간: 기본 45일 전 ~ 60일 후 / year=1년치 (누락분 소급 등록용)
+    rng = (request.args.get("range") or "").strip()
+    # 앞으로도 1년을 봐야 한다 — 계획서는 연초에 그해 12월까지 한 번에 올라온다.
+    # 향후 60일만 보면 하반기 계획이 목록에서 통째로 빠진다.
+    d = (_leave_erp_pending(days_back=365, days_fwd=365) if rng == "year"
+         else _leave_erp_pending(days_back=45))
+    # ── 검색/필터 ──
+    q = (request.args.get("q") or "").strip()
+    scope = (request.args.get("scope") or "today").strip()    # all | today | week
+    stat = (request.args.get("stat") or "all").strip()        # all | pending | done
+    today_str = _date.today().strftime("%Y%m%d")
+    rows = d["rows"]
+    if scope == "today":
+        rows = [r for r in rows if r["fr"] <= today_str <= r["to"]]
+    elif scope == "week":
+        # 지난 7일 ~ 향후 7일. 휴가는 지나간 날짜를 소급 입력하는 일이 잦아
+        # 오늘 이후만 보면 어제·그제 미입력분이 목록에서 빠진다
+        # (2026-08-04: 미입력 9건이 전부 전날 것이라 목록이 비어 보였다).
+        from datetime import timedelta as _td2
+        wk_fr = (_date.today() - _td2(days=7)).strftime("%Y%m%d")
+        wk_to = (_date.today() + _td2(days=7)).strftime("%Y%m%d")
+        rows = [r for r in rows if r["fr"] <= wk_to and r["to"] >= wk_fr]
+    if q:
+        rows = [r for r in rows
+                if q in (r["name"] or "") or q in (r["emp_no"] or "")]
+    if stat == "pending":
+        rows = [r for r in rows if not r["in_erp"]]
+    elif stat == "done":
+        rows = [r for r in rows if r["in_erp"]]
+    d["rows_all_cnt"] = len(d["rows"])
+    today_rows = [r for r in d["rows"] if r["fr"] <= today_str <= r["to"]]
+    d["today_cnt"] = len(today_rows)
+    d["today_pending"] = len([r for r in today_rows if not r["in_erp"]])
+    d["view_pending"] = len([r for r in rows if not r["in_erp"]])
+    d["view_done"] = len([r for r in rows if r["in_erp"]])
+    d["rows"] = rows
+    d["q"] = q
+    d["scope"] = scope
+    d["stat"] = stat
+    d["rng"] = rng
+    return render_template("leave_erp.html", **d)
 
 
 @app.route("/leave_approval")
@@ -6444,7 +8211,8 @@ def process_leave_request():
                         ON DUPLICATE KEY UPDATE category='기타', etc_value=%s, deduction=0, skipped=0
                     """, (rpt_id, e_id, e_name, leave_cat, leave_cat))
                     # 이미 결재된 보고서면 schedule_record에도 반영
-                    if rpt_status == '결재':
+                    # (연습용 작성자는 제외 — 근무표 엑셀에서만 적재한다)
+                    if rpt_status == '결재' and e_name not in WR_NO_APPLY_NAMES:
                         cur.execute("SELECT group_name FROM wr_groups WHERE id=%s", (req_group_id,))
                         gn = cur.fetchone()
                         sname = gn[0] if gn else '기타'
@@ -6499,8 +8267,8 @@ def process_leave_request():
             m_idx = int(ld[4:6]) - 1
             month_used[m_idx] += v
         cur.execute("""
-            INSERT INTO annual_leave (e_id, e_name, year, used, m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
-            VALUES (%s, %s, %s, %s, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO annual_leave (e_id, e_name, year, used, total, m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
+            VALUES (%s, %s, %s, %s, 0, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON DUPLICATE KEY UPDATE used=%s, e_name=%s,
                 m1=%s,m2=%s,m3=%s,m4=%s,m5=%s,m6=%s,m7=%s,m8=%s,m9=%s,m10=%s,m11=%s,m12=%s,
                 updated_at=NOW()
@@ -6593,14 +8361,14 @@ def save_annual_leave():
             """, (e_id, e_name, year, float(value), float(value), e_name))
         elif field == "used":
             cur.execute("""
-                INSERT INTO annual_leave (e_id, e_name, year, used)
-                VALUES (%s,%s,%s,%s)
+                INSERT INTO annual_leave (e_id, e_name, year, used, total)
+                VALUES (%s,%s,%s,%s,0)
                 ON DUPLICATE KEY UPDATE used=%s, e_name=%s, updated_at=NOW()
             """, (e_id, e_name, year, float(value), float(value), e_name))
         elif field == "memo":
             cur.execute("""
-                INSERT INTO annual_leave (e_id, e_name, year, memo)
-                VALUES (%s,%s,%s,%s)
+                INSERT INTO annual_leave (e_id, e_name, year, memo, total)
+                VALUES (%s,%s,%s,%s,0)
                 ON DUPLICATE KEY UPDATE memo=%s, e_name=%s, updated_at=NOW()
             """, (e_id, e_name, year, str(value), str(value), e_name))
         else:
@@ -6820,10 +8588,77 @@ def delete_meal_notice():
         return jsonify({"ok": False, "error": str(ex)}), 500
 
 
+@app.route("/erp_api_test")
+@_login_required
+def erp_api_test():
+    """ERP K-System OpenAPI 호출 테스트 화면.
+
+    영림원 [Ksystem API 등록] 에 공개한 호출ID / OpenApi명을 여기서 직접 두드려 본다.
+    운영 로직에 붙이기 전에 규격·응답 확인 용도.
+    """
+    if not _menu_perm("erp_api_test"):
+        flash("접근 권한이 없습니다.", "danger"); return redirect("/")
+    return render_template("erp_api_test.html", active_page="erp_api_test")
+
+
+@app.route("/api/erp_api_call", methods=["POST"])
+@_login_required
+def api_erp_api_call():
+    """테스트 화면에서 넘어온 값으로 ERP OpenAPI 를 호출하고 원문을 그대로 돌려준다."""
+    if session.get("role") != "admin":
+        return jsonify({"ok": False, "error": "권한 없음"}), 403
+    import json as _json
+
+    import requests as _requests
+
+    d = request.get_json(silent=True) or {}
+    mode = (d.get("mode") or "sp").strip()          # sp | service
+    name = (d.get("name") or "").strip()            # 호출ID 또는 OpenApi명
+    if not name:
+        return jsonify({"ok": False, "error": "호출ID(또는 OpenApi명)를 입력하세요"}), 400
+    try:
+        blocks = _json.loads(d.get("datablocks") or "{}")
+    except Exception as ex:
+        return jsonify({"ok": False, "error": f"DataBlock JSON 오류: {ex}"}), 400
+
+    base = os.environ.get("ERP_API_BASE", "")
+    cert_id = os.environ.get("ERP_API_CERT_ID", "")
+    cert_key = os.environ.get("ERP_API_CERT_KEY", "")
+    if not base or not cert_id or not cert_key:
+        return jsonify({"ok": False, "error": ".env 에 ERP_API_BASE / CERT_ID / CERT_KEY 가 필요합니다"}), 500
+
+    # SP 방식은 IsStoredProcedure, 서비스 방식은 세그먼트가 다르다(확인되면 고정한다).
+    seg = "IsStoredProcedure" if mode == "sp" else (d.get("segment") or "IsService").strip()
+    url = f"{base}/OpenApi/{seg}/{name}"
+    payload = {"ROOT": {
+        "certId": cert_id, "certKey": cert_key,
+        "dsnOper": os.environ.get("ERP_API_DSN_OPER", "taein_oper"),
+        "dsnBis": os.environ.get("ERP_API_DSN_BIS", "taein_bis"),
+        "companySeq": os.environ.get("ERP_API_COMPANY_SEQ", "1"),
+        "languageSeq": 1, "securityType": 0,
+        "userId": (d.get("user_id") or "").strip(),
+        "data": {"ROOT": blocks or {"DataBlock1": [{}]}},
+    }}
+    try:
+        r = _requests.post(url, headers={"Content-Type": "application/json"},
+                           json=payload, timeout=60)
+        try:
+            body = r.json()
+        except Exception:
+            body = r.text
+        # 자격증명은 화면으로 돌려보내지 않는다
+        shown = _json.loads(_json.dumps(payload))
+        shown["ROOT"]["certKey"] = "***"
+        return jsonify({"ok": True, "url": url, "status": r.status_code,
+                        "request": shown, "response": body})
+    except Exception as ex:
+        return jsonify({"ok": False, "url": url, "error": str(ex)}), 500
+
+
 @app.route("/dev_history")
 @_login_required
 def dev_history():
-    if session.get("role") != "admin":
+    if not _menu_perm("dev_history"):
         flash("접근 권한이 없습니다.", "danger"); return redirect("/")
     import json as _json
     commits = []
@@ -6850,7 +8685,7 @@ def dev_history():
 @app.route("/log_management")
 @_login_required
 def log_management():
-    if session.get("role") != "admin":
+    if not _menu_perm("log_mgmt"):
         flash("접근 권한이 없습니다.", "danger")
         return redirect(url_for("dashboard"))
     conn = _conn(); cur = conn.cursor()
@@ -7284,7 +9119,7 @@ def api_fire_heartbeat():
 @app.route("/roster")
 @_login_required
 def roster():
-    if session.get("role") != "admin":
+    if not _menu_perm("roster_mgmt"):
         flash("접근 권한이 없습니다.", "danger")
         return redirect(url_for("dashboard"))
     search = request.args.get("search", "").strip()
@@ -7358,7 +9193,7 @@ def roster():
 
 
 @app.route("/upload_roster", methods=["POST"])
-@_admin_required
+@_menu_required("roster_mgmt", "create")
 def upload_roster():
     f = request.files.get("file")
     if not f or not f.filename.endswith((".xlsx", ".xls")):
@@ -7580,6 +9415,7 @@ def submit_doc_request():
     doc_type = request.json.get("doc_type", "").strip()
     purpose = request.json.get("purpose", "").strip()
     memo = request.json.get("memo", "").strip()
+    job_task = request.json.get("job_task", "").strip()
     if not doc_type:
         return jsonify(ok=False, msg="문서 종류를 선택하세요.")
     user_id = session.get("user_id")
@@ -7588,8 +9424,10 @@ def submit_doc_request():
     row = cur.fetchone()
     req_id = row[0] if row and row[0] else user_id
     req_name = row[1] if row else session.get("user_name", "")
-    cur.execute("""INSERT INTO doc_requests (requester_id, requester_name, doc_type, purpose, memo)
-                   VALUES (%s,%s,%s,%s,%s)""", (req_id, req_name, doc_type, purpose, memo))
+    cur.execute("""INSERT INTO doc_requests
+                   (requester_id, requester_name, doc_type, purpose, memo, job_task)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (req_id, req_name, doc_type, purpose, memo, job_task))
     conn.commit(); conn.close()
     return jsonify(ok=True)
 
@@ -7619,6 +9457,34 @@ def update_doc_request():
         file_path = save_name
 
     conn = _conn(); cur = conn.cursor()
+
+    # 담당자가 처리하면서 고친 용도·담당업무를 먼저 반영한다 (문서에 그대로 찍힌다)
+    job_task = request.form.get("job_task", None)
+    purpose_in = request.form.get("purpose", None)
+    if job_task is not None:
+        cur.execute("UPDATE doc_requests SET job_task=%s WHERE id=%s",
+                    (job_task.strip(), req_id))
+    if purpose_in is not None:
+        cur.execute("UPDATE doc_requests SET purpose=%s WHERE id=%s",
+                    (purpose_in.strip(), req_id))
+    if job_task is not None or purpose_in is not None:
+        conn.commit()
+
+    # 완료 처리인데 담당자가 파일을 올리지 않았으면 증명서를 자동 생성한다.
+    # (ERP 재직증명서 양식은 클라이언트 리포트라 받아올 수 없어 여기서 만든다)
+    auto_msg = ""
+    if not file_name and status == "완료":
+        try:
+            file_name, file_path = _make_cert_file(
+                cur, req_id,
+                tax_year=request.form.get("tax_year", "").strip(),
+                resid_id=request.form.get("resid_id", "").strip())
+            if file_name:
+                auto_msg = f"{file_name} 자동 생성"
+        except Exception as e:
+            app.logger.exception("증명서 자동생성 실패")
+            return jsonify(ok=False, msg=f"증명서 생성 실패: {e}")
+
     if file_name:
         cur.execute("""UPDATE doc_requests SET status=%s, reply_memo=%s, handler_name=%s,
                        file_name=%s, file_path=%s WHERE id=%s""",
@@ -7627,7 +9493,117 @@ def update_doc_request():
         cur.execute("""UPDATE doc_requests SET status=%s, reply_memo=%s, handler_name=%s
                        WHERE id=%s""", (status, reply_memo, handler, req_id))
     conn.commit(); conn.close()
-    return jsonify(ok=True)
+    return jsonify(ok=True, msg=auto_msg)
+
+
+def _fmt_resid(v):
+    """주민등록번호 표기 정리 — 숫자 13자리면 '######-#######', 아니면 입력 그대로
+
+    담당자가 하이픈을 넣든 안 넣든 같은 모양으로 찍히게 한다.
+    값은 문서에만 쓰고 어디에도 저장하지 않는다.
+    """
+    s = re.sub(r"\D", "", str(v or ""))
+    if len(s) == 13:
+        return f"{s[:6]}-{s[6:]}"
+    return str(v or "").strip()
+
+
+def _next_issue_no(cur, ym=None):
+    """증명서 발급번호 — ERP IssueNo 체계를 따라 'YYYYMM' + 4자리 일련"""
+    ym = ym or datetime.now().strftime("%Y%m")
+    cur.execute("""SELECT COUNT(*) FROM doc_requests
+                   WHERE status='완료' AND file_path<>''
+                     AND DATE_FORMAT(updated_at,'%%Y%%m')=%s""", (ym,))
+    n = (cur.fetchone()[0] or 0) + 1
+    return f"{ym}{n:04d}"
+
+
+def _make_cert_file(cur, req_id, tax_year="", resid_id=""):
+    """요청 건으로 증명서를 만들어 uploads/documents 에 저장
+
+    → (원본파일명, 저장파일명). 자동 생성 대상이 아니면 ('', '')
+    tax_year: 원천징수영수증의 귀속연도 (담당자가 처리 모달에서 고른다)
+    resid_id: 주민등록번호. ERP 가 뒷자리를 내주지 않아 담당자가 직접 입력한다
+              (2026-08-07 확인 — DB·복호화뷰·OpenAPI 세 경로 모두 마스킹).
+              저장하지 않고 문서에 찍기만 한다.
+    """
+    resid_id = _fmt_resid(resid_id)
+    from cert_pdf import AUTO_DOC_TYPES, build_certificate, safe_filename
+
+    cur.execute("""SELECT requester_name, doc_type, purpose, job_task
+                   FROM doc_requests WHERE id=%s""", (req_id,))
+    row = cur.fetchone()
+    if not row:
+        raise ValueError("요청을 찾을 수 없습니다")
+    emp_name, doc_type, purpose, job_task = row[0], row[1], row[2], (row[3] or "")
+
+    # 원천징수영수증 — ERP 연말정산 확정분으로 생성 (wht_receipt)
+    if doc_type == "원천징수영수증":
+        import wht_receipt
+        cur.execute("""SELECT emp_no FROM employee_roster WHERE name=%s LIMIT 1""",
+                    (emp_name,))
+        er = cur.fetchone()
+        if not er or not er[0]:
+            raise ValueError(f"사원명부에서 '{emp_name}' 의 사번을 찾을 수 없습니다")
+        emp_no = str(er[0]).strip()
+        years = wht_receipt.available_years(emp_no)
+        if not years:
+            raise ValueError(f"'{emp_name}' 의 연말정산 확정 자료가 ERP 에 없습니다")
+        yy = tax_year if tax_year in years else years[0]
+        data, orig = wht_receipt.generate(emp_no, yy, resid_id=resid_id,
+                                          task=job_task)
+        # PDF 변환이 안 되는 환경이면 generate 가 .html 로 돌려준다 — 확장자를 맞춘다
+        ext = os.path.splitext(orig)[1] or ".pdf"
+        save_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{req_id}{ext}"
+        with open(os.path.join(DOC_UPLOAD_DIR, save_name), "wb") as f:
+            f.write(data)
+        return orig, save_name
+
+    if doc_type not in AUTO_DOC_TYPES:
+        return "", ""      # 급여명세서 등은 담당자가 직접 첨부한다
+
+    cur.execute("""SELECT name, name_en, dept, position, hire_date,
+                          address, retire_date
+                   FROM employee_roster WHERE name=%s LIMIT 1""", (emp_name,))
+    er = cur.fetchone()
+    if not er:
+        raise ValueError(f"사원명부에서 '{emp_name}' 을 찾을 수 없습니다")
+    emp = dict(zip(("name", "name_en", "dept", "position",
+                    "hire_date", "address", "retire_date"), er))
+
+    buf = build_certificate(doc_type, emp, purpose=purpose,
+                            issue_no=_next_issue_no(cur), resid_id=resid_id,
+                            task=job_task)
+    orig = safe_filename(doc_type, emp_name)
+    save_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{req_id}.pdf"
+    with open(os.path.join(DOC_UPLOAD_DIR, save_name), "wb") as f:
+        f.write(buf.getvalue())
+    return orig, save_name
+
+
+@app.route("/api/doc_tax_years/<int:req_id>")
+@_login_required
+def api_doc_tax_years(req_id):
+    """원천징수영수증 처리 시 고를 수 있는 귀속연도 (ERP 연말정산 확정분)"""
+    if not _has_perm("document"):
+        return jsonify(ok=False, msg="권한이 없습니다"), 403
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT requester_name FROM doc_requests WHERE id=%s", (req_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify(ok=False, msg="요청을 찾을 수 없습니다")
+    cur.execute("SELECT emp_no FROM employee_roster WHERE name=%s LIMIT 1", (row[0],))
+    er = cur.fetchone()
+    conn.close()
+    if not er or not er[0]:
+        return jsonify(ok=False, msg="사원명부에서 사번을 찾을 수 없습니다")
+    try:
+        import wht_receipt
+        return jsonify(ok=True, years=wht_receipt.available_years(str(er[0]).strip()))
+    except Exception as e:
+        app.logger.exception("귀속연도 조회 실패")
+        return jsonify(ok=False, msg=f"ERP 조회 실패: {e}")
 
 
 @app.route("/get_doc_request/<int:req_id>")
@@ -7635,7 +9611,8 @@ def update_doc_request():
 def get_doc_request(req_id):
     conn = _conn(); cur = conn.cursor()
     cur.execute("""SELECT id, requester_id, requester_name, doc_type, purpose, memo, status,
-                   handler_name, reply_memo, file_name, file_path, created_at, updated_at
+                   handler_name, reply_memo, file_name, file_path, created_at, updated_at,
+                   job_task
                    FROM doc_requests WHERE id=%s""", (req_id,))
     row = cur.fetchone()
     conn.close()
@@ -7656,6 +9633,7 @@ def get_doc_request(req_id):
         "doc_type": row[3], "purpose": row[4], "memo": row[5], "status": row[6],
         "handler_name": row[7], "reply_memo": row[8], "file_name": row[9],
         "file_path": row[10], "created_at": str(row[11]), "updated_at": str(row[12]),
+        "job_task": row[13] or "",
     })
 
 
@@ -7750,7 +9728,20 @@ def work_report():
     recent_mode = "month" not in request.args
     sel_month = request.args.get("month", datetime.now().strftime("%Y-%m"))
     wr_page = max(1, int(request.args.get("wr_page", 1) or 1))
-    WR_PER_PAGE = 10
+    # 목록 필터: 그룹 / 작성자 / 페이지당 건수
+    filter_gid = (request.args.get("fgid") or "").strip()
+    filter_writer = (request.args.get("writer") or "").strip()
+    try:
+        WR_PER_PAGE = int(request.args.get("per_page", 20) or 20)
+    except ValueError:
+        WR_PER_PAGE = 20
+    if WR_PER_PAGE not in (10, 20, 50, 100):
+        WR_PER_PAGE = 20
+    # ── 작성자 목록 (필터 드롭다운용) ──
+    cur.execute("""SELECT created_by_name, COUNT(*) FROM wr_reports
+                   WHERE created_by_name IS NOT NULL AND created_by_name <> ''
+                   GROUP BY created_by_name ORDER BY COUNT(*) DESC""")
+    writer_list = [{"name": r[0], "cnt": int(r[1])} for r in cur.fetchall()]
     # ── 그룹 목록 ──
     cur.execute("SELECT id, group_name, final_step, IFNULL(status,'설정중') FROM wr_groups ORDER BY group_name")
     all_groups = [{"id": r[0], "name": r[1], "final_step": r[2], "status": r[3]} for r in cur.fetchall()]
@@ -7904,6 +9895,17 @@ def work_report():
         if status_filter and status_filter != "all":
             sql += " AND r.status = %s"
             params.append(status_filter)
+        # 그룹 필터
+        if filter_gid:
+            try:
+                sql += " AND r.group_id = %s"
+                params.append(int(filter_gid))
+            except ValueError:
+                pass
+        # 작성자 필터 (드롭다운에서 선택 → 정확히 일치)
+        if filter_writer:
+            sql += " AND r.created_by_name = %s"
+            params.append(filter_writer)
         # ── 내 미결재만: 사용자가 결재자(reviewer)인 보고서 중, 사용자의 결재 이력이 없는 것 ──
         if mine_pending and user_reviewer_rows:
             # 사용자가 결재자인 그룹 ID
@@ -8017,6 +10019,8 @@ def work_report():
                            reports=reports_list, sel_month=sel_month,
                            recent_mode=recent_mode,
                            wr_page=wr_page, wr_total_pages=wr_total_pages, wr_total=wr_total,
+                           filter_gid=filter_gid, filter_writer=filter_writer,
+                           per_page=WR_PER_PAGE, writer_list=writer_list,
                            report_groups=list(report_groups.values()),
                            status_filter=status_filter,
                            mine_pending=mine_pending,
@@ -8337,6 +10341,27 @@ def save_wr_report():
                        and not str(e.get("etc_value", "")).strip()]
         if etc_missing:
             return jsonify(ok=False, msg="기타 항목의 사유가 선택되지 않았습니다: " + ", ".join(etc_missing))
+        # 연차/무급 + 근무 동시배정 차단
+        # 적재 시 휴가가 다른 값을 모두 덮어쓰므로(아래 a["leave"] 보정) 한 사람이
+        # 주간기본과 기타/무급에 함께 들어가면 근무시간이 통째로 0 이 된다.
+        # (2026-07-30 윤경진 8/2/0 → 0/0/0 으로 사라졌고 화면에도 표시되지 않았다)
+        _work_cats = ("주간기본", "주간연장", "야간기본", "야간연장")
+        _by_user = {}
+        for e in entries:
+            if int(e.get("skipped", 0)):
+                continue
+            u = _by_user.setdefault(str(e.get("user_name", "")), {"leave": "", "work": []})
+            _cat = str(e.get("category", ""))
+            _ev = str(e.get("etc_value", "")).strip()
+            if _cat == "기타" and _ev in ("연차", "무급"):
+                u["leave"] = _ev
+            elif _cat in _work_cats:
+                u["work"].append(_cat)
+        both = [f"{nm}({u['leave']}+{'·'.join(u['work'])})"
+                for nm, u in _by_user.items() if u["leave"] and u["work"]]
+        if both:
+            return jsonify(ok=False, msg="연차/무급과 근무가 함께 배정된 인원이 있습니다. "
+                                         "한쪽을 빼주세요: " + ", ".join(both))
         conn = _conn(); cur = conn.cursor()
         # 연차 체크
         if not skip_leave_check:
@@ -8563,9 +10588,16 @@ def process_wr_request():
                 (report_id, log_step, actual_status, approver_name))
     # 최종 결재 시 schedule_record에 자동 반영
     if actual_status == "결재":
-        # 수정근무보고서 여부: 같은 그룹+날짜에 이미 결재된 보고서가 있으면 수정근무보고서
-        cur.execute("SELECT COUNT(*) FROM wr_reports WHERE group_id=%s AND report_date=%s AND status='결재' AND id!=%s",
-                    (group_id, report_date, report_id))
+        # 수정근무보고서 여부 판정 — '작성 시각' 기준.
+        # (예전에는 '이미 결재된 보고서가 있으면 수정본'으로 봤는데, 결재자가 원본보다
+        #  수정본을 먼저 결재하면 라벨이 뒤바뀌었다. 2026-07-03 SMT / 07-17 QA 실제 사고)
+        # 같은 그룹+날짜에서 나보다 먼저 작성된 보고서가 있으면 내가 수정본이다.
+        cur.execute("""SELECT COUNT(*) FROM wr_reports
+                       WHERE group_id=%s AND report_date=%s AND id<>%s
+                         AND (created_at < (SELECT created_at FROM wr_reports WHERE id=%s)
+                              OR (created_at = (SELECT created_at FROM wr_reports WHERE id=%s)
+                                  AND id < %s))""",
+                    (group_id, report_date, report_id, report_id, report_id, report_id))
         is_revision = cur.fetchone()[0] > 0
         src_type = '수정근무보고서' if is_revision else '보고서'
         # 휴일(토/일/공휴일) 여부 — 휴일이면 조퇴/외출 N을 기본근무에서 차감(8-N)
@@ -8616,12 +10648,36 @@ def process_wr_request():
                         a["etc"] = etc_val
                 else:
                     a["etc"] = etc_val
+        # ── 수정보고서는 그날의 '확정본' ──
+        # 수정본에서 제외된 인원 = 근무 취소. 예전에는 수정본에 있는 사람만 갱신해서
+        # 취소된 인원의 원본 값이 그대로 남았다(2026-07-19 신민규 등 344건).
+        # → 수정본이면 그 그룹·날짜의 기존 수정 레코드를 모두 지우고 새로 쓴다.
+        if is_revision:
+            cur.execute("""DELETE FROM schedule_record
+                           WHERE work_date=%s AND sheet_name=%s
+                             AND source_type='수정근무보고서'""",
+                        (report_date, sheet_name))
+            # 원본에만 있고 수정본에서 빠진 인원 → 근무 없음(0/0/0)으로 확정
+            cur.execute("""SELECT DISTINCT emp_name FROM schedule_record
+                           WHERE work_date=%s AND sheet_name=%s AND source_type='보고서'""",
+                        (report_date, sheet_name))
+            for (drop_nm,) in cur.fetchall():
+                if drop_nm in agg or drop_nm in WR_NO_APPLY_NAMES:
+                    continue
+                cur.execute("""INSERT INTO schedule_record
+                        (emp_name, work_date, basic_h, ot_h, night_h, etc,
+                         source_type, sheet_name, uploaded_by)
+                    VALUES (%s,%s,0,0,0,NULL,'수정근무보고서',%s,%s)""",
+                            (drop_nm, report_date, sheet_name,
+                             session.get("user_name", "")))
+
         for uname, a in agg.items():
-            # 기존 레코드 삭제: 수정근무보고서면 수정근무보고서만, 원본이면 둘 다 삭제
-            if is_revision:
-                cur.execute("DELETE FROM schedule_record WHERE emp_name=%s AND work_date=%s AND sheet_name=%s AND source_type='수정근무보고서'",
-                            (uname, report_date, sheet_name))
-            else:
+            # 연습용 작성자는 근무표기록·연차에 반영하지 않는다.
+            # 이들의 근무표기록은 근무표 엑셀에서만 적재된다 (schedule_excel_load.py)
+            if uname in WR_NO_APPLY_NAMES:
+                continue
+            # 원본이면 기존 레코드(원본+수정) 모두 삭제. 수정본은 위에서 이미 정리됨.
+            if not is_revision:
                 cur.execute("DELETE FROM schedule_record WHERE emp_name=%s AND work_date=%s AND sheet_name=%s AND source_type IN ('보고서','수정근무보고서')",
                             (uname, report_date, sheet_name))
             if a["skipped"]:
@@ -9079,8 +11135,8 @@ def process_leave_plan():
                 total_used += v
                 m_idx = int(ld[4:6]) - 1
                 month_used[m_idx] += v
-            cur.execute("""INSERT INTO annual_leave (e_id, e_name, year, used, m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
-                           VALUES (%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            cur.execute("""INSERT INTO annual_leave (e_id, e_name, year, used, total, m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12)
+                           VALUES (%s,%s,%s,%s, 0, %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                            ON DUPLICATE KEY UPDATE used=%s, e_name=%s,
                                m1=%s,m2=%s,m3=%s,m4=%s,m5=%s,m6=%s,m7=%s,m8=%s,m9=%s,m10=%s,m11=%s,m12=%s,
                                updated_at=NOW()""",
@@ -9231,7 +11287,7 @@ def api_cc_overview():
         today_reading = float(r[0]) if r else None
 
         # 표에 뿌릴 최근 검침 목록 (일자 · 지침 · 사용량) — 최신순
-        cur.execute("""SELECT read_date, reading, memo FROM water_meter
+        cur.execute("""SELECT read_date, reading, memo, read_time FROM water_meter
                        ORDER BY read_date DESC LIMIT 31""")
         recs = cur.fetchall()
         prev_map = {}
@@ -9242,20 +11298,48 @@ def api_cc_overview():
         for rd, diff in cur.fetchall():
             prev_map[rd] = float(diff or 0)
         DOWK = ["월","화","수","목","금","토","일"]
-        table = [{"date": rd.strftime("%Y-%m-%d"),
-                  "md": rd.strftime("%m/%d"),
-                  "dow": DOWK[rd.weekday()],
-                  "reading": float(rg or 0),
-                  "usage": prev_map.get(rd),
-                  "memo": mo or ""} for rd, rg, mo in recs]
 
+        def _water_state(u):
+            """검침량으로 상태 판정. 원본 엑셀(경비실)이 쓰던 구분과 같은 기준.
+            2026-08 실적: 정상 13~37 · 확인 필요 47~59 · 지침 확인 음수.
+            '주의'는 평균 대비 증감률로 매기던 것이라 검침량만으로는 재현할 수 없어
+            자동 판정에서는 쓰지 않는다 — 대신 저장된 비고가 있으면 그쪽을 우선한다."""
+            if u is None:
+                return ""
+            if u < 0:
+                return "지침 확인"        # 지침이 줄었다 = 입력 오류
+            if u >= 45:
+                return "확인 필요"        # 평소의 1.5배 이상
+            return "정상"
+
+        table = []
+        for rd, rg, mo, rt in recs:
+            u = prev_map.get(rd)
+            table.append({"date": rd.strftime("%Y-%m-%d"),
+                          "md": rd.strftime("%m/%d"),
+                          "dow": DOWK[rd.weekday()],
+                          "time": (rt or "").strip(),
+                          "reading": float(rg or 0),
+                          "usage": u,
+                          # 경비일지 앱으로 들어온 건 memo 가 비어 있다 → 자동 판정으로 채움
+                          "memo": (mo or "").strip() or _water_state(u),
+                          "auto": not (mo or "").strip()})
+
+        has_today = today_reading is not None
+        today_usage = (water_days[-1]["usage"] if water_days and
+                       water_days[-1]["date"] == today.strftime("%m/%d") else None)
+        # 오늘 검침이 아직 안 들어왔으면 가장 최근 검침일 값을 대신 보여준다.
+        # (경비실이 아침에 적으므로 그 전까지는 화면이 계속 비어 있었다)
+        latest = table[0] if table else None
         out["water"] = {
             "days": water_days[-7:],
             "table": table,
             "today_reading": today_reading,
-            "today_usage": (water_days[-1]["usage"] if water_days and
-                            water_days[-1]["date"] == today.strftime("%m/%d") else None),
-            "has_today": today_reading is not None,
+            "today_usage": today_usage,
+            "has_today": has_today,
+            "shown_md": today.strftime("%m/%d") if has_today else (latest["md"] if latest else ""),
+            "shown_reading": today_reading if has_today else (latest["reading"] if latest else None),
+            "shown_usage": today_usage if has_today else (latest["usage"] if latest else None),
             "last_date": recs[0][0].strftime("%Y-%m-%d") if recs else "",
         }
 
@@ -9295,8 +11379,19 @@ def api_cc_overview():
         pw_year = [x for x in pw_cost if x[0] == today.year and x[2] > 0]
         bill = pw_year[-1] if pw_year else None
 
+        # 한전 스마트뷰 실시간 요금 (kepco 수집분) — 우리가 단가를 추정하지 않고
+        # 한전이 계산한 값을 그대로 쓴다. 청구기간 기준이라 달력월 누적과 범위가 다르다.
+        cur.execute("""SELECT rt_kwh, rt_bill, bill_start, bill_end, updated_at
+                         FROM power_smartview WHERE cust_no=%s
+                        ORDER BY updated_at DESC LIMIT 1""", (KEPCO_CUST,))
+        sv = cur.fetchone()
+
         out["power"] = {"today_kwh": round(power_today, 1),
                         "yday_kwh": round(power_yday, 1),
+                        "rt_kwh": float(sv[0] or 0) if sv else None,
+                        "rt_bill": int(sv[1] or 0) if sv else None,
+                        "rt_period": (f"{sv[2]}~{sv[3]}" if sv and sv[2] and sv[3] else ""),
+                        "rt_at": sv[4].strftime("%m/%d %H:%M") if sv and sv[4] else "",
                         "series": power_series,
                         "month_kwh": round(float(mon_kwh or 0), 1),
                         "month_peak": round(float(mon_peak or 0), 1),
@@ -9366,10 +11461,21 @@ def api_cc_overview():
             "year_sum": sum(v for (y, m), v in cost_map.items() if y == today.year),
         }
 
-        # ── 통근버스: 등록 인원(호차별) + 실제 탑승 통계(경비실 운행일지) ──
-        cur.execute("""SELECT bus_no, COUNT(*) FROM bus_members
-                       WHERE active=1 GROUP BY bus_no ORDER BY bus_no""")
-        by_bus = [{"bus_no": int(b or 0), "cnt": int(c or 0)} for b, c in cur.fetchall()]
+        # ── 통근버스: 오늘 배정 인원(주간/야간 × 호차) + 실제 탑승 통계(경비실 운행일지) ──
+        # bus_members 는 호차 매핑 마스터일 뿐이라 그 수(31명)는 인원 현황이 아니다.
+        # 배차조회와 같은 값을 쓰도록 _bus_assign() 을 그대로 호출한다.
+        _bt = datetime.now()
+        shifts_today = []
+        for _s in ("주간", "야간"):
+            _r = _bus_assign(cur, _bt, _s)
+            shifts_today.append({
+                "shift": _s,
+                "bus1": len(_r["bus1"]), "bus2": len(_r["bus2"]),
+                "total": len(_r["bus1"]) + len(_r["bus2"]),
+                "unassigned": len(_r["unassigned"]),
+            })
+        cur.execute("SELECT COUNT(*) FROM bus_members WHERE active=1")
+        master_cnt = int(cur.fetchone()[0] or 0)
 
         # 올해 1월~전월 월별 탑승 인원 (자료 있는 달만)
         cur.execute("""SELECT MONTH(ride_date) mo,
@@ -9400,8 +11506,9 @@ def api_cc_overview():
 
         cur.execute("SELECT MAX(ride_date) FROM bus_ridership")
         last_d = cur.fetchone()[0]
-        out["bus"] = {"by_bus": by_bus,
-                      "total": sum(b["cnt"] for b in by_bus),
+        out["bus"] = {"shifts": shifts_today,
+                      "assigned_total": sum(s["total"] for s in shifts_today),
+                      "master_cnt": master_cnt,
                       "by_month": by_month, "monthly": monthly,
                       "year": today.year,
                       "last_date": last_d.strftime("%Y-%m-%d") if last_d else ""}
@@ -9523,6 +11630,395 @@ def api_wr_missing_check():
     })
 
 
+@app.route("/api/schedule_diff")
+@_login_required
+def api_schedule_diff():
+    """근무표 ↔ 근무보고서 대조 결과 조회 (schedule_compare.py가 매일 08시 적재).
+    month=YYYY-MM, type=유형, dept=부서, name=이름, resolved=0|1|all"""
+    if not (session.get("role") == "admin" or _has_perm("schedule")):
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+
+    month = (request.args.get("month") or datetime.now().strftime("%Y-%m")).strip()
+    ym = month.replace("-", "")[:6]
+    dtype = (request.args.get("type") or "").strip()
+    dept = (request.args.get("dept") or "").strip()
+    name = (request.args.get("name") or "").strip()
+    resolved = (request.args.get("resolved") or "0").strip()
+
+    where = ["ym=%s"]
+    args = [ym]
+    if resolved in ("0", "1"):
+        where.append("resolved=%s"); args.append(int(resolved))
+    if dtype:
+        where.append("diff_type=%s"); args.append(dtype)
+    if dept:
+        where.append("dept=%s"); args.append(dept)
+    if name:
+        where.append("emp_name LIKE %s"); args.append(f"%{name}%")
+    wsql = " AND ".join(where)
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("SHOW TABLES LIKE 'schedule_diff'")
+        if not cur.fetchone():
+            return jsonify({"ok": True, "rows": [], "summary": {}, "depts": [],
+                            "msg": "대조 데이터가 아직 없습니다."})
+        cur.execute(f"""SELECT work_date, emp_name, dept, diff_type,
+                               xl_basic, xl_ot, xl_night,
+                               sys_basic, sys_ot, sys_night,
+                               source_type, first_seen, resolved
+                        FROM schedule_diff WHERE {wsql}
+                        ORDER BY work_date, dept, emp_name LIMIT 1000""", args)
+        rows = [{
+            "date": r[0].strftime("%Y-%m-%d"),
+            "name": r[1], "dept": r[2] or "", "type": r[3],
+            "xl": f"{float(r[4]):g}/{float(r[5]):g}/{float(r[6]):g}",
+            "sys": f"{float(r[7]):g}/{float(r[8]):g}/{float(r[9]):g}",
+            "note": r[10] or "",
+            "first_seen": r[11].strftime("%m-%d %H:%M") if r[11] else "",
+            "resolved": int(r[12]),
+        } for r in cur.fetchall()]
+
+        # 유형별 요약 (미해소 기준)
+        cur.execute("""SELECT diff_type, COUNT(*) FROM schedule_diff
+                       WHERE ym=%s AND resolved=0 GROUP BY diff_type""", (ym,))
+        summary = {k: int(v) for k, v in cur.fetchall()}
+        cur.execute("""SELECT DISTINCT dept FROM schedule_diff
+                       WHERE ym=%s AND dept<>'' ORDER BY dept""", (ym,))
+        depts = [r[0] for r in cur.fetchall()]
+        cur.execute("""SELECT COUNT(*), MAX(last_seen) FROM schedule_diff WHERE ym=%s""", (ym,))
+        tot, last = cur.fetchone()
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "month": month, "rows": rows,
+                    "summary": summary, "depts": depts,
+                    "total_all": int(tot or 0),
+                    "last_run": last.strftime("%Y-%m-%d %H:%M") if last else ""})
+
+
+@app.route("/source_verify")
+@_login_required
+def source_verify():
+    """3소스 검증 — 근무표(정본) · 근무보고서 · 근태기록(출입)을 한 화면에서 대조"""
+    if not (session.get("role") == "admin" or _has_perm("schedule")):
+        flash("접근 권한이 없습니다.", "danger")
+        return redirect(url_for("dashboard"))
+    return render_template("source_verify.html",
+                           active_page="source_verify",
+                           sel_month=datetime.now().strftime("%Y-%m"))
+
+
+@app.route("/api/wr_reports_of_day")
+@_login_required
+def api_wr_reports_of_day():
+    """특정 인원·날짜의 근무보고서 목록 (3소스 검증에서 일자 클릭 시 사용).
+    해당 인원이 속한 그룹의 그날 보고서를 작성순으로 반환하고,
+    각 보고서에서 그 사람이 어느 칸에 배정됐는지도 함께 준다."""
+    if not (session.get("role") == "admin" or _has_perm("schedule")):
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+
+    name = (request.args.get("name") or "").strip()
+    d = (request.args.get("date") or "").strip().replace("-", "")
+    if not name or len(d) != 8:
+        return jsonify({"ok": False, "error": "이름과 날짜가 필요합니다."})
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        # 해당 인원의 그룹 (근무보고서 그룹 기준, 없으면 schedule_record의 sheet_name)
+        cur.execute("""SELECT g.id, g.group_name FROM wr_group_members m
+                       JOIN wr_groups g ON m.group_id=g.id
+                       WHERE m.user_name=%s""", (name,))
+        gs = cur.fetchall()
+        if not gs:
+            cur.execute("""SELECT DISTINCT sheet_name FROM schedule_record
+                           WHERE emp_name=%s AND work_date=%s""", (name, d))
+            r = cur.fetchone()
+            if r:
+                cur.execute("SELECT id, group_name FROM wr_groups WHERE group_name=%s", (r[0],))
+                gs = cur.fetchall()
+        if not gs:
+            return jsonify({"ok": True, "reports": [], "msg": "소속 그룹을 찾을 수 없습니다."})
+
+        gids = [g[0] for g in gs]
+        ph = ",".join(["%s"] * len(gids))
+        cur.execute(f"""SELECT r.id, r.report_date, r.status, r.created_by_name,
+                               r.created_at, g.group_name, IFNULL(r.memo,'')
+                        FROM wr_reports r JOIN wr_groups g ON r.group_id=g.id
+                        WHERE r.group_id IN ({ph}) AND r.report_date=%s
+                        ORDER BY r.created_at, r.id""", (*gids, d))
+        reps = cur.fetchall()
+
+        out = []
+        for i, (rid, rd, st, by, ca, gname, memo) in enumerate(reps):
+            cur.execute("""SELECT category, deduction, etc_value, IFNULL(skipped,0)
+                           FROM wr_entries WHERE report_id=%s AND user_name=%s""", (rid, name))
+            mine = [{"category": c, "deduction": int(dd or 0),
+                     "etc": e or "", "skipped": int(sk)} for c, dd, e, sk in cur.fetchall()]
+            # 보고서 전체 배정 (칸별 인원)
+            cur.execute("""SELECT category, user_name FROM wr_entries
+                           WHERE report_id=%s ORDER BY category, user_name""", (rid,))
+            by_cat = {}
+            for c, u in cur.fetchall():
+                by_cat.setdefault(c, []).append(u)
+            out.append({
+                "id": rid, "label": "원본" if i == 0 else f"수정{i}",
+                "group": gname, "status": st, "writer": by or "",
+                "created": ca.strftime("%Y-%m-%d %H:%M") if ca else "",
+                "memo": memo, "mine": mine, "by_cat": by_cat,
+                "is_final": i == len(reps) - 1,
+            })
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "name": name,
+                    "date": f"{d[:4]}-{d[4:6]}-{d[6:8]}", "reports": out})
+
+
+@app.route("/api/source_verify_all")
+@_login_required
+def api_source_verify_all():
+    """3소스 검증 — 전원 요약. 인원별 기록일수·오류건수·일치율을 한 번에 반환."""
+    if not (session.get("role") == "admin" or _has_perm("schedule")):
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+
+    month = (request.args.get("month") or datetime.now().strftime("%Y-%m")).strip()
+    ym = month.replace("-", "")[:6]
+    grp_f = (request.args.get("group") or "").strip()
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        # 당일분은 아직 작성 중이라 오류로 보지 않는다 (조회월이 당월일 때만 적용)
+        today_str = datetime.now().strftime("%Y%m%d")
+        cutoff = today_str if ym == today_str[:6] else ym + "99"
+
+        # 인원별 기록 일수 + 그룹
+        cur.execute("""SELECT emp_name, sheet_name, COUNT(DISTINCT work_date)
+                       FROM schedule_record WHERE work_date LIKE %s AND work_date < %s
+                       GROUP BY emp_name, sheet_name""", (ym + "%", cutoff))
+        base = {}
+        for nm, sh, cnt in cur.fetchall():
+            b = base.setdefault(nm, {"group": sh or "", "days": 0})
+            b["days"] += int(cnt or 0)
+            if not b["group"]:
+                b["group"] = sh or ""
+
+        # 인원별 미해소 오류 (유형별) — 당일 제외
+        cur.execute("""SELECT emp_name, diff_type, COUNT(*) FROM schedule_diff
+                       WHERE ym=%s AND resolved=0
+                         AND DATE_FORMAT(work_date,'%%Y%%m%%d') < %s
+                       GROUP BY emp_name, diff_type""", (ym, cutoff))
+        errs = defaultdict(dict)
+        for nm, dt, c in cur.fetchall():
+            errs[nm][dt] = int(c or 0)
+
+        # 부서
+        cur.execute("""SELECT name, dept FROM employee_roster
+                       WHERE dept IS NOT NULL AND dept<>''""")
+        dept_of = dict(cur.fetchall())
+
+        # 출입기록 일수 — 당일 제외
+        cur.execute("""SELECT e_name, COUNT(DISTINCT e_date) FROM tenter
+                       WHERE e_date LIKE %s AND e_date < %s AND e_id>=0
+                       GROUP BY e_name""", (ym + "%", cutoff))
+        tag_days = {r[0]: int(r[1] or 0) for r in cur.fetchall()}
+
+        # 이 달에 근무표 대조가 실제로 돌았는지.
+        # 근무표는 보통 그달 중순에 올라오는데, 그 전에는 대조가 통째로 건너뛰어진다.
+        # 그때 오류 0건을 '이상 없음'으로 보여주면 검증이 끝난 것으로 오해한다.
+        # schedule_accuracy 는 대조가 성공한 달만 행이 생기므로 수행 여부의 근거가 된다.
+        cur.execute("SELECT COUNT(*), MAX(updated_at) FROM schedule_accuracy WHERE ym=%s",
+                    (ym,))
+        acc_n, acc_at = cur.fetchone()
+        compared = bool(acc_n)
+        compared_at = acc_at.strftime("%Y-%m-%d %H:%M") if acc_at else ""
+
+        # 그달 근무보고서가 한 건도 없는 그룹.
+        # 대조는 schedule_record 에 이름이 있는 사람만 보므로, 보고서를 아예 안 쓰는
+        # 그룹은 '미작성'으로도 안 잡히고 통째로 사각지대가 된다
+        # (2026-08 전기생기·전기품질 — 근무표에는 있는데 보고서 0건).
+        cur.execute("""SELECT g.group_name FROM wr_groups g
+                        WHERE NOT EXISTS (SELECT 1 FROM wr_reports r
+                                           WHERE r.group_id=g.id
+                                             AND r.report_date LIKE %s)
+                        ORDER BY g.group_name""", (ym + "%",))
+        no_report_groups = [r[0] for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+    rows = []
+    for nm, b in base.items():
+        if grp_f and b["group"] != grp_f:
+            continue
+        e = errs.get(nm, {})
+        bad = sum(e.values())
+        days = b["days"]
+        # 미작성일은 schedule_record에 행이 없어 days에 안 잡히므로 분모에 더해준다.
+        # (안 그러면 오류수 > 기록일수가 되어 일치율이 음수로 나옴 — 박승규 사례)
+        denom = days + e.get("미작성", 0) + e.get("근무표없음", 0)
+        rows.append({
+            "name": nm, "dept": dept_of.get(nm, ""), "group": b["group"],
+            "days": days, "tag_days": tag_days.get(nm, 0),
+            "errors": bad, "by_type": e,
+            "checked": denom,
+            "rate": round(max(0, denom - bad) / denom * 100, 1) if denom else 0,
+        })
+    rows.sort(key=lambda x: (-x["errors"], x["group"], x["name"]))
+    groups = sorted({r["group"] for r in rows if r["group"]})
+    return jsonify({"ok": True, "month": month, "rows": rows, "groups": groups,
+                    "total_people": len(rows),
+                    "total_errors": sum(r["errors"] for r in rows),
+                    "clean": sum(1 for r in rows if r["errors"] == 0),
+                    "compared": compared, "compared_at": compared_at,
+                    "no_report_groups": no_report_groups})
+
+
+@app.route("/api/source_verify")
+@_login_required
+def api_source_verify():
+    """인원별 3소스 일자 대조.
+    근무표(정본)는 schedule_diff에 적재된 대조결과에서 역산하지 않고,
+    보고서·출입기록은 DB에서 직접 읽는다. 근무표 값은 schedule_diff에 기록된
+    차이분만 알 수 있으므로, 차이가 없는 날은 '보고서와 동일'로 간주한다."""
+    if not (session.get("role") == "admin" or _has_perm("schedule")):
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+
+    month = (request.args.get("month") or datetime.now().strftime("%Y-%m")).strip()
+    ym = month.replace("-", "")[:6]
+    name = (request.args.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "이름을 입력하세요."})
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT name, dept, emp_no FROM employee_roster WHERE name=%s", (name,))
+        r = cur.fetchone()
+        info = {"name": name, "dept": r[1] if r else "", "emp_no": r[2] if r else ""}
+
+        # 근무보고서 (원본/수정 모두)
+        cur.execute("""SELECT work_date, basic_h, ot_h, night_h, etc, source_type, sheet_name
+                       FROM schedule_record WHERE emp_name=%s AND work_date LIKE %s""",
+                    (name, ym + "%"))
+        rep = {}
+        grp = ""
+        for wd, b, o, n, etc, st, sh in cur.fetchall():
+            day = int(wd[6:8])
+            rep.setdefault(day, {})[st] = {
+                "v": f"{float(b or 0):g}/{float(o or 0):g}/{float(n or 0):g}",
+                "etc": (etc or "")}
+            grp = grp or (sh or "")
+        info["group"] = grp
+
+        # 출입기록
+        cur.execute("""SELECT e_date, MIN(e_time), MAX(e_time), COUNT(*) FROM tenter
+                       WHERE e_name=%s AND e_date LIKE %s AND e_id>=0 GROUP BY e_date""",
+                    (name, ym + "%"))
+        tag = {int(x[0][6:8]): {"in": x[1], "out": x[2], "cnt": int(x[3])}
+               for x in cur.fetchall()}
+
+        # 대조결과(근무표 값 포함)
+        cur.execute("""SELECT work_date, diff_type, xl_basic, xl_ot, xl_night,
+                              sys_basic, sys_ot, sys_night, source_type, resolved
+                       FROM schedule_diff WHERE emp_name=%s AND ym=%s""", (name, ym))
+        dif = {}
+        for wd, dt, xb, xo, xn, sb, so, sn, note, rs in cur.fetchall():
+            dif[wd.day] = {"type": dt,
+                           "xl": f"{float(xb):g}/{float(xo):g}/{float(xn):g}",
+                           "sys": f"{float(sb):g}/{float(so):g}/{float(sn):g}",
+                           "note": note or "", "resolved": int(rs)}
+    finally:
+        conn.close()
+
+    year, mon = int(ym[:4]), int(ym[4:6])
+    dim = calendar.monthrange(year, mon)[1]
+    DOWK = ["월", "화", "수", "목", "금", "토", "일"]
+    today = date.today()
+    days = []
+    for d in range(1, dim + 1):
+        dt = date(year, mon, d)
+        # 당일은 아직 취합 전이라 판정에서 제외 (표시는 하되 '작성중'으로)
+        pending = (dt >= today)
+        srcs = rep.get(d, {})
+        cur_rep = srcs.get("수정근무보고서") or srcs.get("보고서")
+        df = dif.get(d)
+        # 근무표 값: 차이가 기록돼 있으면 그 값, 아니면 보고서와 동일
+        if df:
+            xl = df["xl"]
+        else:
+            xl = cur_rep["v"] if cur_rep else ""
+        days.append({
+            "day": d, "dow": DOWK[dt.weekday()],
+            "holiday": bool(KR_HOLIDAYS.get(dt)) or (mon == 7 and d == 1),
+            "weekend": dt.weekday() >= 5,
+            "xl": xl,
+            "rep": (srcs.get("보고서") or {}).get("v", ""),
+            "rep_etc": (srcs.get("보고서") or {}).get("etc", ""),
+            "mod": (srcs.get("수정근무보고서") or {}).get("v", ""),
+            "mod_etc": (srcs.get("수정근무보고서") or {}).get("etc", ""),
+            "tag": tag.get(d),
+            "diff": None if pending else df,
+            "pending": pending,
+        })
+    return jsonify({"ok": True, "month": month, "info": info, "days": days})
+
+
+@app.route("/api/schedule_accuracy")
+@_login_required
+def api_schedule_accuracy():
+    """근무보고서 정확도(근무표 재현율) — 그룹별 + 월별 추이.
+    근무표가 정본이므로 이 수치가 '보고서 자동화 전환 준비도'가 된다."""
+    if not (session.get("role") == "admin" or _has_perm("schedule")):
+        return jsonify({"ok": False, "error": "권한이 없습니다."}), 403
+    month = (request.args.get("month") or datetime.now().strftime("%Y-%m")).strip()
+    ym = month.replace("-", "")[:6]
+
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("SHOW TABLES LIKE 'schedule_accuracy'")
+        if not cur.fetchone():
+            return jsonify({"ok": True, "groups": [], "trend": [],
+                            "msg": "정확도 데이터가 아직 없습니다."})
+        cur.execute("""SELECT grp, writers, cmp_cnt, ok_cnt, mismatch_cnt, missing_cnt,
+                              accuracy, calc_day, updated_at
+                       FROM schedule_accuracy WHERE ym=%s
+                       ORDER BY accuracy DESC, grp""", (ym,))
+        groups = []
+        for g, w, c, o, mm, ms, a, cd, up in cur.fetchall():
+            a = float(a or 0)
+            groups.append({
+                "group": g, "writers": w or "", "cmp": int(c or 0), "ok": int(o or 0),
+                "mismatch": int(mm or 0), "missing": int(ms or 0),
+                "accuracy": a, "calc_day": int(cd or 0),
+                # 대조 대상이 0건이면 정확도 0%가 아니라 '볼 게 없음'이다.
+                # 월초 주말이 끼면 평일만 근무하는 그룹이 여기 걸린다.
+                "level": ("none" if not int(c or 0) else
+                          "ready" if a >= 99 else "near" if a >= 95
+                          else "improve" if a >= 85 else "low"),
+                "updated": up.strftime("%m-%d %H:%M") if up else "",
+            })
+        # 전체
+        cur.execute("""SELECT SUM(cmp_cnt), SUM(ok_cnt), SUM(mismatch_cnt), SUM(missing_cnt)
+                       FROM schedule_accuracy WHERE ym=%s""", (ym,))
+        tc, to, tm, tms = cur.fetchone()
+        tc, to = int(tc or 0), int(to or 0)
+        total = {"cmp": tc, "ok": to, "mismatch": int(tm or 0), "missing": int(tms or 0),
+                 "accuracy": round(to / tc * 100, 1) if tc else 0}
+        # 월별 추이 (최근 12개월)
+        cur.execute("""SELECT ym, SUM(cmp_cnt), SUM(ok_cnt) FROM schedule_accuracy
+                       GROUP BY ym ORDER BY ym DESC LIMIT 12""")
+        trend = [{"ym": f"{r[0][:4]}-{r[0][4:6]}",
+                  "accuracy": round(int(r[2] or 0) / int(r[1]) * 100, 1) if r[1] else 0}
+                 for r in cur.fetchall()][::-1]
+    finally:
+        conn.close()
+    # 계산 기준 기간 — 근무표는 며칠 뒤에야 채워지므로 최근 2일은 빼고 센다.
+    # 화면에 안 적어두면 "왜 우리 그룹이 없냐"는 오해가 생긴다.
+    cut = max((g["calc_day"] for g in groups), default=0)
+    return jsonify({"ok": True, "month": month, "groups": groups,
+                    "total": total, "trend": trend,
+                    "calc_day": cut,
+                    "calc_range": (f"{int(ym[4:6])}/1~{int(ym[4:6])}/{cut}" if cut else "")})
+
+
 @app.route("/api/wr_my_missing")
 @_login_required
 def api_wr_my_missing():
@@ -9551,10 +12047,13 @@ def api_cc_water_save():
     """수도 일일 검침 저장 (같은 날짜는 덮어쓰기)"""
     d = request.get_json(silent=True) or {}
     read_date = (d.get("read_date") or "").strip()
+    read_time = (d.get("read_time") or "").strip()[:5]
     reading   = d.get("reading")
     memo      = (d.get("memo") or "").strip()[:200]
     if not read_date:
         return jsonify({"ok": False, "msg": "날짜를 입력하세요."})
+    if read_time and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", read_time):
+        return jsonify({"ok": False, "msg": "검침 시각은 HH:MM 형식으로 입력하세요. (예: 16:00)"})
     try:
         reading = float(reading)
     except (TypeError, ValueError):
@@ -9571,10 +12070,11 @@ def api_cc_water_save():
         warn = ""
         if prev and reading < float(prev[0]):
             warn = f"직전 검침({float(prev[0]):,.2f})보다 작습니다. 확인해 주세요."
-        cur.execute("""INSERT INTO water_meter (read_date, reading, memo, created_by)
-                       VALUES (%s,%s,%s,%s)
-                       ON DUPLICATE KEY UPDATE reading=VALUES(reading), memo=VALUES(memo)""",
-                    (read_date, reading, memo, session.get("user_name", "")))
+        cur.execute("""INSERT INTO water_meter (read_date, read_time, reading, memo, created_by)
+                       VALUES (%s,%s,%s,%s,%s)
+                       ON DUPLICATE KEY UPDATE reading=VALUES(reading), memo=VALUES(memo),
+                                               read_time=VALUES(read_time)""",
+                    (read_date, read_time, reading, memo, session.get("user_name", "")))
         conn.commit()
     finally:
         conn.close()
@@ -9630,7 +12130,7 @@ def power_alerts():
 
 @app.route("/power_settings", methods=["GET", "POST"])
 @_login_required
-@_admin_required
+@_menu_required("power_settings")
 def power_settings():
     msg = None
     cfg = {"cust_no": KEPCO_CUST, "contract_kw": 500, "warn_pct": 90.0, "danger_pct": 95.0}
@@ -10028,6 +12528,75 @@ def bus_dispatch():
                            is_admin=(session.get("role") == "admin"))
 
 
+def _bus_assign(cur, dt, shift):
+    """특정 날짜·시프트의 버스 배정 산출 (배차조회·통합관제 공용)
+
+    배정 인원 = 그날 근무자 ∩ bus_members. bus_members 는 '호차 매핑 마스터'라
+    그 자체는 인원 현황이 아니다 — 실제로 몇 명이 타는지는 이 함수로 구해야 한다.
+    제외 규칙: 휴무(기타)·연차/반차·휴일 주간의 전기사업부·식수 스킵 부서.
+    """
+    date_str = dt.strftime("%Y%m%d")
+    is_holiday = dt.weekday() >= 5 or bool(KR_HOLIDAYS.get(dt.date(), ""))
+
+    cur.execute("""SELECT DISTINCT e.user_name FROM wr_entries e
+                   JOIN wr_reports r ON e.report_id=r.id
+                   WHERE r.report_date=%s AND e.category='기타'""", (date_str,))
+    off_workers = set(r[0] for r in cur.fetchall())
+
+    elec_names = set()
+    if is_holiday:
+        cur.execute("SELECT name FROM tuser WHERE company IN (%s,%s) AND name IS NOT NULL",
+                    tuple(ELEC_DEPT_CODES))
+        elec_names = set(r[0] for r in cur.fetchall())
+
+    cur.execute("SELECT user_name, bus_no, dept FROM bus_members WHERE active=1")
+    bus_map = {nm: {"bus_no": bno, "dept": dp} for nm, bno, dp in cur.fetchall()}
+
+    cats = ("주간기본", "주간연장") if shift == "주간" else ("야간기본", "야간연장")
+    cur.execute("""
+        SELECT DISTINCT e.user_name FROM wr_entries e
+        JOIN wr_reports r ON e.report_id = r.id
+        WHERE r.report_date = %s AND e.category IN (%s, %s)
+          AND IFNULL(e.skipped, 0) = 0
+          AND (e.etc_value IS NULL OR e.etc_value NOT LIKE '%%연차%%')
+          AND (e.etc_value IS NULL OR e.etc_value NOT LIKE '%%반차%%')
+    """, (date_str, cats[0], cats[1]))
+    workers = set(r[0] for r in cur.fetchall()) - off_workers
+
+    elec_excluded = []
+    if is_holiday and shift == "주간":
+        elec_excluded = sorted(elec_names & workers & set(bus_map.keys()))
+        workers -= elec_names
+
+    mt = "석식" if shift == "주간" else "조식"
+    cur.execute("""SELECT `dept`, `count` FROM `meal_count`
+                   WHERE `year_month`=%s AND `day`=%s AND `meal_type`=%s""",
+                (dt.strftime("%Y-%m"), dt.day, mt))
+    mi = {}; ho = False; skip_depts = set()
+    for dept, cnt in cur.fetchall():
+        if str(cnt).strip() == '스킵':
+            skip_depts.add(dept); mi[dept] = '스킵'; continue
+        try:
+            cval = int(cnt)
+        except (ValueError, TypeError):
+            cval = 0
+        if cval > 0:
+            ho = True
+        mi[dept] = cval
+
+    b1 = []; b2 = []; un = []
+    for nm in sorted(workers):
+        if nm in bus_map:
+            if bus_map[nm]["dept"] in skip_depts:
+                continue
+            (b1 if bus_map[nm]["bus_no"] == 1 else b2).append(nm)
+        else:
+            un.append(nm)
+    return {"shift": shift, "bus1": b1, "bus2": b2, "unassigned": un,
+            "has_overtime": ho, "meal_info": mi, "meal_type": mt,
+            "elec_excluded": elec_excluded, "skip_depts": sorted(skip_depts)}
+
+
 @app.route("/api/bus_dispatch_query")
 @_login_required
 def api_bus_dispatch_query():
@@ -10048,15 +12617,7 @@ def api_bus_dispatch_query():
 
     conn = _conn(); cur = conn.cursor()
 
-    # 휴무자 조회 (공통)
-    cur.execute("""
-        SELECT DISTINCT e.user_name
-        FROM wr_entries e JOIN wr_reports r ON e.report_id = r.id
-        WHERE r.report_date = %s AND e.category = '기타'
-    """, (date_str,))
-    off_workers = set(r[0] for r in cur.fetchall())
-
-    # 전기사업부 명단 (공통)
+    # 전기사업부 명단 (휴일전 추가배차용 — 시프트별 배정은 _bus_assign 안에서 처리)
     elec_names = set()
     if is_holiday:
         cur.execute("SELECT name FROM tuser WHERE company IN (%s,%s) AND name IS NOT NULL",
@@ -10071,60 +12632,17 @@ def api_bus_dispatch_query():
     all_members = [{"name": nm, "bus_no": d["bus_no"], "dept": d["dept"]}
                    for nm, d in sorted(bus_map.items())]
 
-    month_str = dt.strftime("%Y-%m")
-    day_num = dt.day
-
     def _query_shift(s):
-        """단일 시프트 배차 조회"""
-        cats = ("주간기본", "주간연장") if s == "주간" else ("야간기본", "야간연장")
-        cur.execute("""
-            SELECT DISTINCT e.user_name
-            FROM wr_entries e JOIN wr_reports r ON e.report_id = r.id
-            WHERE r.report_date = %s AND e.category IN (%s, %s)
-              AND IFNULL(e.skipped, 0) = 0
-              AND (e.etc_value IS NULL OR e.etc_value NOT LIKE '%%연차%%')
-              AND (e.etc_value IS NULL OR e.etc_value NOT LIKE '%%반차%%')
-        """, (date_str, cats[0], cats[1]))
-        workers = set(r[0] for r in cur.fetchall()) - off_workers
-        s_elec_excluded = []
-        if is_holiday and s == "주간":
-            s_elec_excluded = sorted(elec_names & workers & set(bus_map.keys()))
-            workers -= elec_names
-        # 식수 연동
-        mt = "석식" if s == "주간" else "조식"
-        cur.execute("""SELECT `dept`, `count` FROM `meal_count`
-                       WHERE `year_month`=%s AND `day`=%s AND `meal_type`=%s""",
-                    (month_str, day_num, mt))
-        mi = {}; ho = False; skip_depts = set()
-        for dept, cnt in cur.fetchall():
-            if str(cnt).strip() == '스킵':
-                skip_depts.add(dept)
-                mi[dept] = '스킵'
-                continue
-            try: c = int(cnt)
-            except (ValueError, TypeError): c = 0
-            if c > 0: ho = True
-            mi[dept] = c
-        # 스킵 부서 직원은 버스 제외
-        b1 = []; b2 = []; un = []
-        for nm in sorted(workers):
-            if nm in bus_map:
-                if bus_map[nm]["dept"] in skip_depts:
-                    continue
-                (b1 if bus_map[nm]["bus_no"] == 1 else b2).append(nm)
-            else:
-                un.append(nm)
+        """단일 시프트 배차 조회 — 배정 산출은 _bus_assign() 공용"""
+        res = _bus_assign(cur, dt, s)
         # 담당자 확인 플래그: 당일 조회 + 15:30 이후 + 식수 미입력(스킵/인원 모두 없음)
         now = datetime.now()
-        needs_check = (
+        res["needs_check"] = (
             dt.date() == now.date()
             and (now.hour * 60 + now.minute) >= (15 * 60 + 30)
-            and len(mi) == 0
+            and len(res["meal_info"]) == 0
         )
-        return {"shift": s, "bus1": b1, "bus2": b2, "unassigned": un,
-                "has_overtime": ho, "meal_info": mi, "meal_type": mt,
-                "elec_excluded": s_elec_excluded, "skip_depts": sorted(skip_depts),
-                "needs_check": needs_check}
+        return res
 
     # 금요일/휴일전일 판단
     is_pre_holiday = False
@@ -10369,8 +12887,9 @@ ENV_CATEGORIES = [
 
 @app.route("/esg/environment")
 def esg_environment():
-    guard = _require_admin()
-    if guard: return guard
+    if not _menu_perm("esg_environment"):
+        guard = _require_admin()
+        if guard: return guard
 
     from datetime import datetime as _dt, date as _date
     today = _date.today()
@@ -10598,9 +13117,10 @@ def it_request_page():
 
 @app.route("/it/manage")
 def it_manage_page():
-    """관리자: 전체 요청 관리"""
-    guard = _require_admin()
-    if guard: return guard
+    """요청 관리 — admin 또는 권한그룹에서 it_manage 를 받은 사람"""
+    if not _menu_perm("it_manage"):
+        guard = _require_admin()
+        if guard: return guard
 
     status_filter = request.args.get("status", "all")
     try:
@@ -10764,8 +13284,9 @@ def it_api_delete_request(rid):
 
 @app.route("/esg/social")
 def esg_social():
-    guard = _require_admin()
-    if guard: return guard
+    if not _menu_perm("esg_social"):
+        guard = _require_admin()
+        if guard: return guard
     return render_template(
         "esg_placeholder.html",
         active_page="esg_social",
@@ -10784,8 +13305,9 @@ def esg_social():
 
 @app.route("/esg/governance")
 def esg_governance():
-    guard = _require_admin()
-    if guard: return guard
+    if not _menu_perm("esg_governance"):
+        guard = _require_admin()
+        if guard: return guard
     return render_template(
         "esg_placeholder.html",
         active_page="esg_governance",

@@ -165,8 +165,11 @@ def run():
             changes['email'] = e['email']
         if e['internal_phone'] and not a.get('internal_phone'):
             changes['internal_phone'] = e['internal_phone']
-        # 집주소는 명부에 비어있을 때만 채움 (기존값 보존)
-        if e['address'] and not a.get('address'):
+        # 집주소는 ERP 가 정본이라 다르면 덮어쓴다.
+        # 예전엔 '비어있을 때만' 채워서, 우편번호 없이 한 번 들어간 주소가 그대로
+        # 굳어 있었다 (2026-08-06: 재직자 159명 중 우편번호가 붙은 건 1명뿐).
+        # 앱에는 주소를 수정하는 화면이 없어 덮어써도 잃을 값이 없다.
+        if e['address'] and e['address'] != a.get('address'):
             changes['address'] = e['address']
         if changes:
             sets = ', '.join(f"{k}=%s" for k in changes)

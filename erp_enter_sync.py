@@ -83,12 +83,25 @@ def run(days=3):
     ac = att_conn()
     cur2 = ac.cursor()
 
-    # ── 2) 사번 → tuser.id 매핑 ──
-    cur2.execute("SELECT id, name, idno FROM tuser")
-    by_idno = {}
-    for uid, nm, idno in cur2.fetchall():
+    # ── 2) 사번 → tuser.id 매핑 (+ 카드번호 보조) ──
+    # 재입사자는 ERP 가 옛 기록을 '이름2' + 옛 사번으로 들고 있어 사번만으로는 못 찾는다.
+    # (2026-08 근무표에서 강민규·이동천·이용학 등 5명이 통째로 빠졌다)
+    # 카드번호는 사람이 바뀌지 않는 한 그대로라, 사번이 안 맞으면 카드로 잇는다.
+    cur2.execute("SELECT id, name, idno, cardnum FROM tuser")
+    by_idno, by_card = {}, {}
+    for uid, nm, idno, cardnum in cur2.fetchall():
         if idno and str(idno).strip():
             by_idno[str(idno).strip()] = uid
+        if cardnum and str(cardnum).strip():
+            by_card[str(cardnum).strip().upper()] = uid
+    # 카드를 2장 쓰는 사람 — tuser.cardnum 은 1장만 담아서 보조 카드는 별도 표에 둔다.
+    # (이동천·하재임이 각각 2장을 번갈아 써서 ERP 기록 58건이 붕 떠 있었다)
+    try:
+        cur2.execute("SELECT UPPER(TRIM(card)), e_id FROM tuser_card_alias")
+        for card_a, uid in cur2.fetchall():
+            by_card.setdefault(card_a, uid)
+    except Exception:
+        pass    # 표가 아직 없는 환경(구버전)에서도 죽지 않게
 
     # ── 3) tenter_erp 적재 (중복은 무시) ──
     inserted = 0
@@ -96,9 +109,10 @@ def run(days=3):
     for wdate, wtime, card, mode, empid, empname in erp_rows:
         if not wdate or not wtime or not card:
             continue
-        if not empid:
+        # 사번으로 먼저 찾고, 안 되면 카드번호로 잇는다 (재입사자 대응)
+        eid = by_idno.get(empid) or by_card.get(card)
+        if eid is None:
             unmapped_cards.add(card)
-        eid = by_idno.get(empid)
         cur2.execute("""
             INSERT IGNORE INTO tenter_erp (e_date, e_time, e_card, e_mode, e_id, e_name, e_idno)
             VALUES (%s, %s, %s, %s, %s, %s, %s)

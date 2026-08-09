@@ -51,7 +51,20 @@ Korean workplace attendance management system (㈜태인 근태관리). Flask we
 - `docker` binary on NAS: `/usr/local/bin/docker`
 - sudo password is the NAS password; sudo output is prefixed with `"Password: "` which must be stripped
 
-**Deploy**: `python deploy_and_restart.py` (handles SCP → `docker cp` → `docker restart`, and auto-commits dirty git state with message `배포: <changed files>`, prepending to `static/dev_history.json`). Use `--rebuild` flag to rebuild the image (~3 min) instead of just restarting (~15 sec).
+**Deploy**: `python deploy_and_restart.py` (handles SCP → `docker cp` → `docker restart`, and auto-commits dirty git state with message `배포: <changed files>`, prepending to `static/dev_history.json`).
+
+**이미지 재빌드**: `python deploy_and_restart.py --rebuild` 또는 `python rebuild_containers.py`.
+`--rebuild` 는 코드 전송까지만 하고 `rebuild_containers.py` 에 위임한다. 재빌드는
+컨테이너를 재생성하므로 **컨테이너당 30초~1분 다운타임**이 있고, Chromium 설치 탓에
+빌드에만 10~15분 걸린다(빌드 중에는 무중단). 재생성 전 현재 이미지를
+`backup-YYYYMMDDHHMM` 으로 태그해 두므로 문제 시 `--rollback` 으로 되돌린다.
+
+> ⚠️ 예전 `--rebuild` 는 `docker compose`(공백형)를 불렀는데 Synology 에는 그 명령이
+> 없어 **조용히 실패하면서 화면에는 성공으로 표시**됐다. 그 탓에 이미지가 2026-05-26 자로
+> 3개월간 멈춰 있었고, 새 파이썬 패키지는 컨테이너에 직접 `pip install` 해서 쓰다가
+> 재생성 시 소실될 위험을 안고 있었다 (2026-08-07 해소).
+> Dockerfile 을 고쳤으면 **재빌드 전에 코드가 NAS 로 전송됐는지 확인**할 것 —
+> staging 의 옛 Dockerfile 로 빌드되면 폰트·Chromium 이 빠진 이미지가 나온다.
 
 `docker-compose.yml` exists as a *future migration target* (different ports: app 5060/5080, db 3308). It is **not** the current production runtime — production still uses the NAS-package MariaDB on 3307.
 
