@@ -100,9 +100,43 @@ say("  빌드 컨텍스트 크기 (1.7GB 이미지의 원인 추적)")
 say("=" * 68)
 say(mask(sudo_nas(f"du -sh {STAGE} 2>/dev/null; ls {STAGE}/.dockerignore 2>&1")).strip())
 
+# ── 로컬 Dockerfile 을 임시 이름으로 업로드 ──────────────────
+# NAS 스테이징의 운영 Dockerfile 은 건드리지 않는다. `*.buildtest` 로만 올린다.
+say("\n" + "=" * 68)
+say("  로컬 Dockerfile → NAS 임시 업로드 (운영 파일 미변경)")
+say("=" * 68)
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+UPLOADS_MAP = []
+try:
+    sftp = c.open_sftp()
+    for local_name in ("Dockerfile", "Dockerfile.tbm"):
+        lp = os.path.join(HERE, local_name)
+        if not os.path.exists(lp):
+            say(f"  {local_name}: 로컬에 없음 — 건너뜀")
+            continue
+        remote = f"{STAGE}/{local_name}.buildtest"
+        sftp.put(lp, remote)
+        UPLOADS_MAP.append((local_name, f"{local_name}.buildtest"))
+        say(f"  {local_name} → {remote}  ({os.path.getsize(lp)}B)")
+    sftp.close()
+except Exception as e:
+    say(f"  업로드 실패: {type(e).__name__}: {e}")
+    say("  → 스테이징에 이미 있는 Dockerfile 로 빌드합니다 (로컬 수정 미반영).")
+    UPLOADS_MAP = [("Dockerfile", "Dockerfile"), ("Dockerfile.tbm", "Dockerfile.tbm")]
+
+# freetds-dev 가 실제로 빠졌는지 눈으로 확인할 수 있게 남긴다
+for local_name, _ in UPLOADS_MAP:
+    lp = os.path.join(HERE, local_name)
+    if os.path.exists(lp):
+        body = open(lp, encoding="utf-8").read()
+        say(f"  [{local_name}] freetds-dev 포함? "
+            f"{'예 — 아직 안 지워졌습니다' if 'freetds-dev' in body else '아니오 (삭제됨)'}")
+
 # ── 빌드 ─────────────────────────────────────────────────────
 # :latest 가 아니라 :buildtest 로 태그해서 운영 이미지를 건드리지 않는다.
-for img, df in [("attendance-app", "Dockerfile"), ("attendance-tbm", "Dockerfile.tbm")]:
+for img, df in [("attendance-app", "Dockerfile.buildtest"),
+                ("attendance-tbm", "Dockerfile.tbm.buildtest")]:
     say("\n" + "=" * 68)
     say(f"  {img} 빌드 ({df}) → {img}:buildtest")
     say("=" * 68)
@@ -130,6 +164,14 @@ for img, df in [("attendance-app", "Dockerfile"), ("attendance-tbm", "Dockerfile
     hit = [k for k in ("Successfully", "writing image", "DONE") if k in out]
     say(f"\n[참고] rebuild_containers.py 의 성공 판정 키워드 매칭: "
         f"{hit if hit else '없음 → 성공해도 실패로 오판함'}")
+
+# ── 임시 Dockerfile 정리 ─────────────────────────────────────
+say("\n" + "=" * 68)
+say("  임시 파일 정리")
+say("=" * 68)
+say(mask(sudo_nas(
+    f"rm -f {STAGE}/Dockerfile.buildtest {STAGE}/Dockerfile.tbm.buildtest && echo 삭제완료"
+)).strip() or "(정리 실패 — 수동 삭제 필요)")
 
 c.close()
 _out.close()
