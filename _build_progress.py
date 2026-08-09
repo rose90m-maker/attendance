@@ -42,47 +42,39 @@ def sudo_nas(cmd, timeout=60):
     return re.sub(r'^Password:\s*', '', o.read().decode("utf-8", "replace"))
 
 
-def cache_bytes():
-    """빌드 캐시 크기를 바이트로. 늘어나면 빌드가 전진하고 있다는 뜻."""
-    out = sudo_nas("docker system df --format '{{.Type}}|{{.Size}}'")
-    for line in out.splitlines():
-        if line.startswith("Build Cache"):
-            raw = line.split("|", 1)[1].strip()
-            m = re.match(r'([\d.]+)\s*([KMGT]?i?B)', raw)
-            if not m:
-                return None, raw
-            n, unit = float(m.group(1)), m.group(2)
-            mult = {"B": 1, "KB": 1e3, "MB": 1e6, "GB": 1e9, "TB": 1e12,
-                    "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3, "TiB": 1024**4}
-            return n * mult.get(unit, 1), raw
-    return None, "(못 찾음)"
+def snapshot():
+    """레거시 빌더는 BuildKit 캐시를 안 쓰고 중간 이미지를 만든다.
+    그래서 진행 신호는 캐시 크기가 아니라 이미지(레이어) 개수다."""
+    out = sudo_nas(
+        "docker images -a | wc -l; "
+        "docker images --format '{{.Repository}}:{{.Tag}}' | grep -c buildtest; "
+        "ps -ef 2>/dev/null | grep -E 'docker build' | grep -v grep | wc -l"
+    )
+    nums = [x.strip() for x in out.splitlines() if x.strip().isdigit()]
+    while len(nums) < 3:
+        nums.append("0")
+    return int(nums[0]), int(nums[1]), int(nums[2])
 
 
-print("빌드 진행 확인 — 20초 간격으로 5회 봅니다. Ctrl+C 로 언제든 중단하세요.\n")
+print("빌드 진행 확인 — 15초 간격 4회. Ctrl+C 로 중단해도 빌드에는 영향 없습니다.\n")
 
 prev = None
-for i in range(5):
-    procs = sudo_nas("ps -ef 2>/dev/null | grep -E 'docker[- ]build|buildkit|apt-get|dpkg' "
-                     "| grep -v grep | head -4").strip()
-    size, raw = cache_bytes()
+for i in range(4):
+    layers, done, running = snapshot()
+    delta = "" if prev is None else f"  (직전 대비 +{layers - prev})"
+    prev = layers
+    print(f"[{i+1}/4] 레이어 {layers}개{delta}   "
+          f"완성된 buildtest 이미지 {done}개   "
+          f"docker build 프로세스 {'실행 중' if running else '없음'}")
+    if i < 3:
+        time.sleep(15)
 
-    delta = ""
-    if prev is not None and size is not None:
-        diff = size - prev
-        delta = f"  (직전 대비 {'+' if diff >= 0 else ''}{diff/1e6:.1f}MB)"
-    prev = size
-
-    print(f"[{i+1}/5] 빌드 캐시 {raw}{delta}")
-    if procs:
-        print("       진행 중인 작업:")
-        for line in procs.splitlines():
-            print("        ", line.strip()[:150])
-    else:
-        print("       docker build / apt 프로세스 안 보임")
-    print()
-
-    if i < 4:
-        time.sleep(20)
+print()
+print("판단:")
+print("  · 레이어 개수가 늘고 있다        → 정상 진행 중")
+print("  · 개수 그대로 + 프로세스 실행 중 → 오래 걸리는 단계 (chromium 등). 정상")
+print("  · 프로세스 없음 + buildtest 2개  → 빌드 완료. 원래 창을 보세요")
+print("  · 프로세스 없음 + buildtest 0개  → 실패했을 수 있습니다. 알려주세요")
 
 c.close()
 print("판단:")
