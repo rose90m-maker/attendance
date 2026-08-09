@@ -53,8 +53,20 @@ def mask(text: str) -> str:
     return text
 
 
+# 터미널 스크롤백에 잘리지 않도록 파일에도 같이 남긴다.
+OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_diag.txt")
+_out = open(OUT_PATH, "w", encoding="utf-8")
+
+
+def say(*args):
+    text = " ".join(str(a) for a in args)
+    print(text)
+    _out.write(text + "\n")
+    _out.flush()
+
+
 def head(title: str):
-    print(f"\n{'=' * 68}\n  {title}\n{'=' * 68}")
+    say(f"\n{'=' * 68}\n  {title}\n{'=' * 68}")
 
 
 # ── 접속 (deploy_and_restart.py 와 동일 순서) ────────────────
@@ -73,7 +85,7 @@ except Exception as e:
     sys.exit(f"NAS 접속 실패: {type(e).__name__}: {e}\n"
              f"  → .env 의 NAS_HOST / NAS_USER / NAS_PASS 를 확인하세요.")
 
-print(f"접속 성공: {NAS_USER}@{NAS_HOST}")
+say(f"접속 성공: {NAS_USER}@{NAS_HOST}")
 
 
 def sudo_nas(cmd: str) -> str:
@@ -86,13 +98,13 @@ def sudo_nas(cmd: str) -> str:
 
 # ── 1. 컨테이너 목록 ─────────────────────────────────────────
 head("1. 컨테이너 목록 (docker ps -a)")
-print(mask(sudo_nas(
+say(mask(sudo_nas(
     "docker ps -a --format '{{.Names}} | {{.Status}} | {{.Image}} | {{.Ports}}'"
 )).strip() or "(출력 없음)")
 
 # ── 2. 이미지 목록 ───────────────────────────────────────────
 head("2. attendance 이미지 (docker images)")
-print(mask(sudo_nas(
+say(mask(sudo_nas(
     "docker images --format '{{.Repository}}:{{.Tag}} | {{.ID}} | {{.CreatedSince}} | {{.Size}}' "
     "| grep -i attendance"
 )).strip() or "(attendance 이미지 없음)")
@@ -102,14 +114,21 @@ print(mask(sudo_nas(
 for name in (MAIN, TBM):
     head(f"3. {name} — 실행 설정")
     fmt = ('Status={{.State.Status}}  Restarts={{.RestartCount}}  '
-           'ExitCode={{.State.ExitCode}}\nError={{.State.Error}}\n'
+           'ExitCode={{.State.ExitCode}}  OOMKilled={{.State.OOMKilled}}\n'
+           'StartedAt={{.State.StartedAt}}  FinishedAt={{.State.FinishedAt}}\n'
+           'Error={{.State.Error}}\n'
+           'RestartPolicy={{.HostConfig.RestartPolicy.Name}}'
+           '  MaxRetry={{.HostConfig.RestartPolicy.MaximumRetryCount}}\n'
+           'Health={{if .State.Health}}{{.State.Health.Status}}'
+           ' (fail {{.State.Health.FailingStreak}}){{else}}없음{{end}}\n'
+           'MemLimit={{.HostConfig.Memory}}\n'
            'Cmd={{.Config.Cmd}}\nEntrypoint={{.Config.Entrypoint}}\n'
            'Image={{.Config.Image}}\nPorts={{.HostConfig.PortBindings}}')
-    print(mask(sudo_nas(f"docker inspect -f '{fmt}' {name}")).strip() or "(컨테이너 없음)")
+    say(mask(sudo_nas(f"docker inspect -f '{fmt}' {name}")).strip() or "(컨테이너 없음)")
 
     # 컨테이너 안에서 실제로 무엇이 어느 포트를 잡고 있는지
-    print("\n-- 컨테이너 내부 프로세스 --")
-    print(mask(sudo_nas(f"docker top {name} 2>&1 | head -6")).strip() or "(미실행)")
+    say("\n-- 컨테이너 내부 프로세스 --")
+    say(mask(sudo_nas(f"docker top {name} 2>&1 | head -6")).strip() or "(미실행)")
 
 # ── 4. 환경변수 — 값이 아니라 '길이'만 ───────────────────────
 # 5월 19일 사고: --env-file 로 박힌 옛 DB_PASSWORD 가 .env 를 덮어써서 1045 발생.
@@ -120,24 +139,52 @@ for name in (MAIN, TBM):
         f"| grep '^DB_PASSWORD=' | head -1"
     ).strip()
     if out.startswith("DB_PASSWORD="):
-        print(f"  {name:16} 컨테이너 env DB_PASSWORD 길이 = {len(out.split('=', 1)[1])}")
+        say(f"  {name:16} 컨테이너 env DB_PASSWORD 길이 = {len(out.split('=', 1)[1])}")
     else:
-        print(f"  {name:16} 컨테이너 env 에 DB_PASSWORD 없음 (/app/.env 로 주입되는 구조)")
+        say(f"  {name:16} 컨테이너 env 에 DB_PASSWORD 없음 (/app/.env 로 주입되는 구조)")
 
 local_db = os.environ.get("DB_PASSWORD", "")
-print(f"  {'맥 .env':16} DB_PASSWORD 길이 = {len(local_db) if local_db else '(없음)'}")
-print("  → 길이가 다르면 5월 19일과 같은 1045 인증 실패 원인입니다.")
+say(f"  {'맥 .env':16} DB_PASSWORD 길이 = {len(local_db) if local_db else '(없음)'}")
+say("  → 길이가 다르면 5월 19일과 같은 1045 인증 실패 원인입니다.")
 
 # ── 5. 로그 ──────────────────────────────────────────────────
 for name in (MAIN, TBM):
     head(f"5. {name} — 최근 로그 60줄")
-    print(mask(sudo_nas(f"docker logs --tail 60 {name}")).strip() or "(로그 없음)")
+    say(mask(sudo_nas(f"docker logs --tail 60 {name}")).strip() or "(로그 없음)")
 
 # ── 6. 포트 점유 ─────────────────────────────────────────────
 head("6. NAS 포트 5050 / 5051 점유 상태")
-print(mask(sudo_nas(
+say(mask(sudo_nas(
     "netstat -tlnp 2>/dev/null | grep -E ':(5050|5051)' || echo '(5050/5051 리스닝 없음)'"
 )).strip())
 
+# ── 7. 메모리 사용량 ─────────────────────────────────────────
+# 20~30분 주기 재시작은 OOM kill 가능성이 있어 현재 사용량을 본다.
+head("7. 메모리 · CPU 사용량 (docker stats)")
+say(mask(sudo_nas(
+    "docker stats --no-stream --format "
+    "'{{.Name}} | CPU {{.CPUPerc}} | MEM {{.MemUsage}} ({{.MemPerc}})'"
+)).strip() or "(출력 없음)")
+
+# ── 8. 헬스체크 최근 결과 ────────────────────────────────────
+head("8. 헬스체크 최근 3회 (설정된 경우)")
+for name in (MAIN, TBM):
+    out = sudo_nas(
+        f"docker inspect -f '{{{{if .State.Health}}}}"
+        f"{{{{range .State.Health.Log}}}}[{{{{.ExitCode}}}}] {{{{.Output}}}}{{{{end}}}}"
+        f"{{{{else}}}}없음{{{{end}}}}' {name} | tail -20"
+    ).strip()
+    say(f"-- {name} --")
+    say(mask(out) or "(없음)")
+
+# ── 9. NAS 시스템 로그의 OOM 흔적 ───────────────────────────
+head("9. 커널 OOM kill 흔적")
+say(mask(sudo_nas(
+    "dmesg 2>/dev/null | grep -iE 'out of memory|oom-kill|killed process' | tail -10 "
+    "|| echo '(dmesg 접근 불가 또는 흔적 없음)'"
+)).strip() or "(흔적 없음)")
+
 c.close()
-print("\n진단 완료 — 위 출력을 그대로 붙여주세요 (자격증명은 마스킹되어 있습니다).")
+_out.close()
+print(f"\n>>> 전체 결과가 {OUT_PATH} 에 저장되었습니다.")
+print("진단 완료 — 위 출력을 그대로 붙여주세요 (자격증명은 마스킹되어 있습니다).")
