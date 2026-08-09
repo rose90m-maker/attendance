@@ -86,25 +86,38 @@
             <div class="ms-card">
                 <div class="hd"><span class="num">1</span> 받는 사람</div>
 
-                <input type="text" class="form-control mb-2" id="nameSearch" autocomplete="off"
-                       placeholder="🔍 이름 검색 (예: 홍길)"
-                       oninput="searchName()" onfocus="searchName()">
-                <div id="nameResult" class="border rounded mb-2"
-                     style="max-height:190px; overflow-y:auto; display:none; font-size:.84rem;"></div>
-
+                <div class="mb-2" style="font-size:.8rem; color:#64748b;">
+                    그룹을 누르면 아래에 명단이 나옵니다. 빼고 싶은 사람은 체크를 끄세요.
+                </div>
                 <div class="mb-2">
                     <span class="quick all" id="qAll" onclick="toggleAll()">👥 재직자 전원</span>
                     {% for d in depts %}<span class="quick" data-dept="{{ d }}" onclick="toggleDept(this)">{{ d }}</span>{% endfor %}
                 </div>
 
-                <div id="pickedChips" class="mb-2"></div>
+                <input type="text" class="form-control form-control-sm mb-2" id="nameSearch"
+                       autocomplete="off" placeholder="🔍 이름으로 찾아 추가 (예: 홍길)"
+                       oninput="searchName()" onfocus="searchName()">
+                <div id="nameResult" class="border rounded mb-2"
+                     style="max-height:170px; overflow-y:auto; display:none; font-size:.84rem;"></div>
+
+                <!-- 고른 사람 명단 — 항상 보인다 -->
+                <div id="listBox" class="border rounded mb-2" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center px-2 py-1"
+                         style="background:#f1f5f9; border-bottom:1px solid #e2e8f0; font-size:.78rem;">
+                        <span><b id="listCnt">0</b>명 선택됨</span>
+                        <span>
+                            <button class="btn btn-link btn-sm p-0 me-2" style="font-size:.75rem;"
+                                    onclick="checkAll(true)">모두 켜기</button>
+                            <button class="btn btn-link btn-sm p-0 text-danger" style="font-size:.75rem;"
+                                    onclick="clearAll()">비우기</button>
+                        </span>
+                    </div>
+                    <div id="listBody" style="max-height:290px; overflow-y:auto; font-size:.82rem;"></div>
+                </div>
 
                 <div class="summary">
                     <div id="sumLine"><span class="big">0</span>명 — 받는 사람을 고르세요</div>
                     <div id="sumSub" class="text-muted mt-1" style="font-size:.78rem;"></div>
-                </div>
-                <div class="text-end mt-2">
-                    <button class="btn btn-sm btn-link p-0" style="font-size:.78rem;" onclick="showTargets()">명단 확인</button>
                 </div>
             </div>
 
@@ -182,14 +195,6 @@
     </div>
 </div>
 
-<div class="modal fade" id="mdTargets" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
-        <div class="modal-header py-2"><h6 class="modal-title">받는 사람 명단</h6>
-            <button class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body"><div id="targetBody">불러오는 중…</div></div>
-    </div></div>
-</div>
-
 <div class="modal fade" id="mdHistory" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
         <div class="modal-header py-2"><h6 class="modal-title">보낸 내역</h6>
@@ -201,63 +206,106 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const ROSTER = {{ roster|tojson }};
-let picked = [];        // 이름으로 직접 고른 사람
-let depts  = [];        // 부서 버튼으로 고른 부서
-let sendAll = false;    // 전원 (명시적으로 켜야만 함)
+/* 명단에 올라온 사람이 곧 받는 사람이다 — 체크가 켜진 사람에게만 나간다.
+   그룹 버튼은 "명단에 불러오는" 역할이고, 최종 판단은 언제나 체크 상태다. */
+let listed = [];        // [{...직원, on:true/false}]
 let firstTarget = null;
 let lastValid = 0;
 
-/* ── 받는 사람 ── */
+function inList(id){ return listed.find(x => x.id === id); }
+function onIds(){ return listed.filter(x => x.on).map(x => x.id); }
+
+function addRows(rows){
+    rows.forEach(r=>{ if(!inList(r.id)) listed.push({...r, on: r.has_phone !== false}); });
+}
+function removeRows(rows){
+    const del = new Set(rows.map(r=>r.id));
+    listed = listed.filter(x => !del.has(x.id));
+}
+
+/* ── 그룹 버튼 ── */
+function toggleDept(el){
+    const d = el.dataset.dept;
+    const rows = ROSTER.filter(r => r.dept === d);
+    // 이미 전원이 명단에 있으면 빼고, 아니면 넣는다
+    const allIn = rows.length && rows.every(r => inList(r.id));
+    if (allIn) removeRows(rows); else addRows(rows);
+    syncQuick(); drawList(); refresh();
+}
+function toggleAll(){
+    const allIn = ROSTER.length && ROSTER.every(r => inList(r.id));
+    if (allIn) listed = []; else addRows(ROSTER);
+    syncQuick(); drawList(); refresh();
+}
+function syncQuick(){
+    const allIn = ROSTER.length && ROSTER.every(r => inList(r.id));
+    document.getElementById('qAll').classList.toggle('on', allIn);
+    document.querySelectorAll('.quick[data-dept]').forEach(e=>{
+        const rows = ROSTER.filter(r => r.dept === e.dataset.dept);
+        e.classList.toggle('on', rows.length && rows.every(r => inList(r.id)));
+    });
+}
+
+/* ── 이름 검색으로 한 명씩 추가 ── */
 function searchName(){
     const q = document.getElementById('nameSearch').value.trim();
     const box = document.getElementById('nameResult');
     if (!q){ box.style.display='none'; return; }
     const hit = ROSTER.filter(r => (r.name||'').includes(q)).slice(0,30);
     box.innerHTML = hit.length ? hit.map(r=>{
-        const on = picked.some(p=>p.id===r.id);
+        const on = !!inList(r.id);
         return `<div class="px-2 py-1 border-bottom d-flex justify-content-between" style="cursor:pointer;"
                      onclick="pick(${r.id})">
                   <span>${r.name} <span class="text-muted">${r.dept||''} ${r.position||''}</span></span>
-                  <span class="${on?'text-primary':'text-muted'}">${on?'✓ 선택됨':'추가'}</span></div>`;
+                  <span class="${on?'text-primary':'text-muted'}">${on?'✓ 명단에 있음':'추가'}</span></div>`;
     }).join('') : '<div class="p-2 text-muted">없습니다.</div>';
     box.style.display='';
 }
 function pick(id){
-    sendAll = false; depts = [];
-    const i = picked.findIndex(p=>p.id===id);
-    if (i>=0) picked.splice(i,1);
-    else { const r = ROSTER.find(x=>x.id===id); if(r) picked.push(r); }
-    syncQuick(); drawPicked(); searchName(); refresh();
+    const r = ROSTER.find(x=>x.id===id); if(!r) return;
+    if (inList(id)) removeRows([r]); else addRows([r]);
+    syncQuick(); drawList(); searchName(); refresh();
 }
-function toggleDept(el){
-    sendAll = false; picked = [];
-    const d = el.dataset.dept;
-    const i = depts.indexOf(d);
-    if (i>=0) depts.splice(i,1); else depts.push(d);
-    syncQuick(); drawPicked(); refresh();
+
+/* ── 명단 ── */
+function toggleOne(id){
+    const x = inList(id); if(!x) return;
+    if (x.has_phone === false) return;   // 번호 없으면 못 켠다
+    x.on = !x.on;
+    drawList(); refresh();
 }
-function toggleAll(){
-    sendAll = !sendAll;
-    if (sendAll){ picked = []; depts = []; }
-    syncQuick(); drawPicked(); refresh();
-}
-function syncQuick(){
-    document.getElementById('qAll').classList.toggle('on', sendAll);
-    document.querySelectorAll('.quick[data-dept]').forEach(e=>
-        e.classList.toggle('on', depts.includes(e.dataset.dept)));
-}
-function drawPicked(){
-    document.getElementById('pickedChips').innerHTML = picked.map(p=>
-        `<span class="pick-chip" onclick="pick(${p.id})">${p.name}<span class="x">✕</span></span>`).join('');
+function checkAll(v){ listed.forEach(x=>x.on = v && x.has_phone !== false); drawList(); refresh(); }
+function clearAll(){ listed = []; syncQuick(); drawList(); refresh(); }
+
+function drawList(){
+    const box = document.getElementById('listBox');
+    box.style.display = listed.length ? '' : 'none';
+    document.getElementById('listCnt').textContent = listed.filter(x=>x.on).length;
+    // 부서별로 묶어서 보여 준다 — 누가 있는지 한눈에 보이게
+    const byDept = {};
+    listed.forEach(x => (byDept[x.dept||'(부서없음)'] ||= []).push(x));
+    document.getElementById('listBody').innerHTML = Object.keys(byDept).sort().map(d=>{
+        const rows = byDept[d];
+        return `<div class="px-2 py-1" style="background:#f8fafc; font-weight:600; font-size:.76rem; color:#475569;">
+                  ${d} <span class="text-muted">(${rows.filter(r=>r.on).length}/${rows.length})</span></div>` +
+            rows.map(r=>`
+                <label class="px-2 py-1 border-bottom d-flex align-items-center gap-2 mb-0"
+                       style="cursor:${r.has_phone?'pointer':'not-allowed'};">
+                  <input type="checkbox" ${r.on?'checked':''} ${r.has_phone?'':'disabled'}
+                         onchange="toggleOne(${r.id})">
+                  <span style="${r.on&&r.has_phone?'':'opacity:.45;'}${r.on?'':'text-decoration:line-through;'}">
+                    ${r.name} <span class="text-muted">${r.position||''}</span>
+                    ${r.has_phone?'':'<span class="text-danger" style="font-size:.72rem;">번호없음</span>'}</span>
+                </label>`).join('');
+    }).join('');
 }
 
 function cond(){
     const c = { body: document.getElementById('body').value,
                 title: (document.getElementById('title')||{}).value || '',
                 channel: document.getElementById('channel').value };
-    if (picked.length) c.emp_ids = picked.map(p=>p.id);
-    else if (depts.length) c.depts = depts;
-    else if (sendAll) c.send_all = true;
+    const ids = onIds();
+    if (ids.length) c.emp_ids = ids;      // 체크된 사람에게만 나간다
     return c;
 }
 
@@ -330,20 +378,6 @@ async function refresh(){
     draw();
 }
 
-/* ── 명단 ── */
-async function showTargets(){
-    new bootstrap.Modal(document.getElementById('mdTargets')).show();
-    const r = await fetch('/api/msg_targets',{method:'POST',
-        headers:{'Content-Type':'application/json'},body:JSON.stringify(cond())}).then(r=>r.json());
-    if (!r.rows.length){ document.getElementById('targetBody').innerHTML='<p class="text-muted">받는 사람이 없습니다.</p>'; return; }
-    document.getElementById('targetBody').innerHTML =
-        `<table class="table table-sm tbl"><thead><tr><th>이름</th><th>부서</th><th>직급</th><th>번호</th><th>상태</th></tr></thead><tbody>` +
-        r.rows.map(x=>`<tr><td>${x.name||''}</td><td>${x.dept||''}</td><td>${x.position||''}</td>
-            <td>${x.valid?x.phone.replace(/(\d{3})(\d{4})(\d{4})/,'$1-****-$3'):'-'}</td>
-            <td class="${x.valid?'st-ok':'st-drop'}">${x.valid?'발송':'번호없음'}</td></tr>`).join('') +
-        `</tbody></table>`;
-}
-
 /* ── 테스트 발송 ── */
 async function doTest(){
     const c = cond();
@@ -366,8 +400,9 @@ async function doSend(){
     const c = cond();
     if (!c.body.trim()){ alert('내용을 입력하세요.'); return; }
     let who = `${lastValid}명에게`;
-    if (picked.length && picked.length <= 5) who = picked.map(p=>p.name).join(', ') + '님에게';
-    else if (sendAll) who = `재직자 전원 ${lastValid}명에게`;
+    const on = listed.filter(x=>x.on);
+    if (on.length && on.length <= 5) who = on.map(p=>p.name).join(', ') + '님에게';
+    else if (on.length === ROSTER.length) who = `재직자 전원 ${lastValid}명에게`;
     const kind = document.getElementById('kindInfo').textContent;
     const unit = kind==='알림톡'?9:kind==='LMS'?43:20;
     if (!confirm(`${who} ${kind}로 보냅니다.\n예상 ${(unit*lastValid).toLocaleString()}원\n\n보내시겠습니까?`)) return;
@@ -387,7 +422,7 @@ async function doSend(){
             if ((r.dropped||[]).length) m += `\n제외 ${r.dropped.length}건`;
             alert(m);
             document.getElementById('body').value = '';
-            refresh();
+            clearAll();          // 명단까지 비워 중복 발송을 막는다
         }
     }catch(e){ alert('오류: ' + e); }
     btn.disabled = false; draw();
@@ -435,6 +470,7 @@ async function detail(cid){
 }
 
 /* 내 번호를 테스트칸에 미리 채워 둔다 */
+drawList();
 fetch('/api/msg_my_phone').then(r=>r.json()).then(j=>{
     if (j.phone) document.getElementById('testPhone').value =
         j.phone.replace(/(\d{3})(\d{4})(\d{4})/,'$1-$2-$3');
