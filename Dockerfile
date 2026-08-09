@@ -9,12 +9,17 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     tzdata \
-    freetds-dev \
     fonts-nanum \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# pymssql 은 FreeTDS 를 내장한 manylinux 휠로 설치된다 (2.3.13 기준).
+# 그래서 시스템 패키지 freetds-dev 가 필요 없다 — 예전에 넣어 뒀던 그 줄이
+# apt 에서 "Unable to locate package" 로 빌드를 통째로 깨뜨렸다 (2026-08-09).
+# 휠이 아니라 소스로 떨어지는 상황이 오면 여기서 즉시 실패하게 해 둔다.
+RUN python -c "import pymssql; print('pymssql', pymssql.__version__)"
 
 # 원천징수영수증 PDF 변환용 headless Chromium (wht_receipt.html_to_pdf)
 # 없으면 PDF 대신 HTML 로 폴백된다

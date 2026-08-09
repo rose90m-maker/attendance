@@ -21,6 +21,7 @@
 """
 import argparse
 import os
+import re
 import sys
 import time
 
@@ -34,12 +35,23 @@ STAGE = os.environ.get("NAS_STAGE_DIR", "/volume1/web/attendance")
 ENV_FILE = f"{STAGE}/.env"
 UPLOADS = "/volume1/docker/attendance/uploads:/app/uploads"
 
+# cmd 를 여기서 하드코딩하지 않는다.
+#
+# 5월 19일 사고 때 "docker run 시 CMD 명시 필수" 로 정리했는데, 그 뒤 Dockerfile 이
+# gunicorn 4 workers 로 올라갔는데도 여기 박힌 "python app_maria.py" 가 그걸 덮어써서
+# 운영이 Flask 개발 서버로 돌고 있었다 (2026-08-09 확인).
+#
+# 그래서 방식을 바꾼다 — 덮어쓰지 말고 이미지 기본 CMD 를 쓰되, 기동 후 실제
+# 프로세스가 기대한 것인지 검증한다. 사고 예방 목적은 그대로 지키면서
+# 이미지와 어긋날 일이 없다.
 CONTAINERS = [
     {"name": "attendance-app", "image": "attendance-app", "port": "5050:5050",
-     "cmd": "python app_maria.py", "health": "http://localhost:5050/"},
+     "health": "http://localhost:5050/",
+     "expect_proc": "gunicorn"},
     {"name": "attendance-tbm", "image": "attendance-tbm", "port": "5051:5051",
-     "cmd": "python tbm_app.py", "health": "http://localhost:5051/tbm/login",
-     "dockerfile": "Dockerfile.tbm"},
+     "health": "http://localhost:5051/tbm/login",
+     "dockerfile": "Dockerfile.tbm",
+     "expect_proc": "tbm_app.py"},
 ]
 
 _cli = None
@@ -66,7 +78,10 @@ def sudo(cmd, t=1800):
             f"sh -c 'PATH=/usr/local/bin:$PATH {cmd}' 2>&1")
     _, o, _ = ssh().exec_command(full, timeout=t)
     out = o.read().decode().strip()
-    return out[len("Password: "):].strip() if out.startswith("Password: ") else out
+    # sudo -S 프롬프트는 'Password: ' 로도, 'Password:' 로도 온다.
+    # startswith("Password: ") 만 보면 후자를 못 떼고 출력에 섞여 들어가,
+    # 이 문자열을 검사하는 쪽(빌드 성공 판정 등)이 오작동한다.
+    return re.sub(r'^Password:\s*', '', out)
 
 
 def plain(cmd, t=60):
@@ -114,12 +129,20 @@ def rebuild(only=None):
         print("       ", sudo(f"{DOCKER} tag {img}:latest {img}:backup-{ts}") or "OK")
 
         # 2) 빌드 (컨테이너는 그대로 돌아간다 — 여기까진 무중단)
+        #
+        # 성공 판정은 반드시 종료 코드로 한다. 예전에는 출력에 "Successfully" 같은
+        # 문자열이 있는지로 판정했는데, 빌더 종류(레거시/BuildKit)마다 문구가 다르고
+        # sudo 프롬프트까지 섞여 들어와 오판이 났다. deploy_and_restart.py 가 쓰는
+        # `echo EXIT_$?` 패턴을 그대로 따른다.
         print(f"  [2/5] 이미지 빌드 ({df}) — 수 분 소요")
-        out = sudo(f"cd {STAGE} && {DOCKER} build -f {df} -t {img}:latest .", t=2400)
-        tail = "\n".join(out.splitlines()[-6:])
+        out = sudo(f"cd {STAGE} && {DOCKER} build -f {df} -t {img}:latest . "
+                   f"; echo BUILD_EXIT_$?", t=2400)
+        tail = "\n".join(out.splitlines()[-8:])
         print("       ", tail)
-        if "Successfully" not in out and "writing image" not in out and "DONE" not in out:
-            print("  ❌ 빌드 실패로 판단 — 중단합니다 (컨테이너는 그대로)")
+        m = re.search(r'BUILD_EXIT_(\d+)', out)
+        if not m or m.group(1) != "0":
+            code = m.group(1) if m else "판정불가"
+            print(f"  ❌ 빌드 실패 (종료 코드 {code}) — 중단합니다 (컨테이너는 그대로)")
             return False
 
         # 3) 정지·삭제 → 여기서부터 다운타임
@@ -127,10 +150,10 @@ def rebuild(only=None):
         sudo(f"{DOCKER} stop {name}")
         sudo(f"{DOCKER} rm {name}")
 
-        # 4) 생성 — CMD 명시 필수
+        # 4) 생성 — 이미지 기본 CMD 를 쓴다 (덮어쓰지 않는다)
         run = (f"{DOCKER} run -d --name {name} --restart unless-stopped "
                f"-p {c['port']} -v {UPLOADS} --env-file {ENV_FILE} "
-               f"{img}:latest {c['cmd']}")
+               f"{img}:latest")
         print("       ", sudo(run)[:80])
 
         # 5) 헬스체크
@@ -140,27 +163,52 @@ def rebuild(only=None):
             print(f"  ❌ 기동 실패. 로그:\n{sudo(f'{DOCKER} logs --tail 30 {name}')}")
             print(f"  ↩︎  롤백: python rebuild_containers.py --rollback")
             return False
+
+        # 6) 실제로 뜬 프로세스가 기대한 것인지 확인.
+        #    5월 19일 사고(tbm 이 app_maria.py 를 띄워 포트가 어긋남)를 잡는 자리다.
+        #    CMD 를 덮어쓰는 대신 결과를 검증한다.
+        want = c.get("expect_proc")
+        if want:
+            top = sudo(f"{DOCKER} top {name}")
+            if want in top:
+                print(f"       프로세스 확인: {want} ✅")
+            else:
+                print(f"  ⚠️  기대한 프로세스({want})가 안 보입니다. 실제:")
+                print("       " + "\n       ".join(top.splitlines()[-3:]))
+                print(f"       이미지 기본 CMD 가 의도와 다를 수 있습니다 — {df} 를 확인하세요.")
+                print(f"  ↩︎  롤백: python rebuild_containers.py --rollback")
+                return False
+
         print(f"  ✅ {name} 정상")
     return True
 
 
 def rollback():
     print("── 롤백: 가장 최근 backup-* 이미지로 되돌립니다 ──")
+    skipped = []
     for c in CONTAINERS:
         name, img = c["name"], c["image"]
         tags = sudo(f'{DOCKER} images {img} --format "{{{{.Tag}}}}" | grep backup- | sort -r')
         tag = tags.splitlines()[0].strip() if tags else ""
         if not tag:
-            print(f"  {name}: 백업 이미지 없음 — 건너뜀")
+            # 조용히 넘어가면 한쪽만 되돌아간 채로 두 컨테이너 버전이 어긋난다.
+            print(f"  ⚠️  {name}: 백업 이미지가 하나도 없어 되돌릴 수 없습니다 — 그대로 둡니다")
+            skipped.append(name)
             continue
         print(f"  {name}: {img}:{tag} 로 복구")
         sudo(f"{DOCKER} stop {name}; {DOCKER} rm {name}")
         sudo(f"{DOCKER} tag {img}:{tag} {img}:latest")
+        # rebuild 와 동일하게 이미지 기본 CMD 를 쓴다.
         run = (f"{DOCKER} run -d --name {name} --restart unless-stopped "
                f"-p {c['port']} -v {UPLOADS} --env-file {ENV_FILE} "
-               f"{img}:latest {c['cmd']}")
+               f"{img}:latest")
         sudo(run)
         print(f"    헬스체크 → {health(c['health'])}")
+
+    if skipped:
+        print(f"\n⚠️  되돌리지 못한 컨테이너: {', '.join(skipped)}")
+        print("    나머지만 되돌아가 버전이 어긋난 상태입니다. 이미지 목록을 확인하세요:")
+        print(f"    docker images | grep -E '{'|'.join(c['image'] for c in CONTAINERS)}'")
 
 
 def main():

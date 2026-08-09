@@ -138,6 +138,11 @@ _git_auto_commit()
 
 files = [
     ("Dockerfile", "Dockerfile"),
+    # .dockerignore 가 NAS staging 에 없으면 `COPY . .` 가 .env 까지 이미지에 굽는다.
+    # 자격증명은 --env-file 로 런타임에 주입되므로 이미지에 들어갈 이유가 없다.
+    # (2026-08-09 확인: 운영 이미지 /app/.env 2093B 가 레이어에 박혀 있었음)
+    (".dockerignore", ".dockerignore"),
+    ("Dockerfile.tbm", "Dockerfile.tbm"),
     ("requirements.txt", "requirements.txt"),
     ("app_maria.py", "app_maria.py"),
     ("cert_pdf.py", "cert_pdf.py"),
