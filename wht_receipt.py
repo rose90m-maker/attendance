@@ -195,11 +195,15 @@ def load_prework(cur, emp_seq, yy):
     주(현) 열에는 종전분이 섞인 합계가 들어갔다 (2026-08-10 발급본 대조로 발견).
     ERP DB 자동검사는 대조 대상이 전부 '합계' 항목이라 이 결함을 못 잡는다.
     """
-    cur.execute("""SELECT Seq, PreCompanyName, PreTaxNo, WorkBegDate, WorkEndDate
+    cur.execute("""SELECT Seq, PreCompanyName, PreTaxNo, WorkBegDate, WorkEndDate,
+                          TaxReducBegDate, TaxReducEndDate
                    FROM _TWPRAdjTotPreWork
                    WHERE YY=%s AND EmpSeq=%s ORDER BY Seq""", (yy, emp_seq))
     works = [{"seq": r[0], "name": (r[1] or "").strip(),
-              "biz_no": _biz(r[2]), "beg": r[3], "end": r[4], "amt": {}}
+              "biz_no": _biz(r[2]), "beg": r[3], "end": r[4],
+              # ⑫감면기간 — 이재현 2025 발급본의 종(전) 열에 2025.01.01~2025.08.31
+              # 이 찍혀 있는데 우리는 빈칸이었다 (2026-08-10 대조).
+              "red_beg": r[5], "red_end": r[6], "amt": {}}
              for r in cur.fetchall()]
     if not works:
         return works
@@ -605,7 +609,8 @@ def build_income_rows(t, inc, pre, works, beg, end, co):
         row2("⑩ 사업자등록번호", co["biz_no"], lambda w: w["biz_no"]),
         row2("⑪ 근무기간", _period(beg, end),
              lambda w: _period(w["beg"], w["end"])),
-        row2("⑫ 감면기간", "", lambda w: ""),
+        row2("⑫ 감면기간", "",
+             lambda w: _period(w["red_beg"], w["red_end"])),
     ]
     d3 = [row3(title, key) for title, key in INCOME_ROWS]
 
