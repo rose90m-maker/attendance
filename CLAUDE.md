@@ -37,11 +37,6 @@ Korean workplace attendance management system (㈜태인 근태관리). Flask we
 > - `docker_files_main` — **`.py` 는 여기 하드코딩 목록에 반드시 추가**
 > - `STANDBY_PY` — .5 대기서버용. 빠지면 대기서버가 기동 실패
 >
-> 같은 함정이 빌드 쪽에도 있었다. `.dockerignore` 와 `Dockerfile.tbm` 이 `files` 에 없어서
-> **NAS staging 에 아예 없었고**, `.dockerignore` 없이 `COPY . .` 가 돌면서 `.env` 가
-> 이미지 레이어에 그대로 구워졌다 (2026-08-09 확인, 지금은 둘 다 목록에 추가됨).
-> 자격증명은 `--env-file` 로 런타임 주입되므로 이미지에 들어갈 이유가 없다.
->
 > 또한 `docker cp` 가 NAS 의 ACL 을 옮기면서 파일 권한이 `000` 이 되는 경우가 있어
 > 파이썬이 모듈을 못 읽는다. cp 루프 뒤에 `chmod a+r` 보정 단계를 넣어 두었다.
 
@@ -53,10 +48,8 @@ Korean workplace attendance management system (㈜태인 근태관리). Flask we
 - NAS staging path: `/volume1/web/attendance/`
 - Mounted volume: `/volume1/docker/attendance/uploads:/app/uploads` (uploads only)
 - Other files (templates/, static/, app_maria.py) live in the container's writable layer
-- `docker` binary on NAS: `/usr/local/bin/docker` — **레거시 빌더** (BuildKit 아님). `docker system df` 의 `Build Cache` 는 증가하지 않으니 진행 지표로 쓰지 말 것
-- SSH 는 되지만 **SFTP 는 꺼져 있다** (paramiko `open_sftp()` → `Channel closed`). 파일을 올려야 하면 base64 를 SSH 명령으로 실어 보낼 것
-- sudo password is the NAS password; sudo 출력 앞에 프롬프트가 붙는데 `"Password: "`(공백 있음)와 `"Password:"`(없음) 두 형태가 모두 나온다. `re.sub(r'^Password:\s*', '', out)` 로 떼야 한다 — `startswith("Password: ")` 만 보면 놓친다
-- `sudo sh -c '...'` 안에서 `docker --format '{{.Names}}'` 처럼 작은따옴표를 겹치면 따옴표가 조기에 닫혀 `command not found` 가 난다. 명령을 base64 로 넘기면 해소
+- `docker` binary on NAS: `/usr/local/bin/docker`
+- sudo password is the NAS password; sudo output is prefixed with `"Password: "` which must be stripped
 
 **Deploy**: `python deploy_and_restart.py` (handles SCP → `docker cp` → `docker restart`, and auto-commits dirty git state with message `배포: <changed files>`, prepending to `static/dev_history.json`).
 
@@ -65,16 +58,6 @@ Korean workplace attendance management system (㈜태인 근태관리). Flask we
 컨테이너를 재생성하므로 **컨테이너당 30초~1분 다운타임**이 있고, Chromium 설치 탓에
 빌드에만 10~15분 걸린다(빌드 중에는 무중단). 재생성 전 현재 이미지를
 `backup-YYYYMMDDHHMM` 으로 태그해 두므로 문제 시 `--rollback` 으로 되돌린다.
-
-> 🧪 **재빌드 전에 빌드만 먼저 돌려보는 게 안전하다.** `python3 _archive/_check_build.py` 는
-> `:buildtest` 태그로만 빌드하고 컨테이너를 건드리지 않는다 — **다운타임 0**. 여기서 통과하면
-> 실제 재빌드의 빌드 단계도 통과한다. 빌드 후 `python3 _archive/_verify_image.py <이미지명>` 으로
-> pymssql/chromium/나눔폰트/gunicorn 동작과 `.env` 혼입 여부까지 확인할 수 있다.
-
-**컨테이너의 CMD 는 `docker run` 에서 덮어쓰지 않는다.** 이미지 기본 CMD
-(app=gunicorn 4 workers, tbm=`python tbm_app.py`)를 쓰고, 기동 후 `expect_proc` 로
-실제 프로세스를 검증한다. 예전에는 5월 사고 대응으로 `cmd` 를 하드코딩했는데,
-그것이 gunicorn 전환을 덮어써 운영이 개발 서버로 돌던 일이 있었다 (2026-08-09 해소).
 
 > ⚠️ 예전 `--rebuild` 는 `docker compose`(공백형)를 불렀는데 Synology 에는 그 명령이
 > 없어 **조용히 실패하면서 화면에는 성공으로 표시**됐다. 그 탓에 이미지가 2026-05-26 자로
@@ -105,8 +88,7 @@ bash start_tbm.sh {start|stop|restart|status}
 
 - All UI text and most comments are **Korean**. Match that style when editing.
 - Session keys: `user_id` (login), `role` ("admin" gates), `e_id` (employee id), `user_name`.
-- Files prefixed `_check_*.py`, `_test_*.py`, `_run_*.py` at the repo root are **throwaway debug scratch** — not load-bearing, safe to ignore. 일이 끝나면 `_archive/` 로 옮긴다 (`git mv` — 삭제가 아니라 이관이라 나중에 다시 쓸 수 있다).
-- `_archive/` 의 진단 스크립트는 **버리는 게 아니라 보관**이다. 배포·컨테이너 문제를 볼 때 먼저 여기를 확인할 것 — 새로 짜는 것보다 빠르다. (`_recovery_*.py` 만 gitignore 대상)
+- Files prefixed `_check_*.py`, `_test_*.py`, `_run_*.py` at the repo root are **throwaway debug scratch** — not load-bearing, safe to ignore.
 - `app_maria.py.bak`, `nohup.out`, `rag_server.log` are local cruft.
 
 ## Sensitive — Do Not Commit
@@ -252,8 +234,8 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 ### 후속 과제 5건 (별도 작업으로)
 
 #### A. 구조 개선 (높음)
-1. ~~**이미지 정기 재빌드 정책 수립**~~ — ✅ **2026-08-09 해소.** `rebuild_containers.py`(백업 태그 → 빌드 → 재생성 → 헬스체크 → 프로세스 검증 → 롤백)로 정리됐고 `deploy_and_restart.py --rebuild` 가 여기에 위임한다. 아래 "2026-08-09 재빌드 실패" 절 참조.
-2. ~~**`Dockerfile.tbm` CMD 점검**~~ — ✅ **해결 확인.** `CMD ["python", "tbm_app.py"]` 로 올바르게 박혀 있다 (2026-08-09 재빌드 로그 Step 8/8 에서 확인).
+1. **이미지 정기 재빌드 정책 수립** — 현재 `docker cp + restart` 방식은 컨테이너 재생성 시 모든 변경 손실. 주기적(주/월 단위) `python deploy_and_restart.py --rebuild`로 이미지 baseline을 최신화하거나, CI/CD로 이미지 빌드 파이프라인 구축 검토.
+2. **`Dockerfile.tbm` CMD 점검** — 이미지 default CMD가 `python app_maria.py`로 잘못 박혀있을 가능성. `CMD ["python", "tbm_app.py"]`로 명시되어 있는지 확인. 안 그러면 재빌드 시 또 같은 사고.
 
 #### B. 보안/운영 (중간)
 3. **`docker-compose.yml` 평문 비번 정리** (이전 합의) — L32/L56/L75의 `DB_PASSWORD: "..."` 평문 + L83 healthcheck의 평문 비번. compose도 `--env-file` 또는 `${VAR}` 참조로 통일.
@@ -263,73 +245,11 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 5. **Tuya API quota 초과** — `attendance-tbm` 로그에 반복 발생: `[Tuya] smoke-001 상태 조회 실패: code=28841004, msg='Please upgrade to the official version: Your quota of Trial Edition is used up.'`. **IoT 화재 알람 기능 영향 가능** — Tuya 유료 전환 또는 폴링 간격 조정 검토.
 
 ### 교훈 (재발 방지)
-- ⚠️ ~~`docker run` 명령 작성 시 **CMD/ENTRYPOINT 인자 명시 필수**~~ — **2026-08-09 뒤집힘.** 이 교훈대로 `rebuild_containers.py` 에 `cmd` 를 하드코딩했더니, 그 뒤 Dockerfile 이 gunicorn 4 workers 로 올라갔는데도 옛 `python app_maria.py` 가 덮어써서 **운영이 3개월간 Flask 개발 서버로 돌았다.** 이제는 **덮어쓰지 말고 기동 후 검증**한다 (`expect_proc`). 아래 절 참조.
+- `docker run` 명령 작성 시 **CMD/ENTRYPOINT 인자 명시 필수** (이미지 default가 의도와 다를 수 있음)
 - 컨테이너 재생성 = 이미지 baseline으로 회귀. docker cp로 패치된 부분은 별도 보존 필요
 - `load_dotenv()` `override=False` 기본값 인지 — `--env-file`로 주입된 옛 env가 있으면 .env 파일이 무시됨. 재생성하지 않는 한 환경변수 갱신 안 됨
 
 ### 복구 사용 커밋
 - 추가 변경 없음 (모든 작업이 `docker run` / `docker cp` / `docker restart` 만으로 진행, 로컬 코드 수정 없음)
 - `.gitignore`에 `_archive/_recovery_*.py` 추가는 deploy의 _git_auto_commit으로 함께 처리됨
-
----
-
-## 🔧 재빌드 실패 + 해소 (2026-08-09)
-
-### 증상
-`python deploy_and_restart.py --rebuild` 가 계속 실패. 8/7 부터 여러 차례 시도.
-```
-❌ 실패 — 위 로그를 확인하세요
-❌ 재빌드 실패 — 컨테이너 상태를 확인하세요.
-```
-**서비스 자체는 정상**이었다 (롤백이 먹었고 app/tbm 모두 가동 중). 다운타임 없음.
-
-### 근본 원인 — `Dockerfile` 의 `freetds-dev` 한 줄
-```
-Unable to locate package freetds-dev
-```
-apt 설치가 실패하면 `RUN` 이 죽고 빌드 전체가 중단된다. **`pymssql 2.3.13` 은 FreeTDS 를
-내장한 manylinux 휠을 제공하므로 이 시스템 패키지가 애초에 필요 없었다.** 제거 후 정상 빌드.
-
-### 진단이 오래 걸린 이유 (다음에 줄이려면)
-빗나간 가설 셋 — DB_PASSWORD 불일치, 디스크 부족, Chromium 단계. 전부 아니었다.
-**답은 처음부터 실행 로그에 있었다.** 컨테이너·이미지 상태만 보고 역추적하려 하면
-시간이 배로 든다. 실패 로그부터 확보할 것. 터미널에 안 남았으면
-`~/.claude/projects/*/*.jsonl` (Claude Code 세션 기록)에 남아 있다.
-
-### 함께 고친 결함 4건
-
-| 파일 | 문제 | 수정 |
-|---|---|---|
-| `Dockerfile` | `freetds-dev` 로 빌드 실패 | 제거 + `import pymssql` 검증 추가 |
-| `deploy_and_restart.py` | `.dockerignore` 가 전송 목록에 없어 `COPY . .` 가 **`.env` 를 이미지 레이어에 구움** (운영 이미지 `/app/.env` 2093B 확인) | `.dockerignore`·`Dockerfile.tbm` 전송 추가 |
-| `rebuild_containers.py` | 빌드 성공 판정이 **문자열 매칭** — 빌더마다 문구가 다르고 sudo 프롬프트가 섞여 오판 | 종료 코드(`BUILD_EXIT_$?`)로 변경 |
-| `rebuild_containers.py` | `sudo()` 가 `startswith("Password: ")` 만 봐서 `Password:`(공백 없음) 를 못 뗌 → 위 판정 오염 | 정규식으로 변경 |
-| `rebuild_containers.py` | `cmd` 하드코딩이 이미지 CMD 를 덮어써 **운영이 gunicorn 대신 Flask 개발 서버로 구동** | 덮어쓰기 제거 + `expect_proc` 로 기동 후 검증 |
-| `rebuild_containers.py` | 롤백 시 백업 태그 없는 컨테이너를 조용히 건너뜀 (tbm 이 실제로 그 상태) | 경고 명시 |
-
-### 결과
-```
-attendance-app  BUILD_EXIT_0 → 302 → 프로세스 확인: gunicorn ✅
-attendance-tbm  BUILD_EXIT_0 → 200 → 프로세스 확인: tbm_app.py ✅
-```
-원천징수영수증 PDF 발급까지 정상 확인 (pymssql·chromium·나눔폰트 전부 동작).
-`attendance-tbm:backup-*` 태그가 처음 생성되어 이제 양쪽 롤백이 가능하다.
-
-### 진단 스크립트 (`_archive/`, 재사용 가능)
-전부 **조회 전용**이며 컨테이너를 변경하지 않는다. `.env` 의 `NAS_*` 를 그대로 쓴다.
-- `_archive/_check_containers.py` — ps/inspect/logs/stats/포트/OOM
-- `_archive/_check_build.py` — `:buildtest` 태그로 **무중단** 빌드 재현
-- `_archive/_verify_image.py` — 이미지 안에서 pymssql/chromium/폰트/gunicorn + `.env` 혼입 검증. 인자로 이미지명
-- `_archive/_build_progress.py` — 빌드 진행 확인 (레이어 개수)
-
-> 💡 NAS 는 **SFTP 가 꺼져 있고**(paramiko `open_sftp()` → `Channel closed`) **레거시 빌더**를 쓴다
-> (BuildKit 의 `Build Cache` 는 증가하지 않으므로 진행 지표로 쓰면 안 된다 — 중간 이미지 개수를 볼 것).
-> 또 `sudo sh -c '...'` 안에서 `docker --format '{{...}}'` 처럼 작은따옴표를 겹치면 조기에 닫힌다.
-> 명령을 base64 로 실어 보내면 이 문제가 사라진다.
-
-### 남은 것
-- `Dockerfile` 의 `import pymssql` 검증 줄이 `playwright install` **앞**에 있어, 이 줄이 바뀌면
-  chromium 레이어 캐시가 통째로 무효화된다 (재빌드 20분 추가). **뒤로 옮기면 해소.**
-- 빌드 캐시 14.33GB / 회수 가능 이미지 9.5GB — `docker builder prune` 검토 (디스크는 1.7T 여유라 급하지 않음)
-- `rebuild_containers.py` 에 `backup-*` 태그 정리 로직 없음 — 계속 누적된다
 
