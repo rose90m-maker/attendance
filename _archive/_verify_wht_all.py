@@ -25,7 +25,8 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+HERE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, HERE_ROOT)
 
 try:
     from dotenv import load_dotenv
@@ -42,12 +43,40 @@ ap.add_argument("--all", action="store_true")
 ap.add_argument("--name", default="")
 ap.add_argument("--min", type=int, default=1000,
                 help="이 금액 미만은 무시 (자잘한 값 노이즈 제거)")
+ap.add_argument("--calibrate", default="",
+                help="이 사람 기준으로 잡음 항목 목록을 만든다 (발급본 검증된 사람)")
 args = ap.parse_args()
+
+
+IGNORE_FILE = os.path.join(HERE_ROOT, "wht_ignore_items.json")
+
+
+def load_ignore():
+    """서식에 인쇄되지 않는 ERP 내부 항목(AdjItemSeq) 목록.
+
+    ERP 는 한도 계산용 중간값과 합산값도 저장한다. 예를 들어
+    '결정세액계'(소득세+지방소득세)는 서식이 둘을 따로 찍으므로 합계는 안 나온다.
+    이런 걸 오류로 잡으면 진짜 누락이 묻힌다.
+
+    목록은 추측하지 않고, **발급본과 대조 검증된 사람**을 기준으로 산출한다
+    (--calibrate). 그 사람의 서식은 ERP 발급본과 동일하므로, 거기서 안 나오는
+    항목은 정의상 '인쇄되지 않는 항목'이다.
+    """
+    import json
+    if not os.path.exists(IGNORE_FILE):
+        return set(), {}
+    try:
+        d = json.load(open(IGNORE_FILE, encoding="utf-8"))
+        return set(d.get("ignore_seq", [])), d.get("names", {})
+    except Exception:
+        return set(), {}
 
 
 def head(t):
     print(f"\n{'=' * 76}\n  {t}\n{'=' * 76}")
 
+
+IGNORE_SEQ, IGNORE_NAMES = load_ignore()
 
 conn = W._conn()
 cur = conn.cursor()
@@ -57,9 +86,10 @@ cur.execute("SELECT AdjItemSeq, AdjItemName FROM _TWPRAdjTotItem WHERE YY=%s",
             (args.yy,))
 ITEM = {r[0]: (r[1] or "").strip() for r in cur.fetchall()}
 
-if args.name:
+_who = args.calibrate or args.name
+if _who:
     cur.execute("""SELECT EmpSeq, EmpID, EmpName FROM _TWPRAdjTotResult
-                   WHERE YY=%s AND EmpName=%s""", (args.yy, args.name))
+                   WHERE YY=%s AND EmpName=%s""", (args.yy, _who))
 else:
     cur.execute("""SELECT EmpSeq, EmpID, EmpName FROM _TWPRAdjTotResult
                    WHERE YY=%s ORDER BY EmpName""", (args.yy,))
@@ -67,11 +97,12 @@ rows = cur.fetchall()
 if not rows:
     sys.exit("대상자가 없습니다.")
 
-targets = rows if (args.all or args.name) else \
+targets = rows if (args.all or _who) else \
     rows[::max(1, len(rows) // args.limit)][:args.limit]
 print(f"{args.yy} 귀속 {len(rows)}명 중 {len(targets)}명 대조")
 print(f"정답지: _TWPRAdjTotResultDtl (ERP 계산결과)\n")
 
+_CAL_SEQS = set()
 bad = []
 print(f"  {'사원':<9}{'ERP항목':>7}{'미출력':>7}  판정")
 print("  " + "-" * 68)
@@ -106,10 +137,18 @@ for emp_seq, emp_id, name in targets:
         got.add(int(m.replace(",", "")))
 
     absent = sorted((v for v in erp if v not in got), key=lambda x: -abs(x))
+    if not args.calibrate and IGNORE_SEQ:
+        # 서식에 인쇄되지 않는 ERP 내부 항목은 제외한다.
+        # 어떤 값이 '무시 항목에서만' 나온다면 그건 서식에 없어도 정상이다.
+        absent = [v for v in absent if not erp[v] <= IGNORE_SEQ]
     detail = []
     for v in absent:
         names = sorted({ITEM.get(s, f"seq{s}") for s in erp[v]})
         detail.append(f"{v:>12,}  {' / '.join(names)[:44]}")
+
+    if args.calibrate:
+        for v in absent:
+            _CAL_SEQS.update(erp[v])
 
     mark = "✅" if not absent else "⚠️ "
     print(f"  {name:<9}{len(erp):>7}{len(absent):>7}  {mark}"
@@ -132,8 +171,31 @@ else:
     if len(bad) > 25:
         print(f"\n  … 외 {len(bad)-25}명")
 
+if args.calibrate:
+    import json
+    seqs = set()
+    for _n, _e, detail in bad:
+        for d in detail:
+            pass
+    # 위 detail 은 표시용이라 seq 를 다시 모은다
+    seqs = sorted(_CAL_SEQS)
+    json.dump({"calibrated_from": args.calibrate, "yy": args.yy,
+               "ignore_seq": seqs,
+               "names": {str(s_): ITEM.get(s_, "") for s_ in seqs}},
+              open(IGNORE_FILE, "w", encoding="utf-8"),
+              ensure_ascii=False, indent=1)
+    head(f"잡음 목록 저장 — {len(seqs)}개 항목")
+    for s_ in seqs:
+        print(f"    seq {s_:<5} {ITEM.get(s_, '')}")
+    print(f"\n  → {IGNORE_FILE}")
+    print(f"  {args.calibrate} 는 발급본과 검증된 사람이므로,")
+    print("  그의 서식에 안 나오는 항목은 '인쇄되지 않는 항목'으로 확정된다.")
+    sys.exit(0)
+
 head("요약")
 print(f"  대조 {len(targets)}명 · 미출력 있는 사람 {len(bad)}명")
+if IGNORE_SEQ:
+    print(f"  (서식 미인쇄 항목 {len(IGNORE_SEQ)}개는 제외하고 판정)")
 print("""
   읽는 법
     ERP항목  ERP 가 저장한 0 아닌 금액의 종류 수
