@@ -289,6 +289,65 @@ def load_family(cur, emp_seq, yy):
     return fam
 
 
+# 서식 항목 ↔ ERP 계산결과(_TWPRAdjTotResultDtl.AdjItemSeq)
+#
+# wht_calc.py 는 발급본 하나(지창구 2025)를 보고 역공학한 엔진이라, 안 겪어본
+# 공제 조합에서 ERP 와 다른 값을 냈다 — 189명 중 186명에서 결정세액·산출세액·
+# 근로소득세액공제 등이 어긋났다 (2026-08-10 확인).
+#
+# ERP 는 정답을 이미 갖고 있다. 다시 계산하지 말고 그 값을 쓴다.
+# wht_calc 는 ERP 에 값이 없을 때의 대비책으로만 남긴다.
+ERP_ITEM = {
+    21: 840,          # 총급여
+    22: 2,            # 근로소득공제
+    23: 3,            # 근로소득금액
+    24: 4,            # 기본공제 본인
+    26: 6,            # 기본공제 부양가족
+    27: 107,          # 경로우대
+    31: 73,           # 국민연금보험료
+    36: 19,           # 차감소득금액
+    46: 123,          # 그 밖의 소득공제 계
+    48: 922,          # 종합소득 과세표준
+    49: 540,          # 산출세액
+    55: 801,          # 근로소득 세액공제
+    61: 927,          # 보장성보험 세액공제
+    62: 720,          # 의료비 세액공제
+    65: 785,          # 특별세액공제 계
+    71: 29,           # 세액공제 계
+    72: 33,           # 결정세액
+    "73tax": 33,      # 결정세액(소득세)
+    "73local": 35,    # 결정세액(지방소득세)
+    "75tax": 795,     # 기납부세액(소득세)
+    "75local": 797,   # 기납부세액(지방소득세)
+    "77tax": 45,      # 차감징수세액(소득세)
+    "77local": 47,    # 차감징수세액(지방소득세)
+}
+
+
+def load_erp_result(cur, emp_seq, yy):
+    """ERP 가 계산해 둔 결과. {AdjItemSeq: 한도 적용 후 금액}"""
+    cur.execute("""SELECT AdjItemSeq, Amt FROM _TWPRAdjTotResultDtl
+                   WHERE YY=%s AND EmpSeq=%s""", (yy, emp_seq))
+    out = {}
+    for seq, amt in cur.fetchall():
+        try:
+            out[seq] = int(float(amt or 0))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def apply_erp_result(r, erp):
+    """계산값을 ERP 값으로 덮어쓴다. ERP 에 없는 항목만 wht_calc 결과를 남긴다."""
+    used = []
+    for key, seq in ERP_ITEM.items():
+        if seq in erp:
+            if r.get(key) != erp[seq]:
+                used.append((key, r.get(key), erp[seq]))
+            r[key] = erp[seq]
+    return used
+
+
 def load_depen_list(cur, emp_seq, yy):
     """3쪽 「78.소득·세액공제 명세」의 부양가족별 금액.
 
@@ -626,6 +685,13 @@ def build_values(cur, emp_no, yy, resid_id=""):
                    prepaid_local=inc.get("지방소득세", 0),
                    **persons, **deducs)
     r = compute(calc_in)
+    # ERP 가 이미 계산해 둔 값으로 덮어쓴다 (있는 항목만).
+    # 이렇게 하면 공제 조합이 어떻든 ERP 발급본과 구조적으로 일치한다.
+    _diff = apply_erp_result(r, load_erp_result(cur, t["emp_seq"], yy))
+    if _diff:
+        print(f"  ℹ️  ERP 값으로 보정 {len(_diff)}건 "
+              f"(계산기와 달랐던 항목): "
+              + ", ".join(str(k) for k, _o, _n in _diff[:8]))
 
     # Data6 토큰 ↔ 서식 항목 (템플릿 위치 분석으로 확정, 지창구 2025 대조 검증)
     v.update({
