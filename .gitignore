@@ -53,3 +53,9 @@ _term.txt
 
 # 배포 변경감지 매니페스트 (로컬 상태)
 .deploy_manifest.json
+
+# 원천징수영수증 감시기 로컬 상태·로그
+.wht_watch_state.json
+wht_watch.log
+wht_watch.out
+wht_watch.err
