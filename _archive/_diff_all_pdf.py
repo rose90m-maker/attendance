@@ -101,16 +101,23 @@ FIRSTPAGE = "근로소득 원천징수영수증"
 
 
 def split_pdfs(paths):
+    """PDF 들을 사원별로 자른다. 파일마다 인식 결과를 보고한다.
+
+    파일별 보고가 없으면 '영수증이 아닌 PDF' 와 '1쪽 인식 실패' 를 구분할 수
+    없다. 실제로 관계없는 Rpt*.pdf 가 섞여 들어와도 조용히 넘어갔다
+    (2026-08-10).
+    """
     docs = {}
     order = []
     for p in paths:
+        base = os.path.basename(p)
         try:
             rd = pypdf.PdfReader(p)
         except Exception as e:
-            say(f"  ⚠️  {os.path.basename(p)} 읽기 실패: {type(e).__name__}: {e}")
+            say(f"  ⚠️  {base}: 읽기 실패 {type(e).__name__}: {e}")
             continue
-        cur_id = None
-        for i, page in enumerate(rd.pages, 1):
+        cur_id, found, orphan = None, [], 0
+        for page in rd.pages:
             try:
                 txt = page.extract_text() or ""
             except Exception:
@@ -118,12 +125,21 @@ def split_pdfs(paths):
             m = EMPID.search(txt[:600])
             if FIRSTPAGE in txt and m:
                 cur_id = m.group(1)
+                found.append(cur_id)
                 if cur_id not in docs:
                     docs[cur_id] = []
                     order.append(cur_id)
             if cur_id is None:
+                orphan += 1
                 continue
             docs[cur_id].append(txt)
+        n = len(rd.pages)
+        if not found:
+            say(f"  ⚠️  {base}: {n}쪽 · 영수증을 못 찾음 "
+                f"(원천징수영수증 PDF 가 아니거나 텍스트 추출 불가)")
+        else:
+            note = f" · 머리 못 찾은 앞쪽 {orphan}쪽 무시" if orphan else ""
+            say(f"  ✅ {base}: {n}쪽 · {len(set(found))}명{note}")
     return order, docs
 
 
