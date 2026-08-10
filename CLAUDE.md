@@ -253,8 +253,6 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 - 추가 변경 없음 (모든 작업이 `docker run` / `docker cp` / `docker restart` 만으로 진행, 로컬 코드 수정 없음)
 - `.gitignore`에 `_archive/_recovery_*.py` 추가는 deploy의 _git_auto_commit으로 함께 처리됨
 
-<<<<<<< HEAD
-=======
 ---
 
 ## 🔧 재빌드 실패 + 해소 (2026-08-09)
@@ -389,4 +387,3 @@ python3 _archive/_pick_samples.py            # 발급본을 누구 걸 뽑아야
 - **부속명세(Detail)** — 29,079자, `load_template()` 에서 제외 중
 - 부양가족 주민등록번호 — varbinary 암호화라 복호화 불가, 담당자가 수기 입력
 - 발급본과 대조 완료: 지창구(3쪽 전체 0/0) · 김미선 · 이재현 (2025 귀속)
->>>>>>> 39d1488f365859e8d5a132d25acd9575d805038c
