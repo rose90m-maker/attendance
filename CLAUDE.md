@@ -333,3 +333,75 @@ attendance-tbm  BUILD_EXIT_0 → 200 → 프로세스 확인: tbm_app.py ✅
 - 빌드 캐시 14.33GB / 회수 가능 이미지 9.5GB — `docker builder prune` 검토 (디스크는 1.7T 여유라 급하지 않음)
 - `rebuild_containers.py` 에 `backup-*` 태그 정리 로직 없음 — 계속 누적된다
 
+
+---
+
+## 🧾 원천징수영수증 — 발급본 대조로 결함 9건 해소 (2026-08-10)
+
+`wht_receipt.py` 가 ERP 서식 템플릿(`_TWPRAdjTotAbrIncomeHTML`)에 값을 채워
+원천징수영수증을 만든다. **ERP 발급본 PDF 와 실제로 대조**하기 전까지는
+전 직원 자동검사가 189명 전원 통과였는데, 발급본 3장을 대조하니 결함이 9건 나왔다.
+
+### 자동검사가 왜 못 잡았나 (핵심 교훈)
+`wht_watch.py` 는 "ERP DB 가 가진 **합계** 금액이 서식 **어딘가에** 있는가" 만 본다.
+그래서 다음이 전부 통과한다.
+- 칸이 밀려도 (숫자는 있으니까)
+- 열이 통째로 비어도 (합계만 맞으면)
+- 라벨이 틀려도 (숫자만 보니까)
+- 같은 숫자가 다른 칸에도 있으면 빠진 칸을 못 본다 (16.계 총계가 그랬다)
+
+**발급본 대조가 유일한 정답지다.** 값 검사만으로는 구조적 결함이 안 보인다.
+
+### 고친 것
+
+| # | 결함 | 영향 |
+|---|---|---|
+| 1 | 16.계 총계 칸(`Data3_TotAmt`)에 값을 넣는 코드가 없어 빈칸 | 189명 |
+| 2 | 서식 라벨 `26.본인` (ERP 템플릿 원본 오타, 발급본은 24) | 189명 |
+| 3 | 1쪽 종(전)근무지 열 전체가 하드코딩 빈칸 + 주(현) 열에 합계 혼입 | 5명 |
+| 4 | ⑫감면기간 종(전) 열 빈칸 | 5명 |
+| 5 | Ⅱ 비과세·감면 소득명세가 빈 행 14개 (중소기업 취업자 감면 누락) | 감면 대상자 |
+| 6 | 52.조특법§30 / 54.세액감면 계가 ERP 매핑 없이 계산값 | 감면 대상자 |
+| 7 | 75.주(현) 기납부세액이 ERP 아닌 급여집계 출처 (73·77과 원 단위 어긋남 위험) | 전원 |
+| 8 | 61~63번 공제대상금액 칸이 빔 (세액공제액만 매핑) | 해당자 |
+| 9 | 3쪽 부양가족 명세 전체 + `Data8_repeat` 마커 누락 | 전원 |
+
+### ERP 데이터 위치 (재조사 금지 — 여기 다 있다)
+- `_TWPRAdjTotResultDtl` — 연말정산 계산결과. `Amt`=한도적용 후, `OrgAmt`=대상금액.
+  항목명은 `_TWPRAdjTotItem.AdjItemName`. **ERP 는 계산값을 DB 에 갖고 있다**
+  (`wht_receipt.py` 헤더의 옛 주석이 반대로 적혀 있었고 그게 버그 두 개의 원인이었다)
+- `_TWPRAdjTotNtsIncomeSum` — 근무처별 소득명세. `Amt`=종(전) **포함** 합계,
+  `PreAmt`=종(전)분. 주(현) = `Amt - PreAmt`. `SMPerCoAllType=3502001` 하나뿐이고
+  이건 "당사분"이 **아니다**
+- `_TWPRAdjTotPreWork` — 종(전)근무지 회사명·사업자번호·근무기간·감면기간
+- `_TWPRAdjTotPreWorkDtl` — 종(전)근무지 **별** 금액 (`Seq` + `NtsItemSeq`)
+- `_TWPRAdjTotEmpDepenList` — 3쪽 부양가족별 금액. **컬럼명이 서식 토큰명과 1:1**
+- `_TWPRAdjTotPrintMapping(.Dtl)` — Ⅱ영역 인쇄코드(`Remark`='T13')와
+  표시명(`Dtl.ForName`, `LanguageSeq=1`). `Seq` = `NtsItemSeq` 로 잇는다.
+  `SMType` 3931003=비과세 / 3931006=감면
+
+### 검증 도구 (세 겹)
+```bash
+python3 wht_release.py --yes                 # 검증 통과 시에만 배포 + 사후 확인
+python3 wht_watch.py --force                 # 전 직원 값 대조 (매일 07:30 자동)
+python3 _archive/_wht_cells.py --name 홍길동   # 금액이 '어느 칸'에 들어갔나
+python3 _archive/_check_prework.py           # 종(전)근무지 열 + 74/75/77 검산
+python3 _archive/_check_nontax.py            # Ⅱ영역 + 52/54 세액감면
+python3 _archive/_diff_all_pdf.py 발급본.pdf  # ★ 발급본과 전수 대조 (가장 강함)
+python3 _archive/_pick_samples.py            # 발급본을 누구 걸 뽑아야 다 덮이는지
+```
+`_diff_all_pdf.py` 가 회귀 테스트의 본체다. ERP 에서 전 직원을 한 번에 출력해
+넘기면 남은 차이가 한 번에 나온다. 발급본만 있으면 언제든 다시 돌릴 수 있다.
+
+### 알아둘 것
+- 차감징수세액(77)은 **10원 미만 절사**다. `73-74-75-76` 과 몇 원 다른 건 정상
+- 서식 토큰을 문자열 `find` 로 찾으면 안 된다 — `Data6_Amt4` 가 `Data6_Amt40` 에 걸린다
+- pymssql 은 금액을 `decimal.Decimal` 로 준다. `isinstance(v, (int, float))` 면 다 놓친다
+- 20 / 20-1 계 토큰 이름(`Data4_DeducSum*` / `Data4_NonTaxSum*`)은 뜻과 어긋나 보인다.
+  `nontax_sum_tokens()` 가 서식 행 글자를 읽어 판단한다 — 이름으로 추측하지 말 것
+
+### 남은 미확인
+- **2024년 이전 귀속** — 서식이 매년 개정되는데 한 번도 안 돌려봤다
+- **부속명세(Detail)** — 29,079자, `load_template()` 에서 제외 중
+- 부양가족 주민등록번호 — varbinary 암호화라 복호화 불가, 담당자가 수기 입력
+- 발급본과 대조 완료: 지창구(3쪽 전체 0/0) · 김미선 · 이재현 (2025 귀속)
