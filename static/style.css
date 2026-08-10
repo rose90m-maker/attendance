@@ -125,6 +125,31 @@ body {
 .navbar-custom .navbar-brand .brand-logo { height: 22px; margin-right: 6px; vertical-align: middle; }
 .navbar-custom .navbar-brand:hover { opacity: 0.9; }
 
+/* 로고+타이틀을 좌측 상단 코너(사이드바 폭)로 — 대시보드 메뉴 바로 위 (2026-08-11).
+   헤더는 padding-left = 사이드바 폭이라 좌측 코너가 비어 있고, 사이드바가 그 바로
+   아래(top:48px)에서 시작한다. 코너에 로고를 앉히면 대시보드 위에 정확히 놓인다. */
+.navbar-custom .nav-brand-corner {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--sidebar-w);
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding-left: 18px;
+    margin: 0;
+    z-index: 2;
+}
+@media (max-width: 767.98px) {
+    /* 모바일: 헤더 padding 이 0 이라 코너가 없다 — 토글 옆 일반 흐름으로 되돌림 */
+    .navbar-custom .nav-brand-corner {
+        position: static;
+        width: auto;
+        height: auto;
+        padding-left: 0;
+    }
+}
+
 /* 헤더 통계 */
 .header-stat {
     display: flex;
