@@ -1,0 +1,233 @@
+접속 성공: rose90m@192.168.100.11
+
+====================================================================
+  1. 컨테이너 목록 (docker ps -a)
+====================================================================
+attendance-app | Up 5 hours | attendance-app:latest | 0.0.0.0:5050->5050/tcp, :::5050->5050/tcp
+payroll-web | Up 2 weeks | nginx:1.27-alpine | 0.0.0.0:8080->80/tcp, :::8080->80/tcp
+payroll-app | Up 2 weeks | payroll-app | 8000/tcp
+payroll-db | Up 2 weeks (healthy) | mariadb:10.11 | 3306/tcp
+attendance-tbm | Up 5 hours | attendance-tbm:latest | 5050/tcp, 0.0.0.0:5051->5051/tcp, :::5051->5051/tcp
+dlg2-api | Exited (0) 2 weeks ago | dlg2-api:latest | 
+mosquitto | Up 2 weeks | eclipse-mosquitto:latest | 0.0.0.0:1883->1883/tcp, :::1883->1883/tcp
+dlg-app | Exited (0) 2 weeks ago | dlg-app:latest | 
+tailscale | Up 2 weeks | tailscale/tailscale:latest |
+
+====================================================================
+  2. attendance 이미지 (docker images)
+====================================================================
+attendance-app:latest | af36c0c7b23e | 2 days ago | 1.7GB
+attendance-app:backup-202608071441 | 28ae626880d9 | 2 days ago | 1.7GB
+attendance-app:backup-202608071157 | bce7080bdfc3 | 3 months ago | 430MB
+attendance-app:backup-202608071203 | bce7080bdfc3 | 3 months ago | 430MB
+attendance-tbm:latest | 4c8446b50c1a | 4 months ago | 339MB
+
+====================================================================
+  3. attendance-app — 실행 설정
+====================================================================
+Status=running  Restarts=0  ExitCode=0  OOMKilled=false
+StartedAt=2026-08-09T08:05:44.420661401Z  FinishedAt=2026-08-09T08:05:25.716678658Z
+Error=
+RestartPolicy=unless-stopped  MaxRetry=0
+Health=없음
+MemLimit=0
+Cmd=[python app_maria.py]
+Entrypoint=[]
+Image=attendance-app:latest
+Ports=map[5050/tcp:[{ 5050}]]
+
+-- 컨테이너 내부 프로세스 --
+UID                 PID                 PPID                C                   STIME               TTY                 TIME                CMD
+root                6227                6205                0                   17:05               ?                   00:00:28            python app_maria.py
+
+====================================================================
+  3. attendance-tbm — 실행 설정
+====================================================================
+Status=running  Restarts=0  ExitCode=0  OOMKilled=false
+StartedAt=2026-08-09T08:06:26.008831896Z  FinishedAt=2026-08-09T08:05:59.804149934Z
+Error=
+RestartPolicy=unless-stopped  MaxRetry=0
+Health=없음
+MemLimit=0
+Cmd=[python tbm_app.py]
+Entrypoint=[]
+Image=attendance-tbm:latest
+Ports=map[5051/tcp:[{ 5051}]]
+
+-- 컨테이너 내부 프로세스 --
+UID                 PID                 PPID                C                   STIME               TTY                 TIME                CMD
+root                6691                6670                0                   17:06               ?                   00:00:01            python tbm_app.py
+
+====================================================================
+  4. DB_PASSWORD 길이 비교 (값은 출력하지 않음)
+====================================================================
+  attendance-app   컨테이너 env DB_PASSWORD 길이 = 11
+  attendance-tbm   컨테이너 env DB_PASSWORD 길이 = 11
+  attendance-app   /app/.env 의 DB_PASSWORD 길이 = 11
+  attendance-tbm   /app/.env 의 DB_PASSWORD 길이 = 11
+  맥 .env           DB_PASSWORD 길이 = 11
+  → 길이가 다르면 5월 19일과 같은 1045 인증 실패 원인입니다.
+
+====================================================================
+  5. attendance-app — 최근 로그 60줄
+====================================================================
+125.140.156.81 - - [09/Aug/2026 21:57:38] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:57:38] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:57:39] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:57:42] "GET /mes/api/status HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:57:42] "GET /mes/api/hourly HTTP/1.1" 200 -
+125.140.156.81 - - [09/Aug/2026 21:57:42] "GET /annual_leave HTTP/1.1" 200 -
+125.140.156.81 - - [09/Aug/2026 21:57:42] "[36mGET /static/LOGO.GIF HTTP/1.1[0m" 304 -
+125.140.156.81 - - [09/Aug/2026 21:57:42] "[36mGET /static/style.css?v=26 HTTP/1.1[0m" 304 -
+125.140.156.81 - - [09/Aug/2026 21:57:42] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -
+125.140.156.81 - - [09/Aug/2026 21:57:43] "GET /api/dashboard_stats HTTP/1.1" 200 -
+125.140.156.81 - - [09/Aug/2026 21:57:43] "[36mGET /static/table-sort.js?v=1 HTTP/1.1[0m" 304 -
+125.140.156.81 - - [09/Aug/2026 21:57:43] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:57:47] "GET /mes/api/status HTTP/1.1" 200 -
+210.118.143.17 - - [09/Aug/2026 21:57:48] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:57:52] "GET /mes/api/status HTTP/1.1" 200 -
+125.140.156.81 - - [09/Aug/2026 21:57:53] "GET /message_send HTTP/1.1" 200 -
+125.140.156.81 - - [09/Aug/2026 21:57:53] "[36mGET /static/style.css?v=26 HTTP/1.1[0m" 304 -
+125.140.156.81 - - [09/Aug/2026 21:57:53] "[36mGET /static/LOGO.GIF HTTP/1.1[0m" 304 -
+125.140.156.81 - - [09/Aug/2026 21:57:53] "[36mGET /static/manifest.json HTTP/1.1[0m" 304 -
+125.140.156.81 - - [09/Aug/2026 21:57:53] "GET /api/dashboard_stats HTTP/1.1" 200 -
+125.140.156.81 - - [09/Aug/2026 21:57:53] "POST /api/msg_targets HTTP/1.1" 200 -
+125.140.156.81 - - [09/Aug/2026 21:57:53] "GET /api/msg_my_phone HTTP/1.1" 200 -
+125.140.156.81 - - [09/Aug/2026 21:57:53] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:57:57] "GET /mes/api/status HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:02] "GET /mes/api/status HTTP/1.1" 200 -
+192.168.100.1 - - [09/Aug/2026 21:58:07] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:07] "GET /mes/api/status HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:08] "GET /api/notifications HTTP/1.1" 200 -
+192.168.100.1 - - [09/Aug/2026 21:58:09] "GET /api/cc_overview HTTP/1.1" 200 -
+125.140.156.81 - - [09/Aug/2026 21:58:10] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:12] "GET /mes/api/status HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:17] "GET /mes/api/status HTTP/1.1" 200 -
+210.118.143.17 - - [09/Aug/2026 21:58:18] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:22] "GET /mes/api/status HTTP/1.1" 200 -
+125.140.156.81 - - [09/Aug/2026 21:58:23] "GET /api/notifications HTTP/1.1" 200 -
+210.118.143.17 - - [09/Aug/2026 21:58:25] "GET /api/notifications HTTP/1.1" 200 -
+210.118.143.17 - - [09/Aug/2026 21:58:25] "GET /api/notifications HTTP/1.1" 200 -
+210.118.143.17 - - [09/Aug/2026 21:58:25] "GET /api/notifications HTTP/1.1" 200 -
+210.118.143.17 - - [09/Aug/2026 21:58:25] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:27] "GET /mes/api/status HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:30] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:32] "GET /mes/api/status HTTP/1.1" 200 -
+192.168.100.1 - - [09/Aug/2026 21:58:37] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:37] "GET /mes/api/status HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:38] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:39] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:42] "GET /mes/api/status HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:42] "GET /mes/api/hourly HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:47] "GET /mes/api/status HTTP/1.1" 200 -
+210.118.143.17 - - [09/Aug/2026 21:58:48] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:52] "GET /mes/api/status HTTP/1.1" 200 -
+125.140.156.81 - - [09/Aug/2026 21:58:53] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:58:57] "GET /mes/api/status HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:59:02] "GET /mes/api/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Aug/2026 21:59:07] "POST /api/fire/heartbeat HTTP/1.1" 200 -
+192.168.100.1 - - [09/Aug/2026 21:59:07] "GET /api/notifications HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:59:07] "GET /mes/api/status HTTP/1.1" 200 -
+172.17.0.1 - - [09/Aug/2026 21:59:08] "GET /api/notifications HTTP/1.1" 200 -
+192.168.100.1 - - [09/Aug/2026 21:59:10] "GET /api/cc_overview HTTP/1.1" 200 -
+125.140.156.81 - - [09/Aug/2026 21:59:10] "GET /api/notifications HTTP/1.1" 200 -
+
+====================================================================
+  5. attendance-tbm — 최근 로그 60줄
+====================================================================
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5051
+ * Running on http://172.17.0.3:5051
+[33mPress CTRL+C to quit[0m
+172.17.0.1 - - [09/Aug/2026 15:07:42] "GET /tbm/login HTTP/1.1" 200 -
+[TBM] DB 초기화 완료
+ * Serving Flask app 'tbm_app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5051
+ * Running on http://172.17.0.3:5051
+[33mPress CTRL+C to quit[0m
+172.17.0.1 - - [09/Aug/2026 15:11:59] "GET /tbm/login HTTP/1.1" 200 -
+[TBM] DB 초기화 완료
+ * Serving Flask app 'tbm_app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5051
+ * Running on http://172.17.0.3:5051
+[33mPress CTRL+C to quit[0m
+172.17.0.1 - - [09/Aug/2026 15:36:19] "GET /tbm/login HTTP/1.1" 200 -
+[TBM] DB 초기화 완료
+ * Serving Flask app 'tbm_app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5051
+ * Running on http://172.17.0.3:5051
+[33mPress CTRL+C to quit[0m
+172.17.0.1 - - [09/Aug/2026 15:57:36] "GET /tbm/login HTTP/1.1" 200 -
+[TBM] DB 초기화 완료
+ * Serving Flask app 'tbm_app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5051
+ * Running on http://172.17.0.3:5051
+[33mPress CTRL+C to quit[0m
+172.17.0.1 - - [09/Aug/2026 16:29:11] "GET /tbm/login HTTP/1.1" 200 -
+[TBM] DB 초기화 완료
+ * Serving Flask app 'tbm_app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5051
+ * Running on http://172.17.0.3:5051
+[33mPress CTRL+C to quit[0m
+172.17.0.1 - - [09/Aug/2026 16:47:17] "GET /tbm/login HTTP/1.1" 200 -
+[TBM] DB 초기화 완료
+ * Serving Flask app 'tbm_app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5051
+ * Running on http://172.17.0.3:5051
+[33mPress CTRL+C to quit[0m
+172.17.0.1 - - [09/Aug/2026 17:06:36] "GET /tbm/login HTTP/1.1" 200 -
+
+====================================================================
+  6. NAS 포트 5050 / 5051 점유 상태
+====================================================================
+5050/tcp -> 0.0.0.0:5050
+5050/tcp -> [::]:5050
+5051/tcp -> 0.0.0.0:5051
+5051/tcp -> [::]:5051
+tcp        0      0 0.0.0.0:5050            0.0.0.0:*               LISTEN     
+tcp        0      0 0.0.0.0:5051            0.0.0.0:*               LISTEN     
+tcp6       0      0 :::5050                 :::*                    LISTEN     
+tcp6       0      0 :::5051                 :::*                    LISTEN
+
+====================================================================
+  7. 메모리 · CPU 사용량 (docker stats)
+====================================================================
+attendance-app | CPU 0.01% | MEM 118.4MiB / 31.27GiB (0.37%)
+payroll-web | CPU 0.00% | MEM 5.754MiB / 31.27GiB (0.02%)
+payroll-app | CPU 0.01% | MEM 279.6MiB / 31.27GiB (0.87%)
+payroll-db | CPU 0.01% | MEM 112.3MiB / 31.27GiB (0.35%)
+attendance-tbm | CPU 0.01% | MEM 23.65MiB / 31.27GiB (0.07%)
+mosquitto | CPU 0.03% | MEM 8.211MiB / 31.27GiB (0.03%)
+tailscale | CPU 0.02% | MEM 40.63MiB / 31.27GiB (0.13%)
+
+====================================================================
+  8. 헬스체크 최근 3회 (설정된 경우)
+====================================================================
+-- attendance-app --
+없음
+-- attendance-tbm --
+없음
+
+====================================================================
+  9. 커널 OOM kill 흔적
+====================================================================
+(흔적 없음)

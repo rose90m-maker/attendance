@@ -1,0 +1,17 @@
+── 준비 상태 점검 ──
+Dockerfile      : 있음
+Dockerfile.tbm  : 있음
+NAS .env        : 있음
+  ERP 키        : 5 개
+  DB 키         : 5 개
+현재 이미지     :
+REPOSITORY            TAG                   IMAGE ID       CREATED         SIZE
+attendance-app        latest                af36c0c7b23e   2 days ago      1.7GB
+attendance-app        backup-202608071441   28ae626880d9   2 days ago      1.7GB
+attendance-app        backup-202608071157   bce7080bdfc3   3 months ago    430MB
+attendance-app        backup-202608071203   bce7080bdfc3   3 months ago    430MB
+attendance-tbm        latest                4c8446b50c1a   4 months ago    339MB
+현재 컨테이너   :
+attendance-app Up 5 hours 0.0.0.0:5050->5050/tcp, :::5050->5050/tcp
+attendance-tbm Up 5 hours 5050/tcp, 0.0.0.0:5051->5051/tcp, :::5051->5051/tcp
+디스크 여유     : /dev/mapper/cachedev_0  1.8T   53G  1.7T   3% /volume1

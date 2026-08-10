@@ -37,11 +37,6 @@ Korean workplace attendance management system (㈜태인 근태관리). Flask we
 > - `docker_files_main` — **`.py` 는 여기 하드코딩 목록에 반드시 추가**
 > - `STANDBY_PY` — .5 대기서버용. 빠지면 대기서버가 기동 실패
 >
-> 같은 함정이 빌드 쪽에도 있었다. `.dockerignore` 와 `Dockerfile.tbm` 이 `files` 에 없어서
-> **NAS staging 에 아예 없었고**, `.dockerignore` 없이 `COPY . .` 가 돌면서 `.env` 가
-> 이미지 레이어에 그대로 구워졌다 (2026-08-09 확인, 지금은 둘 다 목록에 추가됨).
-> 자격증명은 `--env-file` 로 런타임 주입되므로 이미지에 들어갈 이유가 없다.
->
 > 또한 `docker cp` 가 NAS 의 ACL 을 옮기면서 파일 권한이 `000` 이 되는 경우가 있어
 > 파이썬이 모듈을 못 읽는다. cp 루프 뒤에 `chmod a+r` 보정 단계를 넣어 두었다.
 
@@ -53,10 +48,8 @@ Korean workplace attendance management system (㈜태인 근태관리). Flask we
 - NAS staging path: `/volume1/web/attendance/`
 - Mounted volume: `/volume1/docker/attendance/uploads:/app/uploads` (uploads only)
 - Other files (templates/, static/, app_maria.py) live in the container's writable layer
-- `docker` binary on NAS: `/usr/local/bin/docker` — **레거시 빌더** (BuildKit 아님). `docker system df` 의 `Build Cache` 는 증가하지 않으니 진행 지표로 쓰지 말 것
-- SSH 는 되지만 **SFTP 는 꺼져 있다** (paramiko `open_sftp()` → `Channel closed`). 파일을 올려야 하면 base64 를 SSH 명령으로 실어 보낼 것
-- sudo password is the NAS password; sudo 출력 앞에 프롬프트가 붙는데 `"Password: "`(공백 있음)와 `"Password:"`(없음) 두 형태가 모두 나온다. `re.sub(r'^Password:\s*', '', out)` 로 떼야 한다 — `startswith("Password: ")` 만 보면 놓친다
-- `sudo sh -c '...'` 안에서 `docker --format '{{.Names}}'` 처럼 작은따옴표를 겹치면 따옴표가 조기에 닫혀 `command not found` 가 난다. 명령을 base64 로 넘기면 해소
+- `docker` binary on NAS: `/usr/local/bin/docker`
+- sudo password is the NAS password; sudo output is prefixed with `"Password: "` which must be stripped
 
 **Deploy**: `python deploy_and_restart.py` (handles SCP → `docker cp` → `docker restart`, and auto-commits dirty git state with message `배포: <changed files>`, prepending to `static/dev_history.json`).
 
@@ -65,16 +58,6 @@ Korean workplace attendance management system (㈜태인 근태관리). Flask we
 컨테이너를 재생성하므로 **컨테이너당 30초~1분 다운타임**이 있고, Chromium 설치 탓에
 빌드에만 10~15분 걸린다(빌드 중에는 무중단). 재생성 전 현재 이미지를
 `backup-YYYYMMDDHHMM` 으로 태그해 두므로 문제 시 `--rollback` 으로 되돌린다.
-
-> 🧪 **재빌드 전에 빌드만 먼저 돌려보는 게 안전하다.** `python3 _archive/_check_build.py` 는
-> `:buildtest` 태그로만 빌드하고 컨테이너를 건드리지 않는다 — **다운타임 0**. 여기서 통과하면
-> 실제 재빌드의 빌드 단계도 통과한다. 빌드 후 `python3 _archive/_verify_image.py <이미지명>` 으로
-> pymssql/chromium/나눔폰트/gunicorn 동작과 `.env` 혼입 여부까지 확인할 수 있다.
-
-**컨테이너의 CMD 는 `docker run` 에서 덮어쓰지 않는다.** 이미지 기본 CMD
-(app=gunicorn 4 workers, tbm=`python tbm_app.py`)를 쓰고, 기동 후 `expect_proc` 로
-실제 프로세스를 검증한다. 예전에는 5월 사고 대응으로 `cmd` 를 하드코딩했는데,
-그것이 gunicorn 전환을 덮어써 운영이 개발 서버로 돌던 일이 있었다 (2026-08-09 해소).
 
 > ⚠️ 예전 `--rebuild` 는 `docker compose`(공백형)를 불렀는데 Synology 에는 그 명령이
 > 없어 **조용히 실패하면서 화면에는 성공으로 표시**됐다. 그 탓에 이미지가 2026-05-26 자로
@@ -105,8 +88,7 @@ bash start_tbm.sh {start|stop|restart|status}
 
 - All UI text and most comments are **Korean**. Match that style when editing.
 - Session keys: `user_id` (login), `role` ("admin" gates), `e_id` (employee id), `user_name`.
-- Files prefixed `_check_*.py`, `_test_*.py`, `_run_*.py` at the repo root are **throwaway debug scratch** — not load-bearing, safe to ignore. 일이 끝나면 `_archive/` 로 옮긴다 (`git mv` — 삭제가 아니라 이관이라 나중에 다시 쓸 수 있다).
-- `_archive/` 의 진단 스크립트는 **버리는 게 아니라 보관**이다. 배포·컨테이너 문제를 볼 때 먼저 여기를 확인할 것 — 새로 짜는 것보다 빠르다. (`_recovery_*.py` 만 gitignore 대상)
+- Files prefixed `_check_*.py`, `_test_*.py`, `_run_*.py` at the repo root are **throwaway debug scratch** — not load-bearing, safe to ignore.
 - `app_maria.py.bak`, `nohup.out`, `rag_server.log` are local cruft.
 
 ## Sensitive — Do Not Commit
@@ -252,8 +234,8 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 ### 후속 과제 5건 (별도 작업으로)
 
 #### A. 구조 개선 (높음)
-1. ~~**이미지 정기 재빌드 정책 수립**~~ — ✅ **2026-08-09 해소.** `rebuild_containers.py`(백업 태그 → 빌드 → 재생성 → 헬스체크 → 프로세스 검증 → 롤백)로 정리됐고 `deploy_and_restart.py --rebuild` 가 여기에 위임한다. 아래 "2026-08-09 재빌드 실패" 절 참조.
-2. ~~**`Dockerfile.tbm` CMD 점검**~~ — ✅ **해결 확인.** `CMD ["python", "tbm_app.py"]` 로 올바르게 박혀 있다 (2026-08-09 재빌드 로그 Step 8/8 에서 확인).
+1. **이미지 정기 재빌드 정책 수립** — 현재 `docker cp + restart` 방식은 컨테이너 재생성 시 모든 변경 손실. 주기적(주/월 단위) `python deploy_and_restart.py --rebuild`로 이미지 baseline을 최신화하거나, CI/CD로 이미지 빌드 파이프라인 구축 검토.
+2. **`Dockerfile.tbm` CMD 점검** — 이미지 default CMD가 `python app_maria.py`로 잘못 박혀있을 가능성. `CMD ["python", "tbm_app.py"]`로 명시되어 있는지 확인. 안 그러면 재빌드 시 또 같은 사고.
 
 #### B. 보안/운영 (중간)
 3. **`docker-compose.yml` 평문 비번 정리** (이전 합의) — L32/L56/L75의 `DB_PASSWORD: "..."` 평문 + L83 healthcheck의 평문 비번. compose도 `--env-file` 또는 `${VAR}` 참조로 통일.
@@ -263,7 +245,7 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 5. **Tuya API quota 초과** — `attendance-tbm` 로그에 반복 발생: `[Tuya] smoke-001 상태 조회 실패: code=28841004, msg='Please upgrade to the official version: Your quota of Trial Edition is used up.'`. **IoT 화재 알람 기능 영향 가능** — Tuya 유료 전환 또는 폴링 간격 조정 검토.
 
 ### 교훈 (재발 방지)
-- ⚠️ ~~`docker run` 명령 작성 시 **CMD/ENTRYPOINT 인자 명시 필수**~~ — **2026-08-09 뒤집힘.** 이 교훈대로 `rebuild_containers.py` 에 `cmd` 를 하드코딩했더니, 그 뒤 Dockerfile 이 gunicorn 4 workers 로 올라갔는데도 옛 `python app_maria.py` 가 덮어써서 **운영이 3개월간 Flask 개발 서버로 돌았다.** 이제는 **덮어쓰지 말고 기동 후 검증**한다 (`expect_proc`). 아래 절 참조.
+- `docker run` 명령 작성 시 **CMD/ENTRYPOINT 인자 명시 필수** (이미지 default가 의도와 다를 수 있음)
 - 컨테이너 재생성 = 이미지 baseline으로 회귀. docker cp로 패치된 부분은 별도 보존 필요
 - `load_dotenv()` `override=False` 기본값 인지 — `--env-file`로 주입된 옛 env가 있으면 .env 파일이 무시됨. 재생성하지 않는 한 환경변수 갱신 안 됨
 

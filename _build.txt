@@ -1,0 +1,84 @@
+접속: rose90m@192.168.100.11   스테이징: /volume1/web/attendance
+
+====================================================================
+  docker 버전 · 빌더 · 캐시
+====================================================================
+Server 24.0.2 / API 1.43
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          49        9         10.96GB   9.555GB (87%)
+Containers      9         7         68.67MB   45.12MB (65%)
+Local Volumes   4         2         280.7MB   0B (0%)
+Build Cache     290       0         14.33GB   14.33GB
+
+====================================================================
+  빌드 컨텍스트 크기 (1.7GB 이미지의 원인 추적)
+====================================================================
+99M	/volume1/web/attendance
+ls: cannot access '/volume1/web/attendance/.dockerignore': No such file or directory
+
+====================================================================
+  로컬 Dockerfile → NAS 임시 업로드 (운영 파일 미변경)
+====================================================================
+  [Dockerfile] freetds-dev 포함? 아니오 (삭제됨)
+  Dockerfile → /volume1/web/attendance/Dockerfile.buildtest  (1041B) 업로드 OK
+  [Dockerfile.tbm] freetds-dev 포함? 아니오 (삭제됨)
+  Dockerfile.tbm → /volume1/web/attendance/Dockerfile.tbm.buildtest  (291B) 업로드 OK
+
+====================================================================
+  attendance-app 빌드 (Dockerfile.buildtest) → attendance-app:buildtest
+====================================================================
+빌드 중… 수 분 걸립니다. 기다려 주세요.
+
+── 종료 코드: 0   소요: 1874초 ──
+✅ 빌드 성공
+
+-- 마지막 15줄 --
+Removing intermediate container bb735fc4c72e
+ ---> 0358caa43a5f
+Step 7/9 : COPY . .
+ ---> 378b5d62bdc9
+Step 8/9 : EXPOSE 5050
+ ---> Running in f16d6ff6456b
+Removing intermediate container f16d6ff6456b
+ ---> af9a64ef7e96
+Step 9/9 : CMD ["gunicorn",      "--workers", "4",      "--worker-class", "gthread",      "--threads", "2",      "--bind", "0.0.0.0:5050",      "--timeout", "120",      "--keep-alive", "5",      "--access-logfile", "-",      "app_maria:app"]
+ ---> Running in e2d95f298e59
+Removing intermediate container e2d95f298e59
+ ---> 5e7dafc3a170
+Successfully built 5e7dafc3a170
+Successfully tagged attendance-app:buildtest
+BUILD_EXIT_0
+
+[참고] rebuild_containers.py 의 성공 판정 키워드 매칭: ['Successfully']
+
+====================================================================
+  attendance-tbm 빌드 (Dockerfile.tbm.buildtest) → attendance-tbm:buildtest
+====================================================================
+빌드 중… 수 분 걸립니다. 기다려 주세요.
+
+── 종료 코드: 0   소요: 242초 ──
+✅ 빌드 성공
+
+-- 마지막 15줄 --
+[0mRemoving intermediate container fdc0aca974fa
+ ---> 9eae59fe5ae7
+Step 6/8 : COPY . .
+ ---> 929f20c08b89
+Step 7/8 : EXPOSE 5051
+ ---> Running in 2f88704c73f7
+Removing intermediate container 2f88704c73f7
+ ---> 429c5c0301d6
+Step 8/8 : CMD ["python", "tbm_app.py"]
+ ---> Running in d0a007e4c455
+Removing intermediate container d0a007e4c455
+ ---> fb7b8d73e662
+Successfully built fb7b8d73e662
+Successfully tagged attendance-tbm:buildtest
+BUILD_EXIT_0
+
+[참고] rebuild_containers.py 의 성공 판정 키워드 매칭: ['Successfully']
+
+====================================================================
+  임시 파일 정리
+====================================================================
+삭제완료
