@@ -43,6 +43,11 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--yy", default="2025")
 ap.add_argument("--min", type=int, default=1000)
 ap.add_argument("--schema-only", action="store_true")
+# 3305002 = 근로소득 지급명세서 (A~K 10종 · 826필드 · 2,010B) — 진짜 정답지.
+# 3305005 = 의료비지급명세서 — 2026-08-10 에 이걸 근로소득으로 착각해 49명
+# "전원 차이"가 났었다. 자료구분이 다르면 대조 자체가 무의미하다.
+ap.add_argument("--ptype", default="3305002",
+                help="대조할 전산매체 종류 (SMPrintType). 0 이면 전체")
 args = ap.parse_args()
 
 FILE_TBL = "_TWPRAdjTotRecordResultFile"
@@ -81,9 +86,22 @@ inames = [c for c, _d in icols]
 # ── 1. 레코드 행 읽기 ────────────────────────────────────────
 cur.execute(f"SELECT * FROM [{FILE_TBL}] WHERE YY=%s", (args.yy,))
 frows = [dict(zip(fnames, r)) for r in cur.fetchall()]
-print(f"\n  {args.yy} 귀속 레코드 {len(frows)}행")
+print(f"\n  {args.yy} 귀속 레코드 {len(frows)}행 (전체)")
+
+# 자료구분 필터 — 파일행에 SMPrintType 류 컬럼이 있으면 여기서 거른다
+ptype_col = next((c for c in fnames if "printtype" in c.lower()), None)
+if args.ptype and args.ptype != "0" and ptype_col:
+    before = len(frows)
+    frows = [r for r in frows if str(r.get(ptype_col) or "") == args.ptype]
+    print(f"  {ptype_col}={args.ptype} 필터: {before} → {len(frows)}행")
 if not frows:
-    sys.exit("레코드가 없습니다.")
+    sys.exit(f"""대조할 레코드가 없습니다 (자료구분 {args.ptype}).
+
+ERP 담당자에게 요청하세요:
+  「연말정산 근로소득 지급명세서 전산매체 파일 생성」을 전 직원분 한 번
+  실행 (실제 제출과 무관 — 생성만 하면 이 테이블에 레코드가 쌓입니다).
+  생성 화면이 DB 에 쓰기를 하므로 운영시간을 피하는 게 좋습니다.
+생성 후 이 스크립트를 다시 돌리면 189명 전수 대조가 됩니다.""")
 
 text_col = next((c for c in fnames if "text" in c.lower()), None)
 if not text_col:
@@ -129,10 +147,20 @@ print(f"\n  레이아웃 컬럼 매핑: 길이={len_col} 누적={acc_col} 이름
 if not (len_col and acc_col and name_col):
     sys.exit("레이아웃 필수 컬럼을 못 찾음 — --schema-only 로 확인 필요")
 
-# 타입별 레이아웃 (타입 컬럼 없으면 전체 하나)
+# 타입별 레이아웃 — 자료구분(SMPrintType) + 레코드종류(A~K) 두 단계일 수 있다.
+# 타입성 컬럼을 최대 두 개까지 묶어 그룹 키로 쓴다.
+tcols = [c for c in inames
+         if re.search(r"printtype|recordtype|rectype|gubun|smtype", c, re.I)][:2]
+if args.ptype and args.ptype != "0":
+    pcol = next((c for c in tcols if "printtype" in c.lower()), None)
+    if pcol:
+        before = len(irows)
+        irows = [r for r in irows if str(r.get(pcol) or "") == args.ptype]
+        print(f"  레이아웃 {pcol}={args.ptype} 필터: {before} → {len(irows)}필드")
+
 layouts = {}
 for ir in irows:
-    key = ir.get(itype_col) if itype_col else "ALL"
+    key = tuple(ir.get(c) for c in tcols) if tcols else "ALL"
     layouts.setdefault(key, []).append(ir)
 for k in layouts:
     layouts[k].sort(key=lambda x: (int(x[acc_col] or 0)))
@@ -157,18 +185,28 @@ def parse_line(text, layout):
 
 
 def pick_layout(fr):
-    """이 행에 맞는 레이아웃 — 줄 바이트수와 총길이가 같은 것을 우선"""
-    b = len(str(fr[text_col] or "").encode("cp949", errors="replace"))
-    if type_col and fr.get(type_col) in layouts:
-        return layouts[fr[type_col]]
-    best = None
-    for k, lay in layouts.items():
-        tot = int(lay[-1][acc_col] or 0)
-        if tot == b:
+    """이 행에 맞는 레이아웃.
+
+    우선순위: ① 파일행의 타입 컬럼이 그룹 키에 들어 있는 것
+             ② FileText 첫 글자(A~K 레코드 구분)가 키에 있는 것
+             ③ 줄 바이트수 == 레이아웃 총길이
+             ④ 길이가 가장 가까운 것
+    """
+    text = str(fr[text_col] or "")
+    b = len(text.encode("cp949", errors="replace"))
+    ft = fr.get(type_col) if type_col else None
+    first = text[:1]
+    cands = list(layouts.items())
+    for k, lay in cands:                       # ①②
+        key_vals = {str(x) for x in (k if isinstance(k, tuple) else (k,))}
+        if (ft is not None and str(ft) in key_vals) or \
+           (first and first in key_vals):
             return lay
-        if best is None or abs(tot - b) < abs(int(best[-1][acc_col] or 0) - b):
-            best = lay
-    return best
+    for k, lay in cands:                       # ③
+        if int(lay[-1][acc_col] or 0) == b:
+            return lay
+    return min(cands, key=lambda kv:           # ④
+               abs(int(kv[1][-1][acc_col] or 0) - b))[1] if cands else []
 
 
 # ── 3. 사람별로 묶기 ─────────────────────────────────────────
