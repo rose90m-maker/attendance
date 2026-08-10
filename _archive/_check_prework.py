@@ -114,6 +114,39 @@ for emp_seq, emp_id, name in movers:
           f"고용 {v.get('Data5_HireTotAmt',''):>9} "
           f"({v.get('Data5_HireCurAmt',''):>9})")
 
+head("②-1 세액 검산 — 74/75 의 출처가 서로 맞는가")
+print("  74.종(전) 은 _TWPRAdjTotPreWorkDtl, 75.주(현) 은 NtsIncomeSum 의")
+print("  Amt-PreAmt 에서 온다. 두 출처가 어긋나면 77 이 안 맞는다.\n")
+src, arith = [], []
+for emp_seq, emp_id, name in movers:
+    with contextlib.redirect_stdout(io.StringIO()):
+        _t, v, _d = W.build_values(cur, emp_id, args.yy)
+        pre = W.load_income_pre(cur, emp_seq, args.yy)
+        works = W.load_prework(cur, emp_seq, args.yy)
+    for label, key in (("소득세", "소득세"), ("지방소득세", "지방소득세")):
+        from_sum = int(pre.get(key, 0))
+        from_dtl = int(sum(w["amt"].get(key, 0) for w in works))
+        if from_sum != from_dtl:
+            src.append((name, label, from_sum, from_dtl))
+            print(f"  ❌ {name} {label}: NtsIncomeSum.PreAmt {from_sum:,} "
+                  f"≠ PreWorkDtl 합 {from_dtl:,}")
+    # 73 - 74 - 75 - 76 = 77
+    for tag, fin, pre_t, tc, dec in (
+            ("소득세", "Data5_Tax_Final", "Data5_Tax_Pre", "Data5_Tax_TC",
+             "Data5_Tax_Deducted"),
+            ("지방소득세", "Data5_ResidTax_Final", "Data5_ResidTax_Pre",
+             "Data5_ResidTax_TC", "Data5_ResidTax_Deducted")):
+        got = money(v.get(fin, "")) \
+            - sum(money(v.get(f"{pre_t}{k}", "")) for k in (1, 2, 3)) \
+            - money(v.get(tc, ""))
+        want = money(v.get(dec, ""))
+        if got != want:
+            arith.append((name, tag, got, want))
+            print(f"  ❌ {name} {tag}: 73-74-75-76 = {got:,} "
+                  f"이지만 77 칸은 {want:,}")
+if not src and not arith:
+    print("  ✅ 5명 전원 두 출처가 일치하고 77 검산도 맞습니다.")
+
 head("③ 김미선 2025 — 발급본 실측값과 대조")
 km = [e for e in movers if e[2] == "김미선"]
 miss = []
@@ -154,6 +187,7 @@ for nm, a, b in bad:
 print(f"  ③ 발급본 대조 불일치 {len(miss)}건")
 for k, want, got in miss:
     print(f"      {k}: 발급본 {want} / 우리 '{got}'")
+print(f"  ②-1 74/75 출처 불일치 {len(src)}건 · 77 검산 실패 {len(arith)}건")
 print(f"  ④ 회귀 이상 {len(reg)}명 {reg if reg else ''}")
-if not bad and not miss and not reg:
+if not bad and not miss and not reg and not src and not arith:
     print("\n  전부 통과 — 종(전)근무지 열이 발급본과 같아졌습니다.")
