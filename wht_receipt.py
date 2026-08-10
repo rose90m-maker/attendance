@@ -413,15 +413,9 @@ def expand_family_rows(tpl, depen, disable_map=None):
     depen: load_depen_list() 결과. 컬럼명이 토큰명과 같으므로 그대로 옮긴다.
     disable_map: {FamilySeq: SMDisableType} — 장애인 코드만 다른 테이블에 있다.
     """
-    b = tpl.find(REPEAT_BEGIN)
-    e = tpl.find(REPEAT_END)
-    if b < 0 or e < 0:
-        return tpl
-    e += len(REPEAT_END)
-    row_tpl = tpl[b:e]
     disable_map = disable_map or {}
 
-    def one(d):
+    def one(d, row_tpl):
         v = {}
         for col, val in d.items():
             if col in SKIP_COLS:
@@ -460,8 +454,24 @@ def expand_family_rows(tpl, depen, disable_map=None):
             lambda m: str(v[m.group(0)[5:]]) if m.group(0)[5:] in v else m.group(0),
             row_tpl)
 
-    rows = "".join(one(d) for d in depen) if depen else ""
-    return tpl[:b] + rows + tpl[e:]
+    # 3쪽에는 Data7_repeat 블록이 **두 개** 있다 — 위쪽 인적공제·보험료·의료비 표와
+    # 아래쪽 신용카드 등 사용액공제 표. 예전에는 find() 로 첫 번째만 펼쳐서
+    # 신용카드 표의 개인별 행이 통째로 비었다 (2026-08-10 ERP 대조로 확인).
+    out = tpl
+    pos = 0
+    while True:
+        b = out.find(REPEAT_BEGIN, pos)
+        if b < 0:
+            break
+        e = out.find(REPEAT_END, b)
+        if e < 0:
+            break
+        e += len(REPEAT_END)
+        row_tpl = out[b:e]
+        rows = "".join(one(d, row_tpl) for d in depen) if depen else ""
+        out = out[:b] + rows + out[e:]
+        pos = b + len(rows)
+    return out
 
 
 def depen_summary_tokens(depen):
