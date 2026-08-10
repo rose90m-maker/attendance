@@ -253,3 +253,140 @@ Discoverable via `init_*_db()` in each blueprint. Highlights:
 - 추가 변경 없음 (모든 작업이 `docker run` / `docker cp` / `docker restart` 만으로 진행, 로컬 코드 수정 없음)
 - `.gitignore`에 `_archive/_recovery_*.py` 추가는 deploy의 _git_auto_commit으로 함께 처리됨
 
+<<<<<<< HEAD
+=======
+---
+
+## 🔧 재빌드 실패 + 해소 (2026-08-09)
+
+### 증상
+`python deploy_and_restart.py --rebuild` 가 계속 실패. 8/7 부터 여러 차례 시도.
+```
+❌ 실패 — 위 로그를 확인하세요
+❌ 재빌드 실패 — 컨테이너 상태를 확인하세요.
+```
+**서비스 자체는 정상**이었다 (롤백이 먹었고 app/tbm 모두 가동 중). 다운타임 없음.
+
+### 근본 원인 — `Dockerfile` 의 `freetds-dev` 한 줄
+```
+Unable to locate package freetds-dev
+```
+apt 설치가 실패하면 `RUN` 이 죽고 빌드 전체가 중단된다. **`pymssql 2.3.13` 은 FreeTDS 를
+내장한 manylinux 휠을 제공하므로 이 시스템 패키지가 애초에 필요 없었다.** 제거 후 정상 빌드.
+
+### 진단이 오래 걸린 이유 (다음에 줄이려면)
+빗나간 가설 셋 — DB_PASSWORD 불일치, 디스크 부족, Chromium 단계. 전부 아니었다.
+**답은 처음부터 실행 로그에 있었다.** 컨테이너·이미지 상태만 보고 역추적하려 하면
+시간이 배로 든다. 실패 로그부터 확보할 것. 터미널에 안 남았으면
+`~/.claude/projects/*/*.jsonl` (Claude Code 세션 기록)에 남아 있다.
+
+### 함께 고친 결함 4건
+
+| 파일 | 문제 | 수정 |
+|---|---|---|
+| `Dockerfile` | `freetds-dev` 로 빌드 실패 | 제거 + `import pymssql` 검증 추가 |
+| `deploy_and_restart.py` | `.dockerignore` 가 전송 목록에 없어 `COPY . .` 가 **`.env` 를 이미지 레이어에 구움** (운영 이미지 `/app/.env` 2093B 확인) | `.dockerignore`·`Dockerfile.tbm` 전송 추가 |
+| `rebuild_containers.py` | 빌드 성공 판정이 **문자열 매칭** — 빌더마다 문구가 다르고 sudo 프롬프트가 섞여 오판 | 종료 코드(`BUILD_EXIT_$?`)로 변경 |
+| `rebuild_containers.py` | `sudo()` 가 `startswith("Password: ")` 만 봐서 `Password:`(공백 없음) 를 못 뗌 → 위 판정 오염 | 정규식으로 변경 |
+| `rebuild_containers.py` | `cmd` 하드코딩이 이미지 CMD 를 덮어써 **운영이 gunicorn 대신 Flask 개발 서버로 구동** | 덮어쓰기 제거 + `expect_proc` 로 기동 후 검증 |
+| `rebuild_containers.py` | 롤백 시 백업 태그 없는 컨테이너를 조용히 건너뜀 (tbm 이 실제로 그 상태) | 경고 명시 |
+
+### 결과
+```
+attendance-app  BUILD_EXIT_0 → 302 → 프로세스 확인: gunicorn ✅
+attendance-tbm  BUILD_EXIT_0 → 200 → 프로세스 확인: tbm_app.py ✅
+```
+원천징수영수증 PDF 발급까지 정상 확인 (pymssql·chromium·나눔폰트 전부 동작).
+`attendance-tbm:backup-*` 태그가 처음 생성되어 이제 양쪽 롤백이 가능하다.
+
+### 진단 스크립트 (`_archive/`, 재사용 가능)
+전부 **조회 전용**이며 컨테이너를 변경하지 않는다. `.env` 의 `NAS_*` 를 그대로 쓴다.
+- `_archive/_check_containers.py` — ps/inspect/logs/stats/포트/OOM
+- `_archive/_check_build.py` — `:buildtest` 태그로 **무중단** 빌드 재현
+- `_archive/_verify_image.py` — 이미지 안에서 pymssql/chromium/폰트/gunicorn + `.env` 혼입 검증. 인자로 이미지명
+- `_archive/_build_progress.py` — 빌드 진행 확인 (레이어 개수)
+
+> 💡 NAS 는 **SFTP 가 꺼져 있고**(paramiko `open_sftp()` → `Channel closed`) **레거시 빌더**를 쓴다
+> (BuildKit 의 `Build Cache` 는 증가하지 않으므로 진행 지표로 쓰면 안 된다 — 중간 이미지 개수를 볼 것).
+> 또 `sudo sh -c '...'` 안에서 `docker --format '{{...}}'` 처럼 작은따옴표를 겹치면 조기에 닫힌다.
+> 명령을 base64 로 실어 보내면 이 문제가 사라진다.
+
+### 남은 것
+- `Dockerfile` 의 `import pymssql` 검증 줄이 `playwright install` **앞**에 있어, 이 줄이 바뀌면
+  chromium 레이어 캐시가 통째로 무효화된다 (재빌드 20분 추가). **뒤로 옮기면 해소.**
+- 빌드 캐시 14.33GB / 회수 가능 이미지 9.5GB — `docker builder prune` 검토 (디스크는 1.7T 여유라 급하지 않음)
+- `rebuild_containers.py` 에 `backup-*` 태그 정리 로직 없음 — 계속 누적된다
+
+
+---
+
+## 🧾 원천징수영수증 — 발급본 대조로 결함 9건 해소 (2026-08-10)
+
+`wht_receipt.py` 가 ERP 서식 템플릿(`_TWPRAdjTotAbrIncomeHTML`)에 값을 채워
+원천징수영수증을 만든다. **ERP 발급본 PDF 와 실제로 대조**하기 전까지는
+전 직원 자동검사가 189명 전원 통과였는데, 발급본 3장을 대조하니 결함이 9건 나왔다.
+
+### 자동검사가 왜 못 잡았나 (핵심 교훈)
+`wht_watch.py` 는 "ERP DB 가 가진 **합계** 금액이 서식 **어딘가에** 있는가" 만 본다.
+그래서 다음이 전부 통과한다.
+- 칸이 밀려도 (숫자는 있으니까)
+- 열이 통째로 비어도 (합계만 맞으면)
+- 라벨이 틀려도 (숫자만 보니까)
+- 같은 숫자가 다른 칸에도 있으면 빠진 칸을 못 본다 (16.계 총계가 그랬다)
+
+**발급본 대조가 유일한 정답지다.** 값 검사만으로는 구조적 결함이 안 보인다.
+
+### 고친 것
+
+| # | 결함 | 영향 |
+|---|---|---|
+| 1 | 16.계 총계 칸(`Data3_TotAmt`)에 값을 넣는 코드가 없어 빈칸 | 189명 |
+| 2 | 서식 라벨 `26.본인` (ERP 템플릿 원본 오타, 발급본은 24) | 189명 |
+| 3 | 1쪽 종(전)근무지 열 전체가 하드코딩 빈칸 + 주(현) 열에 합계 혼입 | 5명 |
+| 4 | ⑫감면기간 종(전) 열 빈칸 | 5명 |
+| 5 | Ⅱ 비과세·감면 소득명세가 빈 행 14개 (중소기업 취업자 감면 누락) | 감면 대상자 |
+| 6 | 52.조특법§30 / 54.세액감면 계가 ERP 매핑 없이 계산값 | 감면 대상자 |
+| 7 | 75.주(현) 기납부세액이 ERP 아닌 급여집계 출처 (73·77과 원 단위 어긋남 위험) | 전원 |
+| 8 | 61~63번 공제대상금액 칸이 빔 (세액공제액만 매핑) | 해당자 |
+| 9 | 3쪽 부양가족 명세 전체 + `Data8_repeat` 마커 누락 | 전원 |
+
+### ERP 데이터 위치 (재조사 금지 — 여기 다 있다)
+- `_TWPRAdjTotResultDtl` — 연말정산 계산결과. `Amt`=한도적용 후, `OrgAmt`=대상금액.
+  항목명은 `_TWPRAdjTotItem.AdjItemName`. **ERP 는 계산값을 DB 에 갖고 있다**
+  (`wht_receipt.py` 헤더의 옛 주석이 반대로 적혀 있었고 그게 버그 두 개의 원인이었다)
+- `_TWPRAdjTotNtsIncomeSum` — 근무처별 소득명세. `Amt`=종(전) **포함** 합계,
+  `PreAmt`=종(전)분. 주(현) = `Amt - PreAmt`. `SMPerCoAllType=3502001` 하나뿐이고
+  이건 "당사분"이 **아니다**
+- `_TWPRAdjTotPreWork` — 종(전)근무지 회사명·사업자번호·근무기간·감면기간
+- `_TWPRAdjTotPreWorkDtl` — 종(전)근무지 **별** 금액 (`Seq` + `NtsItemSeq`)
+- `_TWPRAdjTotEmpDepenList` — 3쪽 부양가족별 금액. **컬럼명이 서식 토큰명과 1:1**
+- `_TWPRAdjTotPrintMapping(.Dtl)` — Ⅱ영역 인쇄코드(`Remark`='T13')와
+  표시명(`Dtl.ForName`, `LanguageSeq=1`). `Seq` = `NtsItemSeq` 로 잇는다.
+  `SMType` 3931003=비과세 / 3931006=감면
+
+### 검증 도구 (세 겹)
+```bash
+python3 wht_release.py --yes                 # 검증 통과 시에만 배포 + 사후 확인
+python3 wht_watch.py --force                 # 전 직원 값 대조 (매일 07:30 자동)
+python3 _archive/_wht_cells.py --name 홍길동   # 금액이 '어느 칸'에 들어갔나
+python3 _archive/_check_prework.py           # 종(전)근무지 열 + 74/75/77 검산
+python3 _archive/_check_nontax.py            # Ⅱ영역 + 52/54 세액감면
+python3 _archive/_diff_all_pdf.py 발급본.pdf  # ★ 발급본과 전수 대조 (가장 강함)
+python3 _archive/_pick_samples.py            # 발급본을 누구 걸 뽑아야 다 덮이는지
+```
+`_diff_all_pdf.py` 가 회귀 테스트의 본체다. ERP 에서 전 직원을 한 번에 출력해
+넘기면 남은 차이가 한 번에 나온다. 발급본만 있으면 언제든 다시 돌릴 수 있다.
+
+### 알아둘 것
+- 차감징수세액(77)은 **10원 미만 절사**다. `73-74-75-76` 과 몇 원 다른 건 정상
+- 서식 토큰을 문자열 `find` 로 찾으면 안 된다 — `Data6_Amt4` 가 `Data6_Amt40` 에 걸린다
+- pymssql 은 금액을 `decimal.Decimal` 로 준다. `isinstance(v, (int, float))` 면 다 놓친다
+- 20 / 20-1 계 토큰 이름(`Data4_DeducSum*` / `Data4_NonTaxSum*`)은 뜻과 어긋나 보인다.
+  `nontax_sum_tokens()` 가 서식 행 글자를 읽어 판단한다 — 이름으로 추측하지 말 것
+
+### 남은 미확인
+- **2024년 이전 귀속** — 서식이 매년 개정되는데 한 번도 안 돌려봤다
+- **부속명세(Detail)** — 29,079자, `load_template()` 에서 제외 중
+- 부양가족 주민등록번호 — varbinary 암호화라 복호화 불가, 담당자가 수기 입력
+- 발급본과 대조 완료: 지창구(3쪽 전체 0/0) · 김미선 · 이재현 (2025 귀속)
+>>>>>>> 39d1488f365859e8d5a132d25acd9575d805038c
