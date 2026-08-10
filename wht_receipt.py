@@ -289,6 +289,45 @@ def load_family(cur, emp_seq, yy):
     return fam
 
 
+def load_depen_list(cur, emp_seq, yy):
+    """3쪽 「78.소득·세액공제 명세」의 부양가족별 금액.
+
+    ERP 는 이 표를 _TWPRAdjTotEmpDepenList 하나로 그린다 — 행=사람, 열=항목이라
+    서식과 모양이 같고, **컬럼명이 서식 토큰명과 1:1 로 대응한다**
+    (NtsPlastic → Data7_NtsPlastic). 그래서 매핑을 손으로 나열할 필요가 없다.
+
+    예전에는 _TWPRAdjTotIncomeTaxDeduc(직원 단위 합계)만 보고 "ERP 는 개인별
+    금액을 저장하지 않는다"고 판단해 금액 칸을 통째로 비웠다. 그 테이블에
+    한정하면 맞는 말이었지만, 이 테이블을 못 찾았던 것이다 (2026-08-10 확인).
+    """
+    cur.execute(f"""SELECT * FROM _TWPRAdjTotEmpDepenList
+                    WHERE YY=%s AND EmpSeq=%s ORDER BY FamilySeq""", (yy, emp_seq))
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def _amt(v):
+    """금액 칸 — 0 이면 빈칸 (서식이 0 을 찍지 않는다)"""
+    try:
+        n = int(float(v))
+    except (TypeError, ValueError):
+        return ""
+    return f"{n:,}" if n else ""
+
+
+def _mark(v):
+    """인적공제 해당란 — ○ 표시"""
+    return "○" if str(v or "").strip() in ("1", "Y", "○") else ""
+
+
+# 값이 '해당 여부'인 컬럼 — 금액이 아니라 ○ 로 찍는다
+FLAG_COLS = {"DependYn", "OldManDeducYn", "WomanDeducYn", "SingleFamYn",
+             "DisabledYn", "ChildBirthYn", "Child6Yn", "MarryYn", "ChildCnt"}
+# 금액도 표시값도 아닌 컬럼 — 서식에 안 나간다
+SKIP_COLS = {"CompanySeq", "YY", "EmpSeq", "FamilySeq", "LastUserSeq",
+             "LastDateTime", "DepenResidIdBNR", "EduDeducCd"}
+
+
 REPEAT_BEGIN = "<!-- Data7_repeat Begin-->"
 REPEAT_END = "Data7_repeat END-->"
 
@@ -368,35 +407,93 @@ def build_income_rows(t, inc, beg, end, co):
     return d2, d3, pay + bonus
 
 
-def expand_family_rows(tpl, fam):
-    """Page3 의 Data7_repeat 블록을 부양가족 수만큼 복제해 채운다"""
+def expand_family_rows(tpl, depen, disable_map=None):
+    """Page3 의 Data7_repeat 블록을 부양가족 수만큼 복제해 채운다.
+
+    depen: load_depen_list() 결과. 컬럼명이 토큰명과 같으므로 그대로 옮긴다.
+    disable_map: {FamilySeq: SMDisableType} — 장애인 코드만 다른 테이블에 있다.
+    """
     b = tpl.find(REPEAT_BEGIN)
     e = tpl.find(REPEAT_END)
     if b < 0 or e < 0:
         return tpl
     e += len(REPEAT_END)
     row_tpl = tpl[b:e]
+    disable_map = disable_map or {}
 
-    def one(f):
-        v = {
-            "Data7_DepenType": f["rel"],
-            "Data7_DepenNm": f["name"],
-            "Data7_DepenResidId": "",          # 주민번호는 암호화 — 담당자 기입
-            "Data7_DepenFrgnYn": "",
-            "Data7_DependYn": "O" if f["flags"] else "",
-            "Data7_OldManDeducYn": "O" if "경로우대" in f["flags"] else "",
-            "Data7_WomanDeducYn": "O" if "부녀자" in f["flags"] else "",
-            "Data7_SingleFamYn": "O" if "한부모" in f["flags"] else "",
-            "Data7_DisableType": str(f["disable"]) if f["disable"] else "",
-            "Data7_ChildCnt": "O" if "만8세이상자녀" in f["flags"] else "",
-            "Data7_MarryYn": "",
-            "Data7_ChildBirthYn": "O" if "출산입양자" in f["flags"] else "",
-            "Data7_IsEmptyPlace": "",
-        }
-        return TOKEN_RE.sub(lambda m: str(v.get(m.group(0)[5:], "")), row_tpl)
+    def one(d):
+        v = {}
+        for col, val in d.items():
+            if col in SKIP_COLS:
+                continue
+            key = f"Data7_{col}"
+            if col in FLAG_COLS:
+                v[key] = _mark(val)
+            elif isinstance(val, (int, float)) or str(val or "").replace(
+                    ".", "").replace("-", "").isdigit():
+                v[key] = _amt(val)
+            else:
+                v[key] = str(val or "").strip()
 
-    rows = "".join(one(f) for f in fam) if fam else ""
+        # 관계코드·내외국인은 숫자 그대로 찍는다 (금액 포맷이 아니다)
+        v["Data7_DepenType"] = str(d.get("DepenType") or "").strip()
+        v["Data7_DepenFrgnYn"] = str(d.get("DepenFrgnYn") or "").strip()
+        v["Data7_DepenNm"] = str(d.get("DepenNm") or "").strip()
+
+        # 주민번호는 DB 에 암호화(varbinary)로만 있어 복호화할 수 없다.
+        # 본인 행은 ERP 도 번호 대신 '(근로자본인)' 을 찍으므로 그대로 맞춘다.
+        v["Data7_DepenResidId"] = ("(근로자본인)"
+                                   if str(d.get("DepenType") or "").strip() == "0"
+                                   else "")
+
+        # 장애인 코드는 _TWPRAdjTotDependFamily 에 있다
+        dis = disable_map.get(d.get("FamilySeq"))
+        v["Data7_DisableType"] = str(dis) if dis else ""
+
+        # 서식에는 있으나 ERP 가 채우지 않는 칸
+        v["Data7_IsMarry"] = ""
+        v["Data7_IsEmptyPlace"] = ""
+
+        # v 에 있는 토큰만 치환한다. 모르는 토큰을 ""로 지우면 누락이
+        # missing 집계에 안 잡혀 문제가 드러나지 않는다 (예전 결함).
+        return TOKEN_RE.sub(
+            lambda m: str(v[m.group(0)[5:]]) if m.group(0)[5:] in v else m.group(0),
+            row_tpl)
+
+    rows = "".join(one(d) for d in depen) if depen else ""
     return tpl[:b] + rows + tpl[e:]
+
+
+def depen_summary_tokens(depen):
+    """3쪽 '국세청 계 / 기타 계' 행과 인원수 칸.
+
+    Data7_Sum<컬럼>  = 그 컬럼의 전 부양가족 합계
+    Data7_SUM<컬럼>  = 그 플래그가 '1' 인 인원수
+    """
+    out = {}
+    if not depen:
+        return out
+    cols = depen[0].keys()
+    for col in cols:
+        if col in SKIP_COLS:
+            continue
+        if col in FLAG_COLS:
+            cnt = sum(1 for d in depen
+                      if str(d.get(col) or "").strip() in ("1", "Y"))
+            out[f"Data7_SUM{col}"] = str(cnt) if cnt else ""
+        else:
+            total = 0
+            numeric = False
+            for d in depen:
+                try:
+                    total += int(float(d.get(col) or 0))
+                    numeric = True
+                except (TypeError, ValueError):
+                    numeric = False
+                    break
+            if numeric:
+                out[f"Data7_Sum{col}"] = _amt(total)
+    return out
 
 
 def _seal_b64():
@@ -433,6 +530,8 @@ def build_values(cur, emp_no, yy, resid_id=""):
     # 하단 영수란(Data5)에서도 건강보험 '공제금액'이 필요하므로 v 를 만들기 전에 읽는다.
     deducs, unmapped = load_deducs(cur, t["emp_seq"], yy)
     persons = load_persons(cur, t["emp_seq"], yy)
+    # 3쪽 부양가족 명세 — 합계행(Data7_Sum*/SUM*)은 반복블록 밖이라 v 에 넣는다.
+    depen = load_depen_list(cur, t["emp_seq"], yy)
 
     def flag(field, val, n=None):
         """체크 표기 — 해당하면 CSS 클래스를 넣어 글자에 동그라미를 그린다"""
@@ -563,16 +662,19 @@ def build_values(cur, emp_no, yy, resid_id=""):
         "Data5_SpecialTax_Deducted": "",
         "Data5_Tax_Spec": "", "Data5_ResidTax_Spec": "", "Data5_SpecialTax_Spec": "",
     })
+    # 3쪽 '국세청 계 / 기타 계' 행 + 인적공제 인원수
+    v.update(depen_summary_tokens(depen))
+
     if unmapped:
         print("⚠️  미분류 공제 항목 (검토 필요):")
         for nm, a in unmapped:
             print(f"    {nm}: {a:,.0f}")
-    return t, v
+    return t, v, depen
 
 
 def render(cur, emp_no, yy, resid_id=""):
     tpl = load_template(cur, yy)
-    t, values = build_values(cur, emp_no, yy, resid_id)
+    t, values, depen = build_values(cur, emp_no, yy, resid_id)
     # 반복행 펼치기 — 1쪽 근무처/소득명세, 3쪽 부양가족
     inc = load_income(cur, t["emp_seq"], yy)
     beg, end = load_period(cur, t["emp_seq"], yy)
@@ -586,7 +688,10 @@ def render(cur, emp_no, yy, resid_id=""):
     BLANK = 14
     tpl = _expand(tpl, "Data4", [{}] * BLANK)
     tpl = _insert_section2_label(tpl, BLANK + 2)
-    tpl = expand_family_rows(tpl, load_family(cur, t["emp_seq"], yy))
+    # 장애인 코드만 _TWPRAdjTotDependFamily 에 있어 FamilySeq 로 붙인다
+    disable_map = {f["seq"]: f["disable"]
+                   for f in load_family(cur, t["emp_seq"], yy) if f["disable"]}
+    tpl = expand_family_rows(tpl, depen, disable_map)
 
     filled = set()
     missing = set()
