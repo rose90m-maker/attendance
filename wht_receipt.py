@@ -488,7 +488,9 @@ def depen_summary_tokens(depen):
     Data7_Sum<컬럼>  = 그 컬럼의 전 부양가족 합계
     Data7_SUM<컬럼>  = 그 플래그가 '1' 인 인원수
     """
-    out = {}
+    # 혼인세액공제 칸 — ERP 에 해당 컬럼이 없고 발급본에서도 비어 있다.
+    # 명시적으로 빈 값을 넣어 두지 않으면 '미채움' 으로 보고돼 진짜 누락이 묻힌다.
+    out = {"Data7_IsMarry": "", "Data7_MarryYn": "", "Data7_SUMMarryYn": ""}
     if not depen:
         return out
     cols = depen[0].keys()
