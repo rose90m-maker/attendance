@@ -806,10 +806,8 @@ def build_values(cur, emp_no, yy, resid_id=""):
         # 가 만들어 v 에 합쳐 넣는다 (아래 v.update(sums)).
         "Data4_DeducSumCur": "", "Data4_NonTaxSumCur": "",   # 20/20-1 계
         # ── Data5: 기납부세액·보험료 ──
-        # 75.주(현)근무지 이므로 종(전)분을 뺀다. 74 는 아래에서 근무지별로 채운다.
-        "Data5_Tax_TC": _num(inc.get("소득세", 0) - pre.get("소득세", 0)),
-        "Data5_ResidTax_TC": _num(inc.get("지방소득세", 0)
-                                  - pre.get("지방소득세", 0)),
+        # 75.주(현)근무지(Data5_*_TC)는 ERP 값이 필요해서 아래 v.update 에서 넣는다.
+        # 74 는 그 아래에서 근무지별로 채운다.
         "Data5_SpecialTaxTax_TC": "",
         # 하단 영수란은 두 칸이다. 템플릿 순서가 Tot → Cur 이고, 발급본은
         # 「국민연금(현근무지) 1,153,570 ( 1,053,000 )」 처럼 합계를 먼저 찍는다.
@@ -856,6 +854,16 @@ def build_values(cur, emp_no, yy, resid_id=""):
         print(f"  ℹ️  ERP 값으로 보정 {len(_diff)}건 "
               f"(계산기와 달랐던 항목): "
               + ", ".join(str(k) for k, _o, _n in _diff[:8]))
+
+    def _tc(erp_key, item):
+        """75.주(현)근무지 = ERP 기납부세액 - 종(전)근무지 결정세액.
+
+        ERP 에 그 항목이 없으면 급여집계에서 종(전)분을 뺀 값으로 물러난다.
+        """
+        pre_sum = sum(w["amt"].get(item, 0) for w in works)
+        if erp_key in r:
+            return r[erp_key] - pre_sum
+        return inc.get(item, 0) - pre.get(item, 0)
 
     # Data6 토큰 ↔ 서식 항목 (템플릿 위치 분석으로 확정, 지창구 2025 대조 검증)
     v.update({
@@ -907,6 +915,13 @@ def build_values(cur, emp_no, yy, resid_id=""):
         "Data5_Tax_Final": _num(r["73tax"]),
         "Data5_ResidTax_Final": _num(r["73local"]),
         "Data5_SpecialTax_Final": "",
+        # 75.주(현)근무지 기납부세액 — 위에서 급여집계로 넣은 값을 ERP 값으로 덮는다.
+        # 73 과 77 은 ERP 값인데 75 만 급여집계에서 오면 73-74-75-76 이 77 과 맞지
+        # 않는다. 박상현 2025 에서 소득세 4원·지방소득세 9원이 어긋났다
+        # (2026-08-10, 발급본 대조 중 검산으로 발견).
+        # ERP 의 '기납부세액'은 74+75 합계이므로 종(전) 결정세액을 뺀다.
+        "Data5_Tax_TC": _num(_tc("75tax", "소득세")),
+        "Data5_ResidTax_TC": _num(_tc("75local", "지방소득세")),
         "Data5_Tax_Deducted": _num(r["77tax"]) or "0",
         "Data5_ResidTax_Deducted": _num(r["77local"]) or "0",
         "Data5_SpecialTax_Deducted": "",
