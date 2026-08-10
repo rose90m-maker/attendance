@@ -34,7 +34,8 @@ Thumbs.db
 # 임시 파일
 *.tmp
 *.swp
-.claude/
+.claude/*
+!.claude/skills/
 db-init/
 
 # 일회용 복구/진단 스크립트 (보관용, git 추적 X)
@@ -43,3 +44,12 @@ run_local_test.sh
 .env.bak*
 .env.before_*
 .env.*
+
+# 진단 스크립트 출력물 (_archive/_check_*.py 등이 생성) — 저장소에 둘 이유 없음
+_diag.txt
+_build.txt
+_check.txt
+_term.txt
+
+# 배포 변경감지 매니페스트 (로컬 상태)
+.deploy_manifest.json
