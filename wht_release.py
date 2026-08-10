@@ -26,6 +26,10 @@ PY = sys.executable
 CHECKS = [
     ("종(전)근무지 · 세액 검산", ["_archive/_check_prework.py"]),
     ("비과세·감면 명세 · 52/54", ["_archive/_check_nontax.py"]),
+    # 서식에 인쇄된 검산식 10종을 전 직원에게 돌린다. 2026-08-10 에 이 검사
+    # 하나가 발급본 없이 결함 2건(64 기부금 잔값, 72 출처)과 미배선 2건
+    # (고향사랑, 장애인전용)을 잡았다.
+    ("산술 항등식 전수검사 (189명)", ["_archive/_check_identities.py"]),
 ]
 DEPLOY = ("배포", ["deploy_and_restart.py"])
 AFTER = ("전 직원 재검증", ["wht_watch.py", "--force"])
