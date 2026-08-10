@@ -181,6 +181,111 @@ def load_income_pre(cur, emp_seq, yy):
     return out
 
 
+# Ⅱ 비과세소득 및 감면소득명세 — PrintMapping.SMType 이 둘을 가른다
+NONTAX_SMTYPE = 3931003        # 비과세
+REDUC_SMTYPE = 3931006         # 감면
+
+
+def load_nontax(cur, emp_seq, yy):
+    """Ⅱ 비과세소득 및 감면소득명세의 행.
+
+    데이터는 이미 읽고 있던 _TWPRAdjTotNtsIncomeSum 에 있다. 급여·상여와 같은
+    테이블에 NtsItemSeq 만 다르게 들어 있고, 그 seq 가 _TWPRAdjTotPrintMapping
+    에 있으면 이 영역에 인쇄되는 항목이다. 서식에 찍는 코드(T13)는 그 테이블의
+    Remark, 표시명('(18)-32 중소기업 취업자에 대한 감면(90%)')은 …Dtl.ForName 이다.
+
+    예전에는 이 영역을 빈 행 14개로만 채워, 중소기업 취업자 감면 같은 항목이
+    통째로 빠졌다 (이재현 2025 발급본 대조로 발견, 2026-08-10).
+    """
+    cur.execute("""SELECT DISTINCT s.NtsItemSeq, m.SMType, m.DispSeq,
+                          RTRIM(m.Remark), d.ForName, i.NtsItemName,
+                          s.Amt, s.PreAmt
+                   FROM _TWPRAdjTotNtsIncomeSum s
+                   JOIN _TWPRAdjTotPrintMapping m
+                     ON m.YY=s.YY AND m.Seq=s.NtsItemSeq
+                   LEFT JOIN _TWPRAdjTotPrintMappingDtl d
+                     ON d.YY=m.YY AND d.SMType=m.SMType AND d.Seq=m.Seq
+                        AND d.LanguageSeq=1
+                   LEFT JOIN (SELECT DISTINCT YY, NtsItemSeq, NtsItemName
+                              FROM _TWPRAdjTotNtsItem) i
+                     ON i.YY=s.YY AND i.NtsItemSeq=s.NtsItemSeq
+                   WHERE s.YY=%s AND s.EmpSeq=%s
+                     AND (s.Amt <> 0 OR s.PreAmt <> 0)
+                     AND m.SMType IN (%s, %s)
+                   ORDER BY m.DispSeq""",
+                (yy, emp_seq, NONTAX_SMTYPE, REDUC_SMTYPE))
+    out = []
+    for seq, smtype, _disp, code, forname, itemname, amt, preamt in cur.fetchall():
+        out.append({"seq": seq, "smtype": smtype,
+                    "code": (code or "").strip(),
+                    "title": (forname or itemname or "").strip(),
+                    "name": (itemname or "").strip(),
+                    "amt": float(amt or 0), "pre": float(preamt or 0)})
+    return out
+
+
+def build_nontax_rows(rows, works):
+    """Ⅱ영역 반복행 — 열 구성은 Data2/Data3 와 같다"""
+    out = []
+    for r in rows:
+        d = {"Data4_Title": r["title"], "Data4_NtsCd": r["code"],
+             "Data4_Cur": _num(r["amt"] - r["pre"]),
+             "Data4_TotAmt": _num(r["amt"])}
+        for k in range(PRE_COLS):
+            w = works[k] if k < len(works) else None
+            d[f"Data4_Pre{k + 1}"] = _num(w["amt"].get(r["name"], 0)) if w else ""
+        out.append(d)
+    return out
+
+
+# 20.비과세소득 계 / 20-1.감면소득 계 의 토큰. 이름만 보면 어느 쪽이 어느 행인지
+# 알 수 없어(NonTax 가 감면 행일 수도 있다) 서식에서 직접 확인한다.
+_SUM_TOKENS = {
+    "Deduc": ("Data4_DeducSumCur", "Data4_DeducSumpre1", "Data4_DeducSumPre2",
+              "Data4_DeducSumPre3", "Data4_DeducTotSumAmt"),
+    "NonTax": ("Data4_NonTaxSumCur", "Data4_NonTaxSumPre1",
+               "Data4_NonTaxSumPre2", "Data4_NonTaxSumPre3",
+               "Data4_NonTaxSumAmt"),
+}
+
+
+def nontax_sum_tokens(tpl, rows, works):
+    """20 / 20-1 계 행. 어느 토큰 묶음이 어느 행인지는 서식을 보고 정한다."""
+    def totals(smtype):
+        sel = [r for r in rows if r["smtype"] == smtype]
+        tot = sum(r["amt"] for r in sel)
+        cur_ = tot - sum(r["pre"] for r in sel)
+        per = []
+        for k in range(PRE_COLS):
+            w = works[k] if k < len(works) else None
+            per.append(_num(sum(w["amt"].get(r["name"], 0) for r in sel))
+                       if w else "")
+        return [_num(cur_)] + per + [_num(tot)]
+
+    def is_reduc_row(tok):
+        i = tpl.find("YLW#_" + tok)
+        if i < 0:
+            return None
+        s, e = tpl.rfind("<tr", 0, i), tpl.find("</tr>", i)
+        if s < 0 or e < 0:
+            return None
+        txt = re.sub(r"<[^>]+>", " ", re.sub(r"YLW#_\w+", " ", tpl[s:e]))
+        if "20-1" in txt:
+            return True          # 20-1.감면소득 계
+        if re.search(r"(?<!\d)20\s*[.．]", txt):
+            return False         # 20.비과세소득 계
+        return None
+
+    out = {}
+    for group, toks in _SUM_TOKENS.items():
+        kind = is_reduc_row(toks[0])
+        if kind is None:
+            continue             # 서식에서 못 찾으면 건드리지 않는다
+        vals = totals(REDUC_SMTYPE if kind else NONTAX_SMTYPE)
+        out.update(dict(zip(toks, vals)))
+    return out
+
+
 def _biz(no):
     """사업자등록번호 3018146359 → 301-81-46359"""
     s = re.sub(r"\D", "", str(no or ""))
@@ -418,6 +523,7 @@ ERP_ITEM_NAME = {
     # 이재현 2025 발급본에 473,817 이 찍히는데 매핑이 없어 wht_calc 계산값에
     # 기대고 있었다 (2026-08-10). 한도적용 후 값이 서식에 나가는 값이다.
     "중소기업취업자감면(A+B+C)한도적용": 52,
+    "세액감면계": 54,                      # 54.세액감면 계 → Data6_Amt58
     "근로소득세액공제": 55,
     "공제대상자녀(세액공제)": 57,
     # 61~63 번 칸은 「공제대상금액」과 「세액공제액」이 따로 있다.
@@ -813,7 +919,7 @@ def build_values(cur, emp_no, yy, resid_id=""):
         "Data1_IsBizTax2": CHECK,
         # Data2/Data3 는 반복행이라 render() 에서 펼친다. 16.계 는 build_income_rows
         # 가 만들어 v 에 합쳐 넣는다 (아래 v.update(sums)).
-        "Data4_DeducSumCur": "", "Data4_NonTaxSumCur": "",   # 20/20-1 계
+        # 20 / 20-1 계는 render() 에서 서식을 보고 채운다 (nontax_sum_tokens).
         # ── Data5: 기납부세액·보험료 ──
         # 75.주(현)근무지(Data5_*_TC)는 ERP 값이 필요해서 아래 v.update 에서 넣는다.
         # 74 는 그 아래에서 근무지별로 채운다.
@@ -963,13 +1069,16 @@ def render(cur, emp_no, yy, resid_id=""):
     d2, d3, _ = build_income_rows(t, inc, pre, works, beg, end, load_company(cur))
     tpl = _expand(tpl, "Data2", d2)
     tpl = _expand(tpl, "Data3", d3)
-    # 비과세·감면 명세(Ⅱ) — 해당 없어도 원본처럼 빈 행을 채운다.
+    # 비과세·감면 명세(Ⅱ) — 실제 항목을 먼저 놓고 나머지는 원본처럼 빈 행.
     # ⚠️ Ⅰ영역은 왼쪽에 세로 레이블 셀(rowspan=13)이 있어 행마다 28열인데
     #    Data4_repeat 에는 그 셀이 없어 27열이다. 그대로 두면 표가 한 칸씩 밀린다.
-    #    → 첫 행에 레이블 셀을 끼워 넣는다 (빈행 + 20 + 20-1 을 덮는다).
-    BLANK = 14
-    tpl = _expand(tpl, "Data4", [{}] * BLANK)
-    tpl = _insert_section2_label(tpl, BLANK + 2)
+    #    → 첫 행에 레이블 셀을 끼워 넣는다 (전체 행 + 20 + 20-1 을 덮는다).
+    nontax = load_nontax(cur, t["emp_seq"], yy)
+    d4 = build_nontax_rows(nontax, works)
+    ROWS = max(14, len(d4))                    # 원본 서식의 행 수를 유지한다
+    tpl = _expand(tpl, "Data4", d4 + [{}] * (ROWS - len(d4)))
+    tpl = _insert_section2_label(tpl, ROWS + 2)
+    values.update(nontax_sum_tokens(tpl, nontax, works))
     # 장애인 코드만 _TWPRAdjTotDependFamily 에 있어 FamilySeq 로 붙인다
     disable_map = {f["seq"]: f["disable"]
                    for f in load_family(cur, t["emp_seq"], yy) if f["disable"]}
