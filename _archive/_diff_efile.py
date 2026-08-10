@@ -270,6 +270,21 @@ head(f"대조 — 신고 레코드가 있는 {len(people)}명 "
 
 # ── 4. 값 대조 ───────────────────────────────────────────────
 AMT = re.compile(r"^\d{4,}$")
+
+# 금액이 아닌 필드 — 이름으로 거른다 (2026-08-10 1차 실행에서 전원 공통 노이즈).
+#   식별번호(주민·사업자·기관), 날짜·연월, 코드·순번,
+#   기부 건별 명세(부속명세 영역 — 영수증 서식엔 원래 없다)
+SKIP_NAME = re.compile(
+    r"주민|등록번호|사업자|생년|연월|일자|년도|연도|날짜|코드|전화|연락처|"
+    r"순번|일련|건수|페이지|세무프로그램|제출|이월")
+
+
+def norm_filed(v):
+    """신고 매체 금액 → int. 매체는 음수를 절대값으로 싣기도 하므로
+    대조는 절대값 기준으로 한다 (차감징수 환급액이 부호만 다르게 잡히던 문제)."""
+    return abs(int(v))
+
+
 bad, okc = [], 0
 covered_fields = Counter()
 for es, rows_ in sorted(people.items(), key=lambda x: EMP[x[0]][1]):
@@ -278,9 +293,11 @@ for es, rows_ in sorted(people.items(), key=lambda x: EMP[x[0]][1]):
     filed = {}
     for fr in rows_:
         for k, v in parse_line(fr[text_col], pick_layout(fr)):
-            d = v.lstrip("0") or "0"
-            if AMT.match(v.lstrip("-")) and int(d if d != "0" else 0) >= args.min:
-                filed.setdefault(int(d), set()).add(k or "?")
+            if SKIP_NAME.search(k or ""):
+                continue
+            d = v.lstrip("-").lstrip("0") or "0"
+            if AMT.match(v.lstrip("-")) and int(d) >= args.min:
+                filed.setdefault(norm_filed(int(v)), set()).add(k or "?")
     try:
         with contextlib.redirect_stdout(io.StringIO()):
             html, _t, _f, _m = W.render(cur, emp_id, args.yy)
@@ -288,7 +305,7 @@ for es, rows_ in sorted(people.items(), key=lambda x: EMP[x[0]][1]):
         bad.append((name, emp_id, [("렌더 실패", str(e)[:80])]))
         continue
     text = re.sub(r"<[^>]+>", " ", html)
-    ours = {int(m.replace(",", ""))
+    ours = {abs(int(m.replace(",", "")))
             for m in re.findall(r"-?\d{1,3}(?:,\d{3})+", text)}
     ours |= {int(m) for m in re.findall(r"(?<![\d,])\d{4,9}(?![\d,])", text)}
 
