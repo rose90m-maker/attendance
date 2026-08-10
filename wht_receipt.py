@@ -430,6 +430,9 @@ def build_values(cur, emp_no, yy, resid_id=""):
     inc = load_income(cur, t["emp_seq"], yy)
     beg, end = load_period(cur, t["emp_seq"], yy)
     co = load_company(cur)
+    # 하단 영수란(Data5)에서도 건강보험 '공제금액'이 필요하므로 v 를 만들기 전에 읽는다.
+    deducs, unmapped = load_deducs(cur, t["emp_seq"], yy)
+    persons = load_persons(cur, t["emp_seq"], yy)
 
     def flag(field, val, n=None):
         """체크 표기 — 해당하면 CSS 클래스를 넣어 글자에 동그라미를 그린다"""
@@ -482,8 +485,12 @@ def build_values(cur, emp_no, yy, resid_id=""):
         "Data5_SpecialTaxTax_TC": "",
         "Data5_NPCurAmt": _num(inc.get("국민연금보험", 0)),
         "Data5_NPTotAmt": _num(inc.get("국민연금보험", 0)),
-        "Data5_MedCurAmt": _num(inc.get("국민건강보험", 0) + inc.get("국민건강보험-정산분", 0)),
-        "Data5_MedTotAmt": _num(inc.get("국민건강보험", 0) + inc.get("국민건강보험-정산분", 0)),
+        # 건강보험은 급여대장 합계(국민건강보험+정산분)가 아니라 33.㉮ 의 '공제금액'을 쓴다.
+        # ERP 발급본이 하단 영수란에도 공제금액을 찍기 때문이다.
+        # 예전에는 정산분까지 더해 2,367,230 이 나왔고 ERP 는 2,347,130 이라,
+        # 같은 장 안에서 건강보험료가 두 값으로 보였다 (2026-08-10 지창구 2025 대조).
+        "Data5_MedCurAmt": _num(deducs.get("health", 0)),
+        "Data5_MedTotAmt": _num(deducs.get("health", 0)),
         "Data5_HireCurAmt": _num(inc.get("고용보험", 0)),
         "Data5_HireTotAmt": _num(inc.get("고용보험", 0)),
         "Data5_PrintDate": date.today().strftime("%Y년   %m월   %d일"),
@@ -495,8 +502,6 @@ def build_values(cur, emp_no, yy, resid_id=""):
 
     # ── 정산명세 (2쪽) — wht_calc 로 법정 산식 계산 ──
     from wht_calc import compute
-    deducs, unmapped = load_deducs(cur, t["emp_seq"], yy)
-    persons = load_persons(cur, t["emp_seq"], yy)
     calc_in = dict(gross=pay + bonus,
                    prepaid_tax=inc.get("소득세", 0),
                    prepaid_local=inc.get("지방소득세", 0),
