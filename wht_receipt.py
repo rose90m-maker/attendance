@@ -189,18 +189,25 @@ REDUC_SMTYPE = 3931006         # 감면
 def load_nontax(cur, emp_seq, yy):
     """Ⅱ 비과세소득 및 감면소득명세의 행.
 
-    데이터는 이미 읽고 있던 _TWPRAdjTotNtsIncomeSum 에 있다. 급여·상여와 같은
-    테이블에 NtsItemSeq 만 다르게 들어 있고, 그 seq 가 _TWPRAdjTotPrintMapping
-    에 있으면 이 영역에 인쇄되는 항목이다. 서식에 찍는 코드(T13)는 그 테이블의
-    Remark, 표시명('(18)-32 중소기업 취업자에 대한 감면(90%)')은 …Dtl.ForName 이다.
+    감면 항목(중소기업 취업자 T13 등)은 _TWPRAdjTotNtsIncomeSum 에,
+    비과세 항목(야간근로수당 O01 등)은 **_TWPRAdjTotNtsNonTaxSum** 에 있다.
+    NtsItemSeq 가 _TWPRAdjTotPrintMapping 에 있으면 이 영역에 인쇄되는
+    항목이다. 서식에 찍는 코드(T13/O01)는 그 테이블의 Remark, 표시명
+    ('(18)-1 야간근로수당')은 …Dtl.ForName 이다.
 
     예전에는 이 영역을 빈 행 14개로만 채워, 중소기업 취업자 감면 같은 항목이
-    통째로 빠졌다 (이재현 2025 발급본 대조로 발견, 2026-08-10).
+    통째로 빠졌고 (이재현 2025 발급본 대조, 2026-08-10), IncomeSum 만 읽어
+    비과세 행이 전부 빠졌다 (김동여 야간근로수당 1,658,760 — 국세청 신고파일
+    대조로 발견, 2026-08-10).
     """
     cur.execute("""SELECT DISTINCT s.NtsItemSeq, m.SMType, m.DispSeq,
                           RTRIM(m.Remark), d.ForName, i.NtsItemName,
                           s.Amt, s.PreAmt
-                   FROM _TWPRAdjTotNtsIncomeSum s
+                   FROM (SELECT YY, EmpSeq, NtsItemSeq, Amt, PreAmt
+                         FROM _TWPRAdjTotNtsIncomeSum
+                         UNION ALL
+                         SELECT YY, EmpSeq, NtsItemSeq, Amt, PreAmt
+                         FROM _TWPRAdjTotNtsNonTaxSum) s
                    JOIN _TWPRAdjTotPrintMapping m
                      ON m.YY=s.YY AND m.Seq=s.NtsItemSeq
                    LEFT JOIN _TWPRAdjTotPrintMappingDtl d
@@ -570,6 +577,37 @@ ERP_ITEM_NAME = {
     "고향사랑기부금(세액공제)_10만원초과": "64home_hi",
     "고향사랑기부금(대상금액)_10만원초과": "64home_hi_obj",
     "고향사랑기부금(세액대상금액)_10만원초과": "64home_hi_obj",
+    # 59.퇴직연금 / 60.연금저축 — 계산기 값이 ERP 한도적용 값과 어긋났다
+    # (김영숙 178,369 · 배옥림 215,285, 국세청 신고파일 대조로 발견 2026-08-10).
+    # 대상금액은 '(최종)' 이 한도적용 후 값이다.
+    "퇴직연금(세액공제)": 59,
+    "퇴직연금(대상금액)(최종)": "59obj",
+    "연금저축(세액공제)": 60,
+    "연금저축(대상금액)(최종)": "60obj",
+    # 34㉯ 장기주택저당차입금 이자상환액 — 서식 9행이 통째로 미배선이었다
+    # (구현우 5,214,623 등 7명, 국세청 신고파일 대조로 발견 2026-08-10).
+    # ERP 항목명이 서식 행과 1:1 로 대응한다 (2011년=차입시기 2011년 이전).
+    "2011년 저당차입금이자상환액(15년↓)": "34b_11_lt15",
+    "2011년 저당차입금이자상환액(15~29년)": "34b_11_1529",
+    "2011년 저당차입금이자상환액(30년↑)": "34b_11_ge30",
+    "2011년 저당차입금이자상환액(고정금리and비거치상환)": "34b_11_fixnon",
+    "2011년 저당차입금이자상환액(고정금리or비거치상환)": "34b_11_fixor",
+    "2012년 저당차입금이자상환액(15년↑고정금리and비거치상환)": "34b_12_fixnon",
+    "2012년 저당차입금이자상환액(15년↑고정금리or비거치상환)": "34b_12_fixor",
+    "2012년 저당차입금이자상환액(15년↑기타대출)": "34b_12_etc",
+    "2012년 저당차입금이자상환액(10년↑고정금리or비거치상환)": "34b_12_1015",
+    # 42.신용카드등 소득공제 — ERP 의 '신용카드 등 사용금액'이 이름과 달리
+    # **한도적용 후 공제금액**이다 (강태준 3,483,920 = 일반 3,000,000 + 추가
+    # 483,920 · 박정민 890,354 · 김동욱 3,144,880 전부 신고파일 값과 일치).
+    # 일반+추가를 합성하는 방식은 추가공제 항목명이 사람마다 달라 쓰지 않는다.
+    "신용카드 등 사용금액": 41,
+    # 70.월세액 — 계산기 값이 ERP 한도적용 값과 어긋났다
+    # (유지윤 1,414,518 vs ERP 1,350,273, 신고파일 대조 2026-08-10)
+    "월세액": 70,
+    "월세액(대상금액)(집계)": "70obj",
+    # 56.혼인세액공제 — 2025 신설. 서식 토큰 Data6_Amt118
+    # (이복우 500,000, 국세청 신고파일 대조로 발견 2026-08-10)
+    "혼인세액공제": "56marry",
     "표준세액공제": 66,
     "특별세액공제계": 65,
     "세액공제계": 71,
@@ -1016,7 +1054,9 @@ def build_values(cur, emp_no, yy, resid_id=""):
                "64pol_lo", "64pol_lo_obj", "64pol_hi", "64pol_hi_obj",
                "64home_lo", "64home_lo_obj", "64home_hi", "64home_hi_obj",
                "64spec", "64spec_obj", "64gen", "64gen_obj",
-               "64rel", "64rel_obj"):
+               "64rel", "64rel_obj",
+               # 59·60 연금계좌·70 월세도 같은 규칙 — ERP 에 없으면 미적용 = 빈칸
+               59, "59obj", 60, "60obj", 70, "70obj"):
         if _k not in _erp:
             r[_k] = 0
     if _diff:
@@ -1052,6 +1092,16 @@ def build_values(cur, emp_no, yy, resid_id=""):
         "Data6_Amt17": _num(deducs.get("employ", 0)),
         "Data6_Amt109": _num(deducs.get("employ", 0)),
         "Data6_Amt18": _num(r["34rent"]),
+        # 34㉯ 장기주택저당차입금 9행 — ERP 값만 쓴다 (없으면 빈칸)
+        "Data6_Amt20": _num(r.get("34b_11_lt15", 0)),
+        "Data6_Amt21": _num(r.get("34b_11_1529", 0)),
+        "Data6_Amt22": _num(r.get("34b_11_ge30", 0)),
+        "Data6_Amt23": _num(r.get("34b_11_fixnon", 0)),
+        "Data6_Amt24": _num(r.get("34b_11_fixor", 0)),
+        "Data6_Amt42": _num(r.get("34b_12_fixnon", 0)),
+        "Data6_Amt43": _num(r.get("34b_12_fixor", 0)),
+        "Data6_Amt44": _num(r.get("34b_12_etc", 0)),
+        "Data6_Amt45": _num(r.get("34b_12_1015", 0)),
         "Data6_Amt26": _num(r[35]), "Data6_Amt27": _num(r[36]),
         "Data6_Amt34": _num(r[41]), "Data6_Amt40": _num(r[46]),
         "Data6_Amt41": _num(r[47]),
@@ -1059,6 +1109,7 @@ def build_values(cur, emp_no, yy, resid_id=""):
         # 57.자녀세액공제 — 인원/금액, 출산·입양
         "Data6_DeducChild": str(r["57cnt"]) if r["57cnt"] else "",
         "Data6_Amt60": _num(r[57]),
+        "Data6_Amt118": _num(r.get("56marry", 0)),   # 56.혼인세액공제 (ERP 만)
         "Data6_ChildBirthCnt": str(r["57birth_cnt"]) if r["57birth_cnt"] else "",
         "Data6_Amt62": "",
         "Data6_Amt56": _num(r[52]),                     # 52.조특법 §30 (중소기업감면)
