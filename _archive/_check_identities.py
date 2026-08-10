@@ -144,9 +144,12 @@ for emp_seq, emp_id, name in emps:
         if got not in (raw, trunc10(raw)):
             errs.append(f"77({tag}): 계산 {raw:,} / 칸 {got:,}")
     # I. 65.계 = 61~64 세액공제액 (형식상 61,62,63 + 64 들)
+    # Amt72=장애인전용보장성, Amt115/117=고향사랑기부금 — 처음 목록에서 빠져
+    # 김재구가 오탐으로 잡혔었다 (2026-08-10)
     i_rhs = sum(n(v.get(k)) for k in
-                ("Data6_Amt70", "Data6_Amt74", "Data6_Amt76", "Data6_Amt78",
-                 "Data6_Amt80", "Data6_Amt82", "Data6_Amt100", "Data6_Amt102"))
+                ("Data6_Amt70", "Data6_Amt72", "Data6_Amt74", "Data6_Amt76",
+                 "Data6_Amt78", "Data6_Amt80", "Data6_Amt82", "Data6_Amt100",
+                 "Data6_Amt102", "Data6_Amt115", "Data6_Amt117"))
     eq("65.계=61~64합", n(v.get("Data6_Amt87")), i_rhs)
     # J. 3쪽 세로 합 — 합계행 토큰이 개인 값의 합과 같은가
     if depen:

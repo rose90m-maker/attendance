@@ -534,9 +534,11 @@ ERP_ITEM_NAME = {
     # 61 행의 둘째 줄 — 장애인전용보장성 (유재영 2025: 78,976 / 대상 526,510).
     # 표기 변형을 모두 적는다. 없는 이름은 안 걸릴 뿐이다.
     "장애인전용보장성보험(세액공제)": "61dis",
+    # 대상금액의 실제 ERP 항목명은 '장애인보장성보험료(대상금액)' 다 ('전용' 이
+    # 빠진다 — 유재영 2025 실측). 변형도 함께 둔다.
+    "장애인보장성보험료(대상금액)": "61dis_obj",
     "장애인전용보장성보험료(대상금액)": "61dis_obj",
     "장애인전용보장성보험(세액대상금액)": "61dis_obj",
-    "장애인전용보장성(세액공제)": "61dis",
     "의료비(세액공제)": 62,
     "의료비(대상금액)": "62obj",
     "교육비(세액공제)": 63,
@@ -1068,6 +1070,10 @@ def build_values(cur, emp_no, yy, resid_id=""):
         "Data6_Amt114": _num(r["64home_lo_obj"]), "Data6_Amt115": _num(r["64home_lo"]),
         "Data6_Amt116": _num(r["64home_hi_obj"]), "Data6_Amt117": _num(r["64home_hi"]),
         "Data6_Amt69": _num(r["61obj"]), "Data6_Amt70": _num(r[61]),
+        # 61 행 둘째 줄 — 장애인전용보장성 (유재영 2025: 대상 526,510 / 공제 78,976.
+        # 이 두 토큰이 미배선이라 ERP 값이 갈 곳이 없었다 — 11번째 결함)
+        "Data6_Amt71": _num(r.get("61dis_obj", 0)),
+        "Data6_Amt72": _num(r.get("61dis", 0)),
         "Data6_Amt73": _num(r["62obj"]), "Data6_Amt74": _num(r[62]),
         "Data6_Amt75": _num(r["63obj"]), "Data6_Amt76": _num(r[63]),
         "Data6_Amt77": _num(r["64pol_lo_obj"]), "Data6_Amt78": _num(r["64pol_lo"]),
