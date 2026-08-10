@@ -198,3 +198,6 @@ print(f"  ②-1 74/75 출처 불일치 {len(src)}건 · 77 검산 실패 {len(ar
 print(f"  ④ 회귀 이상 {len(reg)}명 {reg if reg else ''}")
 if not bad and not miss and not reg and not src and not arith:
     print("\n  전부 통과 — 종(전)근무지 열이 발급본과 같아졌습니다.")
+    sys.exit(0)
+# 실패는 종료코드로 알린다. 그래야 `검증 && 배포` 가 실제로 막힌다.
+sys.exit(1)
