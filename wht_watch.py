@@ -159,17 +159,26 @@ def verify(yy):
         emp_id = str(emp_id).strip()
         name = (name or "").strip()
 
-        cur.execute("""SELECT AdjItemSeq, Amt, OrgAmt FROM _TWPRAdjTotResultDtl
-                       WHERE YY=%s AND EmpSeq=%s""", (yy, emp_seq))
+        # 서식에 인쇄되는 항목만 본다.
+        # ERP 는 115개쯤 저장하지만 서식이 찍는 건 40개 남짓이다. 한도·중간
+        # 계산값까지 전부 대조하면 끝없이 오탐이 난다 (2026-08-10, 184명 오탐).
+        # wht_receipt.ERP_ITEM_NAME 에 매핑된 항목 = 서식에 나가야 할 항목이다.
+        cur.execute("""SELECT i.AdjItemName, d.Amt
+                       FROM _TWPRAdjTotResultDtl d
+                       LEFT JOIN _TWPRAdjTotItem i
+                         ON i.YY=d.YY AND i.AdjItemSeq=d.AdjItemSeq
+                       WHERE d.YY=%s AND d.EmpSeq=%s""", (yy, emp_seq))
         erp = {}
-        for seq, amt, org in cur.fetchall():
-            for v in (amt, org):
-                try:
-                    iv = int(float(v or 0))
-                except (TypeError, ValueError):
-                    continue
-                if abs(iv) >= MIN_AMT:
-                    erp.setdefault(iv, set()).add(seq)
+        for nm, amt in cur.fetchall():
+            nm = (nm or "").strip()
+            if nm not in W.ERP_ITEM_NAME:
+                continue
+            try:
+                iv = int(float(amt or 0))
+            except (TypeError, ValueError):
+                continue
+            if abs(iv) >= MIN_AMT:
+                erp.setdefault(iv, set()).add(nm)
 
         try:
             with contextlib.redirect_stdout(io.StringIO()):
@@ -184,12 +193,8 @@ def verify(yy):
         got = {int(m.replace(",", ""))
                for m in re.findall(r"-?\d{1,3}(?:,\d{3})+", text)}
         absent = [v for v in erp if v not in got]
-        if ignore:
-            # 무시 항목에서만 나오는 값은 서식에 없어도 정상이다
-            absent = [v for v in absent if not erp[v] <= ignore]
         if absent:
-            names = sorted({item.get(s, f"seq{s}")
-                            for v in absent for s in erp[v]})
+            names = sorted({n for v in absent for n in erp[v]})
             problems.append({"name": name, "emp": emp_id, "kind": "missing",
                              "count": len(absent),
                              "detail": ", ".join(names[:6])})
