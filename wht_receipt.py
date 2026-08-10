@@ -607,7 +607,9 @@ ERP_ITEM_NAME = {
     "월세액(대상금액)(집계)": "70obj",
     # 56.혼인세액공제 — 2025 신설. 서식 토큰 Data6_Amt118
     # (이복우 500,000, 국세청 신고파일 대조로 발견 2026-08-10)
+    # 2024 귀속의 ERP 항목명은 '결혼세액공제'다 (서식 라벨도 56.결혼세액공제)
     "혼인세액공제": "56marry",
+    "결혼세액공제": "56marry",
     "표준세액공제": 66,
     "특별세액공제계": 65,
     "세액공제계": 71,
@@ -853,9 +855,21 @@ def expand_family_rows(tpl, depen, disable_map=None):
 
         # v 에 있는 토큰만 치환한다. 모르는 토큰을 ""로 지우면 누락이
         # missing 집계에 안 잡혀 문제가 드러나지 않는다 (예전 결함).
-        return TOKEN_RE.sub(
-            lambda m: str(v[m.group(0)[5:]]) if m.group(0)[5:] in v else m.group(0),
-            row_tpl)
+        # 대소문자는 무시한다 — 2024 서식 토큰 'NtsPlasticLastYear' 가 DepenList
+        # 컬럼 'NtsPlasticLastyear' 와 y 대소문자만 달라 8칸이 빈칸이었다
+        # (159명, 2026-08-10). SUM(인원수)/Sum(합계)은 플래그·금액 컬럼이
+        # 겹치지 않아 소문자화해도 충돌하지 않는다.
+        low = {k.lower(): s for k, s in v.items()}
+
+        def _sub(m):
+            key = m.group(0)[5:]
+            if key in v:
+                return str(v[key])
+            if key.lower() in low:
+                return str(low[key.lower()])
+            return m.group(0)
+
+        return TOKEN_RE.sub(_sub, row_tpl)
 
     out = tpl
     for marker in DEPEN_REPEAT_MARKERS:
@@ -1195,12 +1209,18 @@ def render(cur, emp_no, yy, resid_id=""):
 
     filled = set()
     missing = set()
+    # 합계행(Data7_Sum*/SUM*)도 서식 토큰과 대소문자가 다를 수 있다
+    # (2024 'SumNtsPlasticLastYear' vs 컬럼 'Lastyear') — 소문자 조회로 보완
+    low_values = {k.lower(): s for k, s in values.items()}
 
     def sub(mt):
         key = mt.group(0)[5:]          # 'YLW#_' 제거
         if key in values:
             filled.add(key)
             return str(values[key])
+        if key.lower() in low_values:
+            filled.add(key)
+            return str(low_values[key.lower()])
         missing.add(key)
         return ""
 
