@@ -95,7 +95,7 @@ for nm, *_ in cands:
                    JOIN sys.objects o ON o.object_id=m.object_id
                    WHERE o.name=%s""", (nm,))
     r = cur.fetchone()
-    body = r[0] if r else ""
+    body = (r[0] if r else None) or ""   # 암호화된 모듈은 definition 이 NULL
     writes = sorted({m.group(1).split()[0].upper()
                      for m in WRITE_PAT.finditer(body)})
     n_select = len(re.findall(r"\bSELECT\b", body, re.I))
