@@ -297,41 +297,62 @@ def load_family(cur, emp_seq, yy):
 #
 # ERP 는 정답을 이미 갖고 있다. 다시 계산하지 말고 그 값을 쓴다.
 # wht_calc 는 ERP 에 값이 없을 때의 대비책으로만 남긴다.
-ERP_ITEM = {
-    21: 840,          # 총급여
-    22: 2,            # 근로소득공제
-    23: 3,            # 근로소득금액
-    24: 4,            # 기본공제 본인
-    26: 6,            # 기본공제 부양가족
-    27: 107,          # 경로우대
-    31: 73,           # 국민연금보험료
-    36: 19,           # 차감소득금액
-    46: 123,          # 그 밖의 소득공제 계
-    48: 922,          # 종합소득 과세표준
-    49: 540,          # 산출세액
-    55: 801,          # 근로소득 세액공제
-    61: 927,          # 보장성보험 세액공제
-    62: 720,          # 의료비 세액공제
-    65: 785,          # 특별세액공제 계
-    71: 29,           # 세액공제 계
-    72: 33,           # 결정세액
-    "73tax": 33,      # 결정세액(소득세)
-    "73local": 35,    # 결정세액(지방소득세)
-    "75tax": 795,     # 기납부세액(소득세)
-    "75local": 797,   # 기납부세액(지방소득세)
-    "77tax": 45,      # 차감징수세액(소득세)
-    "77local": 47,    # 차감징수세액(지방소득세)
+
+
+# 번호가 아니라 **항목명**으로 찾는다.
+# AdjItemSeq 를 하드코딩하면, 기준으로 삼은 사람이 0원인 항목은 번호를 알 수
+# 없어 매핑에서 빠진다. 실제로 지창구 2025 에는 부녀자·자녀세액공제·교육비·
+# 중소기업감면이 없어 그 항목들이 통째로 누락됐다 (2026-08-10).
+ERP_ITEM_NAME = {
+    "총급여": 21,
+    "근로소득공제": 22,
+    "근로소득금액": 23,
+    "본인": 24,
+    "배우자": 25,
+    "부양가족": 26,
+    "경로우대(70세↑)": 27,
+    "장애인": 28,
+    "부녀자": 29,
+    "한부모": 30,
+    "국민연금보험료": 31,
+    "차감소득금액": 36,
+    "그밖의 소득공제계": 46,
+    "종합소득과세표준": 48,
+    "산출세액": 49,
+    "근로소득세액공제": 55,
+    "공제대상자녀(세액공제)": 57,
+    "보장성보험(세액공제)": 61,
+    "의료비(세액공제)": 62,
+    "교육비(세액공제)": 63,
+    "표준세액공제": 66,
+    "특별세액공제계": 65,
+    "세액공제계": 71,
+    "결정세액(소득세)": "73tax",
+    "결정세액(지방소득세)": "73local",
+    "기납부세액(소득세)": "75tax",
+    "기납부세액(지방소득세)": "75local",
+    "차감징수세액(소득세)": "77tax",
+    "차감징수세액(지방소득세)": "77local",
 }
 
 
 def load_erp_result(cur, emp_seq, yy):
-    """ERP 가 계산해 둔 결과. {AdjItemSeq: 한도 적용 후 금액}"""
-    cur.execute("""SELECT AdjItemSeq, Amt FROM _TWPRAdjTotResultDtl
-                   WHERE YY=%s AND EmpSeq=%s""", (yy, emp_seq))
+    """ERP 가 계산해 둔 결과를 **항목명 기준**으로 가져온다.
+
+    {서식항목키: 금액}. Amt 는 한도를 적용한 뒤의 값이라 서식이 찍는 값과 같다.
+    """
+    cur.execute("""SELECT i.AdjItemName, d.Amt
+                   FROM _TWPRAdjTotResultDtl d
+                   LEFT JOIN _TWPRAdjTotItem i
+                     ON i.YY=d.YY AND i.AdjItemSeq=d.AdjItemSeq
+                   WHERE d.YY=%s AND d.EmpSeq=%s""", (yy, emp_seq))
     out = {}
-    for seq, amt in cur.fetchall():
+    for nm, amt in cur.fetchall():
+        key = ERP_ITEM_NAME.get((nm or "").strip())
+        if key is None:
+            continue
         try:
-            out[seq] = int(float(amt or 0))
+            out[key] = int(float(amt or 0))
         except (TypeError, ValueError):
             pass
     return out
@@ -340,11 +361,10 @@ def load_erp_result(cur, emp_seq, yy):
 def apply_erp_result(r, erp):
     """계산값을 ERP 값으로 덮어쓴다. ERP 에 없는 항목만 wht_calc 결과를 남긴다."""
     used = []
-    for key, seq in ERP_ITEM.items():
-        if seq in erp:
-            if r.get(key) != erp[seq]:
-                used.append((key, r.get(key), erp[seq]))
-            r[key] = erp[seq]
+    for key, val in erp.items():
+        if r.get(key) != val:
+            used.append((key, r.get(key), val))
+        r[key] = val
     return used
 
 
