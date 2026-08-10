@@ -50,3 +50,6 @@ _diag.txt
 _build.txt
 _check.txt
 _term.txt
+
+# 배포 변경감지 매니페스트 (로컬 상태)
+.deploy_manifest.json

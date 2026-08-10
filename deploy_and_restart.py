@@ -347,28 +347,89 @@ if os.path.exists(_canvas_dir):
             print(f"  ⚠️  canvas-editor 빌드 오류: {e}")
 
 # ── 1) tar.gz 생성 ──────────────────────────────────────────────
-print("[████░░░░░░░░░░░░░░░░]  20% tar.gz 생성중...")
+# 예전에는 150개 파일 3.3MB 를 매번 통째로 보냈다. 한 줄 고쳐도 전부 올라간다.
+# 마지막 배포 때의 해시를 남겨 두고 실제로 바뀐 것만 보낸다.
+#   · 매니페스트가 없거나 --full 이면 전체 전송
+#   · 스테이징이 어긋난 것 같으면 --full 로 되돌린다
+MANIFEST = ".deploy_manifest.json"
+FULL = "--full" in sys.argv
+
+
+def _sha1(path):
+    import hashlib
+    h = hashlib.sha1()
+    with open(path, "rb") as f:
+        for blk in iter(lambda: f.read(65536), b""):
+            h.update(blk)
+    return h.hexdigest()
+
+
+def _save_manifest():
+    """배포가 성공했을 때만 부른다.
+
+    실패했는데 저장하면 다음 배포가 '변경 없음' 으로 건너뛰어
+    옛 코드가 컨테이너에 그대로 남는다.
+    """
+    try:
+        import json as _j
+        _j.dump(_now, open(MANIFEST, "w", encoding="utf-8"))
+    except Exception as _e:
+        print(f"  ⚠️  매니페스트 저장 실패(다음 배포는 전체 전송): {_e}")
+
+
+_prev = {}
+if not FULL and os.path.exists(MANIFEST):
+    try:
+        import json as _j
+        _prev = _j.load(open(MANIFEST, encoding="utf-8"))
+    except Exception:
+        _prev = {}
+
+_now = {}
+_send = []
+for local, remote in files:
+    if not os.path.exists(local):
+        print(f"  ⚠️  {local} 없음 — 건너뜀")
+        continue
+    d = _sha1(local)
+    _now[local] = d
+    if _prev.get(local) != d:
+        _send.append((local, remote))
+
+if not _prev:
+    _send = [(l, r) for l, r in files if os.path.exists(l)]
+    print(f"[████░░░░░░░░░░░░░░░░]  20% 전체 전송 ({len(_send)}개) — "
+          f"{'--full 지정' if FULL else '매니페스트 없음'}")
+elif _send:
+    print(f"[████░░░░░░░░░░░░░░░░]  20% 변경 {len(_send)}개만 전송 "
+          f"(전체 {len(_now)}개)")
+    for l, _ in _send[:12]:
+        print(f"       · {l}")
+    if len(_send) > 12:
+        print(f"       · 외 {len(_send)-12}개")
+else:
+    print(f"[████░░░░░░░░░░░░░░░░]  20% 변경된 파일 없음 — 코드 전송 생략")
+
 buf = io.BytesIO()
 with tarfile.open(fileobj=buf, mode='w:gz') as tar:
-    for local, remote in files:
-        if os.path.exists(local):
-            tar.add(local, arcname=remote)
-        else:
-            print(f"  ⚠️  {local} 없음 — 건너뜀")
-    # static/signage-editor/ 전체 트리 추가
-    if os.path.exists("static/signage-editor"):
-        for root, dirs, fs in os.walk("static/signage-editor"):
+    for local, remote in _send:
+        tar.add(local, arcname=remote)
+    # 에디터 빌드 산출물 — 이것도 바뀐 파일만 (빌드 안 하면 매번 그대로다)
+    for _tree in ("static/signage-editor", "static/canvas-editor"):
+        if not os.path.exists(_tree):
+            continue
+        for root, dirs, fs in os.walk(_tree):
             for f in fs:
                 full = os.path.join(root, f)
+                d = _sha1(full)
+                _now[full] = d
+                if _prev and _prev.get(full) == d:
+                    continue
                 tar.add(full, arcname=full)
-    # static/canvas-editor/ 전체 트리 추가
-    if os.path.exists("static/canvas-editor"):
-        for root, dirs, fs in os.walk("static/canvas-editor"):
-            for f in fs:
-                full = os.path.join(root, f)
-                tar.add(full, arcname=full)
-tar_b64 = base64.b64encode(buf.getvalue()).decode()
-print(f"[████████░░░░░░░░░░░░]  40% tar.gz 완료 ({len(buf.getvalue())//1024}KB)")
+                _send.append((full, full))
+
+_gz = buf.getvalue()
+print(f"[████████░░░░░░░░░░░░]  40% tar.gz 완료 ({len(_gz)//1024}KB, {len(_send)}개)")
 
 # ── 2) SSH 전송 → NAS 스테이징 디렉터리 ─────────────────────────
 c = paramiko.SSHClient()
@@ -403,15 +464,50 @@ def sudo_nas(cmd):
 
 nas(f"mkdir -p {STAGE_DIR}/static {STAGE_DIR}/static/signage-editor {STAGE_DIR}/static/canvas-editor {STAGE_DIR}/templates {STAGE_DIR}/templates/tbm {STAGE_DIR}/templates/signage {STAGE_DIR}/uploads/documents {STAGE_DIR}/uploads/signage")
 
-chunks = [tar_b64[i:i+60000] for i in range(0, len(tar_b64), 60000)]
-nas(f"> /tmp/_deploy.tar.gz.b64")
-time.sleep(0.3)
-for chunk in chunks:
-    _, stdout, _ = c.exec_command(f"echo '{chunk}' >> /tmp/_deploy.tar.gz.b64")
-    stdout.read()
+def _push_tar(gz_bytes):
+    """tar.gz 를 SSH 채널 하나로 스트리밍해 NAS 에서 바로 푼다.
 
-res = nas(f"base64 -d /tmp/_deploy.tar.gz.b64 > /tmp/_deploy.tar.gz && cd {STAGE_DIR} && tar xzf /tmp/_deploy.tar.gz && rm /tmp/_deploy.tar.gz /tmp/_deploy.tar.gz.b64 && echo OK")
-print(f"[████████████░░░░░░░░]  60% NAS 전송 {'✅' if 'OK' in res else '❌ '+res}")
+    예전에는 base64 로 바꿔 60,000자씩 잘라 exec_command 를 반복했다.
+    청크마다 SSH 채널이 새로 열려 1.3MB 에 23회 왕복이 걸렸다.
+    채널 하나의 stdin 으로 흘려보내면 1회면 되고, base64 를 안 거치니
+    전송량도 3분의 1 줄어든다. (NAS 는 SFTP 가 꺼져 있어 이 방식을 쓴다)
+    """
+    chan = c.get_transport().open_session()
+    chan.settimeout(300)
+    chan.exec_command(f"cat > /tmp/_deploy.tar.gz && cd {STAGE_DIR} && "
+                      f"tar xzf /tmp/_deploy.tar.gz && rm -f /tmp/_deploy.tar.gz && echo OK")
+    chan.sendall(gz_bytes)
+    chan.shutdown_write()
+    out = b""
+    while True:
+        d = chan.recv(65536)
+        if not d:
+            break
+        out += d
+    chan.recv_exit_status()
+    chan.close()
+    return out.decode("utf-8", "replace").strip()
+
+
+if _send:
+    try:
+        res = _push_tar(_gz)
+    except Exception as e:
+        # 채널 스트리밍이 막히면 예전 base64 청크 방식으로 되돌린다
+        print(f"  ⚠️  스트리밍 전송 실패({type(e).__name__}) — base64 방식으로 재시도")
+        tar_b64 = base64.b64encode(_gz).decode()
+        chunks = [tar_b64[i:i+60000] for i in range(0, len(tar_b64), 60000)]
+        nas("> /tmp/_deploy.tar.gz.b64")
+        time.sleep(0.3)
+        for chunk in chunks:
+            _, stdout, _ = c.exec_command(f"echo '{chunk}' >> /tmp/_deploy.tar.gz.b64")
+            stdout.read()
+        res = nas(f"base64 -d /tmp/_deploy.tar.gz.b64 > /tmp/_deploy.tar.gz && cd {STAGE_DIR} && "
+                  f"tar xzf /tmp/_deploy.tar.gz && rm /tmp/_deploy.tar.gz /tmp/_deploy.tar.gz.b64 && echo OK")
+    print(f"[████████████░░░░░░░░]  60% NAS 전송 {'✅' if 'OK' in res else '❌ '+res}")
+else:
+    res = "OK"
+    print("[████████████░░░░░░░░]  60% NAS 전송 생략 (변경 없음)")
 
 # ── 3) Docker 컨테이너에 파일 복사 ───────────────────────────────
 print("[████████████████░░░░]  80% Docker 컨테이너 업데이트중...")
@@ -480,21 +576,51 @@ for local, remote in files:
     if local.startswith("templates/tbm"):
         docker_files_tbm.append((f"{STAGE_DIR}/{local}", f"{DOCKER_APP_DIR}/{remote}"))
 
+# docker cp 도 파일마다 SSH 왕복이 한 번씩 든다 (두 컨테이너 합쳐 50회 이상).
+# NAS 전송과 같은 기준으로, 이번에 실제 바뀐 것만 복사한다.
+# 판단이 애매하면(매핑 불가·로컬에 없음·첫 배포) 그냥 복사한다 — 빠지는 것보다 낫다.
+_changed = {l for l, _ in _send}
+
+
+def _needs_cp(src):
+    if not _prev:
+        return True
+    prefix = STAGE_DIR + "/"
+    if not src.startswith(prefix):
+        return True
+    rel = src[len(prefix):]
+    if os.path.isdir(rel):
+        return any(ch == rel or ch.startswith(rel + "/") for ch in _changed)
+    if not os.path.exists(rel):
+        return True
+    return rel in _changed
+
+
 cp_ok = True
 # 메인 컨테이너 안에 신규 디렉토리 보장 (signage 등)
 sudo_nas(f"docker exec {DOCKER_MAIN} mkdir -p {DOCKER_APP_DIR}/templates/signage {DOCKER_APP_DIR}/uploads/signage {DOCKER_APP_DIR}/static/signage-editor {DOCKER_APP_DIR}/static/canvas-editor")
 # 옛 hashed assets 제거
 sudo_nas(f"docker exec {DOCKER_MAIN} sh -c 'rm -rf {DOCKER_APP_DIR}/static/signage-editor/assets {DOCKER_APP_DIR}/static/canvas-editor/assets'")
+_cp_n = _cp_skip = 0
 for src, dst in docker_files_main:
+    if not _needs_cp(src):
+        _cp_skip += 1
+        continue
+    _cp_n += 1
     r = sudo_nas(f"docker cp {src} {DOCKER_MAIN}:{dst}; echo EXIT_$?")
     if "EXIT_0" not in r:
         print(f"  ⚠️  cp {src} → {DOCKER_MAIN}:{dst}: {r}")
         cp_ok = False
 
 for src, dst in docker_files_tbm:
+    if not _needs_cp(src):
+        _cp_skip += 1
+        continue
+    _cp_n += 1
     r = sudo_nas(f"docker cp {src} {DOCKER_TBM}:{dst}; echo EXIT_$?")
     if "EXIT_0" not in r:
         print(f"  ⚠️  cp {src} → {DOCKER_TBM}:{dst}: {r}")
+print(f"       docker cp {_cp_n}건 실행, {_cp_skip}건 생략(변경 없음)")
 
 # NAS 의 ACL 이 docker cp 로 옮겨지면서 파일 권한이 000 이 되는 경우가 있다.
 # 그대로 두면 파이썬이 모듈을 못 읽어 컨테이너가 기동 실패한다 (2026-07-29 사고).
@@ -517,13 +643,29 @@ if REBUILD:
         print("   롤백: python rebuild_containers.py --rollback")
         sys.exit(_rc)
     print("\n✅ 재빌드 완료 (코드는 위에서 이미 NAS·컨테이너로 전송됨)")
+    _save_manifest()
     _REBUILT = True
 else:
     _REBUILT = False
 if not _REBUILT:
-    r_main = sudo_nas(f"docker restart {DOCKER_MAIN} && echo RST_OK")
-    r_tbm  = sudo_nas(f"docker restart {DOCKER_TBM}  && echo RST_OK")
-    time.sleep(8)
+    # 메인은 gunicorn 이라 HUP 으로 워커만 새로 띄우면 코드가 반영된다.
+    # 컨테이너를 재시작하지 않으므로 끊김이 거의 없고 훨씬 빠르다.
+    # (--preload 를 쓰면 마스터가 코드를 미리 읽어 HUP 으로 안 바뀐다. 현재 CMD 에는 없다)
+    # tbm 은 `python tbm_app.py` — HUP 을 처리하지 못하므로 그대로 재시작한다.
+    FORCE_RESTART = "--restart" in sys.argv
+    _reloaded = False
+    if not FORCE_RESTART:
+        _proc = sudo_nas(f"docker top {DOCKER_MAIN}")
+        if "gunicorn" in _proc:
+            sudo_nas(f"docker kill -s HUP {DOCKER_MAIN}")
+            _reloaded = True
+            print("       메인: gunicorn graceful reload (무중단)")
+        else:
+            print("       메인: gunicorn 이 아니어서 재시작합니다")
+    if not _reloaded:
+        sudo_nas(f"docker restart {DOCKER_MAIN} && echo RST_OK")
+    sudo_nas(f"docker restart {DOCKER_TBM} && echo RST_OK")
+    time.sleep(3 if _reloaded else 8)
 
     # ── 5) 헬스체크 ──────────────────────────────────────────────
     # 재빌드 경로에서는 rebuild_containers.py 가 이미 확인했고 SSH 도 닫았다.
@@ -531,8 +673,19 @@ if not _REBUILT:
     tbm_code  = sudo_nas("curl -s -o /dev/null -w '%{http_code}' http://localhost:5051/tbm/login")
     c.close()
 
+    # HUP 으로 띄운 워커가 새 코드를 못 읽고 죽는 경우가 있다(문법 오류 등).
+    # 그때는 조용히 옛 코드로 서비스되면 안 되므로 재시작으로 되돌린다.
+    if _reloaded and main_code not in ("200", "302"):
+        print(f"  ⚠️  reload 후 응답 {main_code} — 컨테이너 재시작으로 되돌립니다")
+        sudo_nas(f"docker restart {DOCKER_MAIN}")
+        time.sleep(8)
+        main_code = sudo_nas("curl -s -o /dev/null -w '%{http_code}' http://localhost:5050/")
+
     ok = main_code in ("200","302") and tbm_code in ("200","302")
     print(f"[████████████████████] 100% {'✅ 배포 완료! (main:'+main_code+' tbm:'+tbm_code+')' if ok else '⚠️ 확인필요 main:'+main_code+' tbm:'+tbm_code}")
+
+    if ok:
+        _save_manifest()
 
 
 # ── 6) .5 대기(standby) 서버 코드 동기화 ─────────────────────────
