@@ -964,7 +964,14 @@ def build_values(cur, emp_no, yy, resid_id=""):
     r = compute(calc_in)
     # ERP 가 이미 계산해 둔 값으로 덮어쓴다 (있는 항목만).
     # 이렇게 하면 공제 조합이 어떻든 ERP 발급본과 구조적으로 일치한다.
-    _diff = apply_erp_result(r, load_erp_result(cur, t["emp_seq"], yy))
+    _erp = load_erp_result(cur, t["emp_seq"], yy)
+    _diff = apply_erp_result(r, _erp)
+    # 72.결정세액(49-54-71)은 1쪽 73.결정세액(소득세)과 같은 값이다. 72 는 ERP
+    # 항목이 따로 없어 계산기 값이 남는데, 49·54·71 이 ERP 값으로 덮인 뒤에는
+    # 계산기 72 와 어긋날 수 있다 (강미예 2025: 계산기 242,917 vs ERP 229,417 =
+    # 49-54-71). 서식에 산식이 인쇄돼 있어 받는 쪽이 검산하면 바로 보인다.
+    if "73tax" in _erp:
+        r[72] = _erp["73tax"]
     if _diff:
         print(f"  ℹ️  ERP 값으로 보정 {len(_diff)}건 "
               f"(계산기와 달랐던 항목): "
