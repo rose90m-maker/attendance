@@ -331,6 +331,14 @@ SKIP_COLS = {"CompanySeq", "YY", "EmpSeq", "FamilySeq", "LastUserSeq",
 REPEAT_BEGIN = "<!-- Data7_repeat Begin-->"
 REPEAT_END = "Data7_repeat END-->"
 
+# 3쪽에는 부양가족 반복 블록이 **두 개** 있고 마커 이름이 서로 다르다.
+#   Data7_repeat  — 위쪽 인적공제·보험료·의료비·교육비 표
+#   Data8_repeat  — 아래쪽 신용카드 등 사용액공제 표
+# 그런데 **두 블록 안의 토큰은 모두 Data7_ 접두사**를 쓴다 (서식 원본 확인,
+# 2026-08-10). 마커 이름만 보고 Data7 만 펼치면 신용카드 표의 개인별 행이
+# 통째로 빈다. 두 마커 모두 같은 행 데이터로 펼쳐야 한다.
+DEPEN_REPEAT_MARKERS = ("Data7", "Data8")
+
 
 def _expand(tpl, marker, rows_values):
     """`<!-- {marker}_repeat Begin-->` ~ `{marker}_repeat END-->` 블록을
@@ -454,23 +462,23 @@ def expand_family_rows(tpl, depen, disable_map=None):
             lambda m: str(v[m.group(0)[5:]]) if m.group(0)[5:] in v else m.group(0),
             row_tpl)
 
-    # 3쪽에는 Data7_repeat 블록이 **두 개** 있다 — 위쪽 인적공제·보험료·의료비 표와
-    # 아래쪽 신용카드 등 사용액공제 표. 예전에는 find() 로 첫 번째만 펼쳐서
-    # 신용카드 표의 개인별 행이 통째로 비었다 (2026-08-10 ERP 대조로 확인).
     out = tpl
-    pos = 0
-    while True:
-        b = out.find(REPEAT_BEGIN, pos)
-        if b < 0:
-            break
-        e = out.find(REPEAT_END, b)
-        if e < 0:
-            break
-        e += len(REPEAT_END)
-        row_tpl = out[b:e]
-        rows = "".join(one(d, row_tpl) for d in depen) if depen else ""
-        out = out[:b] + rows + out[e:]
-        pos = b + len(rows)
+    for marker in DEPEN_REPEAT_MARKERS:
+        begin = f"<!-- {marker}_repeat Begin-->"
+        end = f"{marker}_repeat END-->"
+        pos = 0
+        while True:
+            b = out.find(begin, pos)
+            if b < 0:
+                break
+            e = out.find(end, b)
+            if e < 0:
+                break
+            e += len(end)
+            row_tpl = out[b:e]
+            rows = "".join(one(d, row_tpl) for d in depen) if depen else ""
+            out = out[:b] + rows + out[e:]
+            pos = b + len(rows)
     return out
 
 
