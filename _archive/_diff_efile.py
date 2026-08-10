@@ -48,6 +48,10 @@ ap.add_argument("--schema-only", action="store_true")
 # "전원 차이"가 났었다. 자료구분이 다르면 대조 자체가 무의미하다.
 ap.add_argument("--ptype", default="3305002",
                 help="대조할 전산매체 종류 (SMPrintType). 0 이면 전체")
+# ERP 가 레코드를 DB 에 안 남기고 파일로만 내려주는 경우 — 생성된 파일을
+# ~/attendance 에 두고 --file 로 지정하면 그 파일을 정답지로 쓴다.
+# ⚠️ 파일에 전 직원 주민등록번호가 평문으로 있다. 채팅·메일로 옮기지 말 것.
+ap.add_argument("--file", default="", help="전자신고 파일 경로 (DB 대신 사용)")
 args = ap.parse_args()
 
 FILE_TBL = "_TWPRAdjTotRecordResultFile"
@@ -76,32 +80,46 @@ cur = conn.cursor()
 
 # ── 0. 스키마 확인 ───────────────────────────────────────────
 head("0. 스키마")
-fcols = cols_of(cur, FILE_TBL)
 icols = cols_of(cur, ITEM_TBL)
-print(f"  {FILE_TBL}: " + ", ".join(f"{c}({d})" for c, d in fcols))
 print(f"  {ITEM_TBL}: " + ", ".join(f"{c}({d})" for c, d in icols))
-fnames = [c for c, _d in fcols]
 inames = [c for c, _d in icols]
 
-# ── 1. 레코드 행 읽기 ────────────────────────────────────────
-cur.execute(f"SELECT * FROM [{FILE_TBL}] WHERE YY=%s", (args.yy,))
-frows = [dict(zip(fnames, r)) for r in cur.fetchall()]
-print(f"\n  {args.yy} 귀속 레코드 {len(frows)}행 (전체)")
+text_col = "FileText"
+if args.file:
+    # ── 1-파일. 생성된 전자신고 파일을 직접 읽는다 ──────────
+    raw = open(os.path.expanduser(args.file), "rb").read()
+    # 국세청 전산매체는 CP949 고정폭. 줄바꿈이 있으면 줄로, 없으면 레이아웃
+    # 총길이로 자른다 (아래에서 레이아웃을 읽은 뒤 처리).
+    frows = [{"FileText": ln.decode("cp949", errors="replace")}
+             for ln in re.split(rb"\r\n|\n|\r", raw) if ln.strip()]
+    fnames = ["FileText"]
+    print(f"\n  파일 {args.file}: {len(raw):,}바이트 · {len(frows)}줄")
+    if frows:
+        print(f"  첫 줄(마스킹): {mask(frows[0]['FileText'][:100])!r}")
+else:
+    fcols = cols_of(cur, FILE_TBL)
+    print(f"  {FILE_TBL}: " + ", ".join(f"{c}({d})" for c, d in fcols))
+    fnames = [c for c, _d in fcols]
 
-# 자료구분 필터 — 파일행에 SMPrintType 류 컬럼이 있으면 여기서 거른다
-ptype_col = next((c for c in fnames if "printtype" in c.lower()), None)
-if args.ptype and args.ptype != "0" and ptype_col:
-    before = len(frows)
-    frows = [r for r in frows if str(r.get(ptype_col) or "") == args.ptype]
-    print(f"  {ptype_col}={args.ptype} 필터: {before} → {len(frows)}행")
+    # ── 1. 레코드 행 읽기 ────────────────────────────────────
+    cur.execute(f"SELECT * FROM [{FILE_TBL}] WHERE YY=%s", (args.yy,))
+    frows = [dict(zip(fnames, r)) for r in cur.fetchall()]
+    print(f"\n  {args.yy} 귀속 레코드 {len(frows)}행 (전체)")
+
+    # 자료구분 필터 — 파일행에 SMPrintType 류 컬럼이 있으면 여기서 거른다
+    ptype_col = next((c for c in fnames if "printtype" in c.lower()), None)
+    if args.ptype and args.ptype != "0" and ptype_col:
+        before = len(frows)
+        frows = [r for r in frows if str(r.get(ptype_col) or "") == args.ptype]
+        print(f"  {ptype_col}={args.ptype} 필터: {before} → {len(frows)}행")
 if not frows:
     sys.exit(f"""대조할 레코드가 없습니다 (자료구분 {args.ptype}).
 
-ERP 담당자에게 요청하세요:
-  「연말정산 근로소득 지급명세서 전산매체 파일 생성」을 전 직원분 한 번
-  실행 (실제 제출과 무관 — 생성만 하면 이 테이블에 레코드가 쌓입니다).
-  생성 화면이 DB 에 쓰기를 하므로 운영시간을 피하는 게 좋습니다.
-생성 후 이 스크립트를 다시 돌리면 189명 전수 대조가 됩니다.""")
+ERP 「연말정산_처리/신고」 화면의 정산신고 [파일생성] 을 실행한 뒤:
+  · DB 에 쌓였으면 이 스크립트를 그대로 다시,
+  · 파일로만 떨어졌으면 그 파일을 ~/attendance 에 두고
+      python3 _archive/_diff_efile.py --file 파일명
+    로 다시 돌리면 됩니다.""")
 
 text_col = next((c for c in fnames if "text" in c.lower()), None)
 if not text_col:
@@ -164,6 +182,20 @@ for ir in irows:
     layouts.setdefault(key, []).append(ir)
 for k in layouts:
     layouts[k].sort(key=lambda x: (int(x[acc_col] or 0)))
+# 파일 모드에서 줄바꿈 없는 통짜 매체면 레이아웃 총길이로 자른다.
+# (레코드 길이가 전 종류 동일한 형식이 흔하다 — 3305002 는 2,010B)
+if args.file and len(frows) <= 2:
+    tots = {int(v[-1][acc_col] or 0) for v in layouts.values() if v}
+    blob = "".join(fr["FileText"] for fr in frows).encode("cp949",
+                                                          errors="replace")
+    for tot in sorted(tots, reverse=True):
+        if tot > 0 and len(blob) % tot == 0:
+            frows = [{"FileText": blob[i:i + tot].decode("cp949",
+                                                         errors="replace")}
+                     for i in range(0, len(blob), tot)]
+            print(f"  줄바꿈 없는 통짜 파일 → {tot}B 단위로 {len(frows)}레코드 분할")
+            break
+
 print(f"  레이아웃 종류: {len(layouts)}개 — " +
       ", ".join(f"{k}({len(v)}필드, 총 {int(v[-1][acc_col] or 0)}B)"
                 for k, v in list(layouts.items())[:8]))
