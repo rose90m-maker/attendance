@@ -140,10 +140,17 @@ for emp_seq, emp_id, name in movers:
             - sum(money(v.get(f"{pre_t}{k}", "")) for k in (1, 2, 3)) \
             - money(v.get(tc, ""))
         want = money(v.get(dec, ""))
-        if got != want:
+        # 차감징수세액은 10원 미만을 절사한다. 박상현 2025 에서 소득세 4원·
+        # 지방소득세 9원이 남았는데, 이는 ERP 의 절사이지 우리 오류가 아니다
+        # (2026-08-10, 처음에 출처 불일치로 잘못 판단했다).
+        trunc = (1 if got >= 0 else -1) * (abs(got) // 10 * 10)
+        if got != want and trunc != want:
             arith.append((name, tag, got, want))
             print(f"  ❌ {name} {tag}: 73-74-75-76 = {got:,} "
-                  f"이지만 77 칸은 {want:,}")
+                  f"이지만 77 칸은 {want:,} (절사로도 설명 안 됨)")
+        elif got != want:
+            print(f"  ℹ️  {name} {tag}: {got:,} → {want:,} "
+                  f"(10원 미만 절사, 정상)")
 if not src and not arith:
     print("  ✅ 5명 전원 두 출처가 일치하고 77 검산도 맞습니다.")
 
