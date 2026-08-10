@@ -61,11 +61,23 @@ def _strip(frag):
     return re.sub(r"\s+", " ", frag).strip()
 
 
+def token_pos(tpl, token):
+    """토큰이 템플릿에 나오는 위치들.
+
+    ⚠️ 문자열 find 로 찾으면 안 된다. 'Data6_Amt4' 는 'Data6_Amt40' 에도 걸려서
+    엉뚱한 행을 읽는다 (2026-08-10, 본인이 26번 행으로 보인 원인). 토큰 뒤에
+    영숫자가 오면 다른 토큰이므로 경계를 확인한다.
+    """
+    pat = re.compile(r"YLW#_" + re.escape(token) + r"(?![A-Za-z0-9_])")
+    return [m.start() for m in pat.finditer(tpl)]
+
+
 def row_span(tpl, token):
     """토큰을 감싼 <tr> 의 범위. 없으면 (None, None)."""
-    i = tpl.find("YLW#_" + token)
-    if i < 0:
+    pos = token_pos(tpl, token)
+    if not pos:
         return None, None
+    i = pos[0]
     s = tpl.rfind("<tr", 0, i)
     e = tpl.find("</tr>", i)
     if s < 0 or e < 0:
@@ -200,6 +212,9 @@ for nm in sorted(W.ERP_ITEM_NAME, key=lambda x: str(W.ERP_ITEM_NAME[x])):
             mismatched.append((nm, amt, tok, shown))
         # 칸 위치 자동 판정 — 매핑 키가 곧 서식 줄번호이므로 기계가 볼 수 있다.
         mark = ""
+        n_occ = len(token_pos(tpl, tok))
+        if n_occ != 1:
+            mark += f" (템플릿 출현 {n_occ}회)"
         if n is not None and not has_line_no(rt, n):
             wide = near_text(tpl, tok)
             if has_line_no(wide, n):
@@ -214,9 +229,15 @@ if suspect:
     print("  매핑 키(=서식 줄번호)가 그 행에도, 바로 앞 행들에도 없습니다.")
     print("  서식이 그 번호를 안 쓰는 것일 수도, 칸이 밀린 것일 수도 있습니다.\n")
     for nm, key, tok, rt, wide in suspect:
-        print(f"  ▸ {nm}  (줄번호 {line_no(key)} · {tok})")
+        n_occ = len(token_pos(tpl, tok))
+        print(f"  ▸ {nm}  (줄번호 {line_no(key)} · {tok} · 템플릿 출현 {n_occ}회)")
         print(f"      그 행      : {rt[:150]}")
-        print(f"      앞 행 포함 : {wide[:220]}\n")
+        print(f"      앞 행 포함 : {wide[:220]}")
+        s, e = row_span(tpl, tok)
+        if s is not None:
+            raw = re.sub(r"\s+", " ", tpl[s:e + 5])
+            print(f"      원문 HTML  : {raw[:600]}")
+        print()
 
 # ── 5. 매핑에 없는 ERP 항목 ──────────────────────────────────
 head("매핑에 없는 ERP 항목 (0 아닌 것만)")
