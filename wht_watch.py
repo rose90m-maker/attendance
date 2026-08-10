@@ -45,6 +45,7 @@ except ImportError:
     pass
 
 STATE = os.path.join(HERE, ".wht_watch_state.json")
+IGNORE_FILE = os.path.join(HERE, "wht_ignore_items.json")
 LOG = os.path.join(HERE, "wht_watch.log")
 LABEL = "com.taein.wht-watch"
 PLIST = os.path.expanduser(f"~/Library/LaunchAgents/{LABEL}.plist")
@@ -120,8 +121,28 @@ def uninstall():
 
 
 # ── 검증 ─────────────────────────────────────────────────────
+def load_ignore():
+    """서식에 인쇄되지 않는 ERP 내부 항목(AdjItemSeq).
+
+    ERP 는 한도 계산용 중간값과 합산값도 저장한다. 예를 들어 '결정세액계'는
+    소득세와 지방소득세를 더한 값인데, 서식은 둘을 따로 찍으므로 그 합계는
+    어디에도 안 나온다. 이런 걸 오류로 잡으면 진짜 누락이 묻힌다.
+
+    목록은 추측이 아니라 발급본과 검증된 사람 기준으로 산출한다:
+      python3 _archive/_verify_wht_all.py --calibrate 지창구
+    """
+    if not os.path.exists(IGNORE_FILE):
+        return set()
+    try:
+        return set(json.load(open(IGNORE_FILE, encoding="utf-8"))
+                   .get("ignore_seq", []))
+    except Exception:
+        return set()
+
+
 def verify(yy):
     import wht_receipt as W
+    ignore = load_ignore()
     conn = W._conn()
     cur = conn.cursor()
 
@@ -163,6 +184,9 @@ def verify(yy):
         got = {int(m.replace(",", ""))
                for m in re.findall(r"-?\d{1,3}(?:,\d{3})+", text)}
         absent = [v for v in erp if v not in got]
+        if ignore:
+            # 무시 항목에서만 나오는 값은 서식에 없어도 정상이다
+            absent = [v for v in absent if not erp[v] <= ignore]
         if absent:
             names = sorted({item.get(s, f"seq{s}")
                             for v in absent for s in erp[v]})
@@ -171,7 +195,8 @@ def verify(yy):
                              "detail": ", ".join(names[:6])})
 
     conn.close()
-    return {"total": len(emps), "rendered": rendered, "problems": problems}
+    return {"total": len(emps), "rendered": rendered, "problems": problems,
+            "ignored": len(ignore)}
 
 
 def signature(res):
