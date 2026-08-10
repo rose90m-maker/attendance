@@ -126,6 +126,22 @@ else:
     print(f"\n  이 {len(picked)}명까지 뽑으면 {len(cov)}/{len(all_items)}종 "
           f"({100 * len(cov) / max(1, len(all_items)):.0f}%) 이 덮입니다.")
 
+head("지금 발급해도 되는 사람 / 아직 위험한 사람")
+print("  '검증됨' = 그 사람이 쓰는 항목이 전부 발급본과 대조된 것들이다.")
+print("  '미검증 있음' = 한 번도 발급본으로 확인 안 된 항목이 섞여 있다.\n")
+safe, risky = [], []
+for s, i, n in emps:
+    un = has.get(s, set()) - covered
+    (risky if un else safe).append((n, i, un))
+print(f"  검증됨      {len(safe):>4}명 / {len(emps)}명")
+print(f"  미검증 있음 {len(risky):>4}명 / {len(emps)}명")
+if risky:
+    print("\n  미검증 항목이 섞인 사람 (앞 15명)")
+    for n, i, un in sorted(risky, key=lambda x: -len(x[2]))[:15]:
+        names = ", ".join(("종전근무지" if x == PREWORK else ITEM.get(x, f"seq{x}"))
+                          for x in sorted(un, key=str)[:3])
+        print(f"    {n:<10}{i:<12}{len(un):>3}종  {names[:46]}")
+
 head("아직 아무도 안 덮은 항목 (발급본으로 확인 불가)")
 rest = all_items - cov
 if not rest:
