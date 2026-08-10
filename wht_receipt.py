@@ -101,7 +101,21 @@ def load_template(cur, yy):
   @page { margin: 6mm 5mm; }
   .pagewrap + .pagewrap { page-break-before: always; break-before: page; }
 </style>"""
-    return head + style + p1 + p2 + p3 + foot   # Detail(부속명세)는 2차에서
+    return _fix_template(head + style + p1 + p2 + p3 + foot)  # Detail(부속명세)는 2차에서
+
+
+# ERP 가 준 서식 원본의 오타. 별지 제24호서식에서 기본공제는 24.본인 / 25.배우자 /
+# 26.부양가족 인데 ERP 템플릿에 <td colspan="6">26.본인</td> 로 적혀 있어 한 장에
+# 26 번이 두 번 나온다 (2026-08-10 확인, 2025 귀속). 칸 배치와 금액은 정상이고
+# 라벨 글자만 틀렸다. 법정서식이라 그대로 내보낼 수 없어 여기서 바로잡는다.
+# ERP 가 원본을 고치면 이 치환은 저절로 아무 일도 하지 않는다.
+TEMPLATE_FIX = [("<td colspan=\"6\">26.본인</td>", "<td colspan=\"6\">24.본인</td>")]
+
+
+def _fix_template(tpl):
+    for wrong, right in TEMPLATE_FIX:
+        tpl = tpl.replace(wrong, right)
+    return tpl
 
 def find_target(cur, emp_no, yy):
     cur.execute("""SELECT EmpSeq, EmpName, EmpID, DeptName, PosName,
