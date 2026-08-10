@@ -140,7 +140,13 @@ def load_empinfo(cur, emp_seq, yy):
 
 
 def load_income(cur, emp_seq, yy):
-    """국세청 신고 합계 — NtsItemName 을 키로 (당사분 3502001)"""
+    """국세청 신고 **합계** — NtsItemName 을 키로
+
+    ⚠️ SMPerCoAllType=3502001 이 '당사분'이라고 오래 적혀 있었지만 그렇지 않다.
+    2025 귀속 데이터에 코드는 이것 하나뿐이고, 그 Amt 는 **종(전)근무지를 포함한
+    합계**다 (김미선 급여 21,046,760 = 태인 20,219,760 + 삼미음향 827,000).
+    주(현)근무지 값이 필요하면 Amt - PreAmt 로 구한다 → load_income_pre().
+    """
     cur.execute("""SELECT i.NtsItemName, s.Amt
                    FROM _TWPRAdjTotNtsIncomeSum s
                    JOIN (SELECT DISTINCT YY, NtsItemSeq, NtsItemName
@@ -152,6 +158,66 @@ def load_income(cur, emp_seq, yy):
     for name, amt in cur.fetchall():
         out[(name or "").strip()] = out.get((name or "").strip(), 0) + float(amt or 0)
     return out
+
+
+def load_income_pre(cur, emp_seq, yy):
+    """종(전)근무지 합계 — load_income() 과 같은 테이블의 PreAmt 컬럼
+
+    발급본(김미선 2025)과 대조해 확인한 관계 (2026-08-10):
+        국민연금 1,153,570(Amt) - 100,570(PreAmt) = 1,053,000 = 서식의 현근무지
+        고용보험   203,790       -   7,440        =   196,350  (= 827,000×0.9%)
+    """
+    cur.execute("""SELECT i.NtsItemName, s.PreAmt
+                   FROM _TWPRAdjTotNtsIncomeSum s
+                   JOIN (SELECT DISTINCT YY, NtsItemSeq, NtsItemName
+                         FROM _TWPRAdjTotNtsItem) i
+                     ON i.YY=s.YY AND i.NtsItemSeq=s.NtsItemSeq
+                   WHERE s.YY=%s AND s.EmpSeq=%s AND s.SMPerCoAllType=3502001""",
+                (yy, emp_seq))
+    out = {}
+    for name, amt in cur.fetchall():
+        k = (name or "").strip()
+        out[k] = out.get(k, 0) + float(amt or 0)
+    return out
+
+
+def _biz(no):
+    """사업자등록번호 3018146359 → 301-81-46359"""
+    s = re.sub(r"\D", "", str(no or ""))
+    return f"{s[:3]}-{s[3:5]}-{s[5:]}" if len(s) == 10 else (no or "")
+
+
+def load_prework(cur, emp_seq, yy):
+    """종(전)근무지 — 회사정보(_TWPRAdjTotPreWork) + 근무지별 금액(…Dtl)
+
+    서식 1쪽은 종(전)근무지를 3곳까지 세로 열로 찍는다. 예전에는 이 열을
+    빈 문자열로 하드코딩해 두어 이직자 서식의 종(전) 열이 통째로 비고,
+    주(현) 열에는 종전분이 섞인 합계가 들어갔다 (2026-08-10 발급본 대조로 발견).
+    ERP DB 자동검사는 대조 대상이 전부 '합계' 항목이라 이 결함을 못 잡는다.
+    """
+    cur.execute("""SELECT Seq, PreCompanyName, PreTaxNo, WorkBegDate, WorkEndDate
+                   FROM _TWPRAdjTotPreWork
+                   WHERE YY=%s AND EmpSeq=%s ORDER BY Seq""", (yy, emp_seq))
+    works = [{"seq": r[0], "name": (r[1] or "").strip(),
+              "biz_no": _biz(r[2]), "beg": r[3], "end": r[4], "amt": {}}
+             for r in cur.fetchall()]
+    if not works:
+        return works
+
+    cur.execute("""SELECT d.Seq, i.NtsItemName, d.PreAmt
+                   FROM _TWPRAdjTotPreWorkDtl d
+                   JOIN (SELECT DISTINCT YY, NtsItemSeq, NtsItemName
+                         FROM _TWPRAdjTotNtsItem) i
+                     ON i.YY=d.YY AND i.NtsItemSeq=d.NtsItemSeq
+                   WHERE d.YY=%s AND d.EmpSeq=%s""", (yy, emp_seq))
+    by_seq = {w["seq"]: w for w in works}
+    for seq, name, amt in cur.fetchall():
+        w = by_seq.get(seq)
+        if w is None:
+            continue
+        k = (name or "").strip()
+        w["amt"][k] = w["amt"].get(k, 0) + float(amt or 0)
+    return works
 
 
 def load_period(cur, emp_seq, yy):
@@ -489,39 +555,70 @@ def _insert_section2_label(tpl, span):
     return tpl[:k + 1] + cell + tpl[k + 1:]
 
 
-def build_income_rows(t, inc, beg, end, co):
+def _period(beg, end):
+    b, e = _date8(beg, "."), _date8(end, ".")
+    return f"{b} ~ {e}" if b or e else ""
+
+
+# 서식 1쪽이 세로로 찍는 소득 항목. (표시명, NtsItemName)
+INCOME_ROWS = [
+    ("⑬ 급여", "급여"),
+    ("⑭ 상여", "상여"),
+    ("⑮ 인정상여", "인정상여"),
+    ("⑮-1 주식매수선택권 행사이익", "주식매수선택권행사이익"),
+    ("⑮-2 우리사주조합인출금", "우리사주조합인출금"),
+    ("⑮-3 임원 퇴직소득금액 한도초과액", "임원퇴직소득한도초과액"),
+    ("⑮-4 직무발명보상금", "직무발명보상금"),
+]
+PRE_COLS = 3          # 서식이 받는 종(전)근무지 열 수
+
+
+def build_income_rows(t, inc, pre, works, beg, end, co):
     """1쪽 '근무처별 소득명세' — 원본 서식의 행 구성 그대로
 
     Data2 = 근무처 정보(⑨~⑫), Data3 = 소득 항목(⑬~⑮-4)
     열 = 주(현) / 종(전)×3 / 합계
+
+    inc 는 종(전)을 포함한 합계이므로 주(현) = inc - pre 로 갈라 넣는다.
+    합계 열(Data3_TotAmt)은 inc 그대로다.
     """
-    def row2(title, cur_val):
-        return {"Data2_Title": title, "Data2_cur": cur_val,
-                "Data2_pre1": "", "Data2_pre2": "", "Data2_pre3": ""}
+    def _cols(fn):
+        return {f"pre{k + 1}": (fn(works[k]) if k < len(works) else "")
+                for k in range(PRE_COLS)}
 
-    def row3(title, amt):
-        v = _num(amt)
-        return {"Data3_Title": title, "Data3_Cur": v,
-                "Data3_pre1": "", "Data3_pre2": "", "Data3_pre3": "",
-                "Data3_TotAmt": v}
+    def row2(title, cur_val, fn):
+        d = {"Data2_Title": title, "Data2_cur": cur_val}
+        d.update({f"Data2_{k}": v for k, v in _cols(fn).items()})
+        return d
 
-    pay, bonus = inc.get("급여", 0), inc.get("상여", 0)
+    def row3(title, key):
+        tot = inc.get(key, 0)
+        d = {"Data3_Title": title,
+             "Data3_Cur": _num(tot - pre.get(key, 0)),
+             "Data3_TotAmt": _num(tot)}
+        d.update({f"Data3_{k}": v for k, v in
+                  _cols(lambda w: _num(w["amt"].get(key, 0))).items()})
+        return d
+
     d2 = [
-        row2("⑨ 근무처명", co["name"]),
-        row2("⑩ 사업자등록번호", co["biz_no"]),
-        row2("⑪ 근무기간", f"{_date8(beg, '.')} ~ {_date8(end, '.')}"),
-        row2("⑫ 감면기간", ""),
+        row2("⑨ 근무처명", co["name"], lambda w: w["name"]),
+        row2("⑩ 사업자등록번호", co["biz_no"], lambda w: w["biz_no"]),
+        row2("⑪ 근무기간", _period(beg, end),
+             lambda w: _period(w["beg"], w["end"])),
+        row2("⑫ 감면기간", "", lambda w: ""),
     ]
-    d3 = [
-        row3("⑬ 급여", pay),
-        row3("⑭ 상여", bonus),
-        row3("⑮ 인정상여", 0),
-        row3("⑮-1 주식매수선택권 행사이익", 0),
-        row3("⑮-2 우리사주조합인출금", 0),
-        row3("⑮-3 임원 퇴직소득금액 한도초과액", 0),
-        row3("⑮-4 직무발명보상금", 0),
-    ]
-    return d2, d3, pay + bonus
+    d3 = [row3(title, key) for title, key in INCOME_ROWS]
+
+    # 16.계 — 주(현) / 종(전)별 / 전체
+    keys = [k for _t, k in INCOME_ROWS]
+    total = sum(inc.get(k, 0) for k in keys)
+    sums = {"Data3_SumCur": _num(total - sum(pre.get(k, 0) for k in keys)),
+            "Data3_TotAmt": _num(total)}
+    sums.update({f"Data3_Sumpre{k + 1}":
+                 (_num(sum(works[k]["amt"].get(x, 0) for x in keys))
+                  if k < len(works) else "")
+                 for k in range(PRE_COLS)})
+    return d2, d3, sums
 
 
 def expand_family_rows(tpl, depen, disable_map=None):
@@ -653,7 +750,9 @@ def load_company(cur):
 def build_values(cur, emp_no, yy, resid_id=""):
     t = find_target(cur, emp_no, yy)
     info = load_empinfo(cur, t["emp_seq"], yy)
-    inc = load_income(cur, t["emp_seq"], yy)
+    inc = load_income(cur, t["emp_seq"], yy)          # 종(전) 포함 합계
+    pre = load_income_pre(cur, t["emp_seq"], yy)      # 그중 종(전)분
+    works = load_prework(cur, t["emp_seq"], yy)       # 종(전)근무지 목록
     beg, end = load_period(cur, t["emp_seq"], yy)
     co = load_company(cur)
     # 하단 영수란(Data5)에서도 건강보험 '공제금액'이 필요하므로 v 를 만들기 전에 읽는다.
@@ -703,23 +802,29 @@ def build_values(cur, emp_no, yy, resid_id=""):
         "Data1_SMRetType2": CHECK if str(t["ret_type"]).endswith("2") else "",
         "Data1_IsBizTax1": "",
         "Data1_IsBizTax2": CHECK,
-        # Data2/Data3 는 반복행이라 render() 에서 펼친다. 여기서는 합계만.
-        "Data3_SumCur": _num(pay + bonus),        # 16.계
-        "Data3_Sumpre1": "", "Data3_Sumpre2": "", "Data3_Sumpre3": "",
+        # Data2/Data3 는 반복행이라 render() 에서 펼친다. 16.계 는 build_income_rows
+        # 가 만들어 v 에 합쳐 넣는다 (아래 v.update(sums)).
         "Data4_DeducSumCur": "", "Data4_NonTaxSumCur": "",   # 20/20-1 계
         # ── Data5: 기납부세액·보험료 ──
-        "Data5_Tax_TC": _num(inc.get("소득세", 0)),
-        "Data5_ResidTax_TC": _num(inc.get("지방소득세", 0)),
+        # 75.주(현)근무지 이므로 종(전)분을 뺀다. 74 는 아래에서 근무지별로 채운다.
+        "Data5_Tax_TC": _num(inc.get("소득세", 0) - pre.get("소득세", 0)),
+        "Data5_ResidTax_TC": _num(inc.get("지방소득세", 0)
+                                  - pre.get("지방소득세", 0)),
         "Data5_SpecialTaxTax_TC": "",
-        "Data5_NPCurAmt": _num(inc.get("국민연금보험", 0)),
+        # 하단 영수란은 두 칸이다. 템플릿 순서가 Tot → Cur 이고, 발급본은
+        # 「국민연금(현근무지) 1,153,570 ( 1,053,000 )」 처럼 합계를 먼저 찍는다.
+        # 예전에는 두 칸에 같은 값을 넣어, 이직자도 현근무지분이 합계로 보였다.
+        "Data5_NPCurAmt": _num(inc.get("국민연금보험", 0)
+                               - pre.get("국민연금보험", 0)),
         "Data5_NPTotAmt": _num(inc.get("국민연금보험", 0)),
         # 건강보험은 급여대장 합계(국민건강보험+정산분)가 아니라 33.㉮ 의 '공제금액'을 쓴다.
         # ERP 발급본이 하단 영수란에도 공제금액을 찍기 때문이다.
         # 예전에는 정산분까지 더해 2,367,230 이 나왔고 ERP 는 2,347,130 이라,
         # 같은 장 안에서 건강보험료가 두 값으로 보였다 (2026-08-10 지창구 2025 대조).
-        "Data5_MedCurAmt": _num(deducs.get("health", 0)),
+        "Data5_MedCurAmt": _num(deducs.get("health", 0)
+                                - pre.get("국민건강보험", 0)),
         "Data5_MedTotAmt": _num(deducs.get("health", 0)),
-        "Data5_HireCurAmt": _num(inc.get("고용보험", 0)),
+        "Data5_HireCurAmt": _num(inc.get("고용보험", 0) - pre.get("고용보험", 0)),
         "Data5_HireTotAmt": _num(inc.get("고용보험", 0)),
         "Data5_PrintDate": date.today().strftime("%Y년   %m월   %d일"),
         "Data5_TaxName": co["name"],
@@ -727,6 +832,15 @@ def build_values(cur, emp_no, yy, resid_id=""):
         "Data5_TaxOffice": "청주",
         "Data5_SealPhoto": _seal_b64(),          # 징수의무자 직인
     }
+
+    # 74.종(전)근무지 — 사업자등록번호와 그 근무지의 결정세액
+    for k in range(PRE_COLS):
+        w = works[k] if k < len(works) else None
+        v[f"Data5_P{k + 1}BizNo"] = w["biz_no"] if w else ""
+        v[f"Data5_Tax_Pre{k + 1}"] = _num(w["amt"].get("소득세", 0)) if w else ""
+        v[f"Data5_ResidTax_Pre{k + 1}"] = (
+            _num(w["amt"].get("지방소득세", 0)) if w else "")
+        v[f"Data5_SpecialTaxTax_Pre{k + 1}"] = ""
 
     # ── 정산명세 (2쪽) — wht_calc 로 법정 산식 계산 ──
     from wht_calc import compute
@@ -798,6 +912,12 @@ def build_values(cur, emp_no, yy, resid_id=""):
         "Data5_SpecialTax_Deducted": "",
         "Data5_Tax_Spec": "", "Data5_ResidTax_Spec": "", "Data5_SpecialTax_Spec": "",
     })
+    # 16.계 — 주(현)/종(전)별/전체. 반복블록 밖이라 여기서 넣어야 한다.
+    # Data3_TotAmt 는 반복블록 안에도 같은 이름으로 있는데, _expand() 가 블록 안
+    # 토큰을 먼저 소비하므로 여기 값은 합계행에만 들어간다. 예전에는 이 키가
+    # 아예 없어 **16.계 총계 칸이 빈칸으로 나갔다** (2026-08-10 발견).
+    _d2, _d3, sums = build_income_rows(t, inc, pre, works, beg, end, co)
+    v.update(sums)
     # 3쪽 '국세청 계 / 기타 계' 행 + 인적공제 인원수
     v.update(depen_summary_tokens(depen))
 
@@ -813,8 +933,10 @@ def render(cur, emp_no, yy, resid_id=""):
     t, values, depen = build_values(cur, emp_no, yy, resid_id)
     # 반복행 펼치기 — 1쪽 근무처/소득명세, 3쪽 부양가족
     inc = load_income(cur, t["emp_seq"], yy)
+    pre = load_income_pre(cur, t["emp_seq"], yy)
+    works = load_prework(cur, t["emp_seq"], yy)
     beg, end = load_period(cur, t["emp_seq"], yy)
-    d2, d3, _ = build_income_rows(t, inc, beg, end, load_company(cur))
+    d2, d3, _ = build_income_rows(t, inc, pre, works, beg, end, load_company(cur))
     tpl = _expand(tpl, "Data2", d2)
     tpl = _expand(tpl, "Data3", d3)
     # 비과세·감면 명세(Ⅱ) — 해당 없어도 원본처럼 빈 행을 채운다.
