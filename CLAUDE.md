@@ -9,7 +9,11 @@ Korean workplace attendance management system (㈜태인 근태관리). Flask we
 ## Architecture
 
 ### Main Flask app (`app_maria.py`)
-- Single large monolith. Deployed to NAS as `app.py`.
+- Single large monolith. 컨테이너에도 **`app_maria.py` 그대로** 들어가고
+  gunicorn 이 `app_maria:app` 으로 띄운다 (이미지 CMD 확인, 2026-08-11).
+  > ⚠️ 컨테이너 안의 `/app/app.py` 는 2026-04-14 자 유물이고 **아무도 안 쓴다.**
+  > 배포 반영 여부를 그 파일로 확인하면 "반영 안 됨"으로 잘못 읽는다.
+  > 확인은 `_archive/_verify_msgfav.py` 처럼 `app_maria.py` 를 봐야 한다.
 - Registers blueprints from `edu_bp.py`, `hazmat_bp.py`, `mes_bp.py`, `tbm_bp.py`. Each blueprint is self-contained: defines its own `_conn()`, `_login_required`, `_admin_required`, and an `init_*_db(app)` that creates tables on app startup. They share session keys (`user_id`, `role`, `e_id`, `user_name`) with the main app — effectively SSO.
 - `MARIA` dict at top of `app_maria.py` is the DB config. Blueprints either import it (`from app_maria import MARIA`) or read `current_app.config["MARIA"]` / env vars.
 - DB connection helper pattern: `pymysql.connect(**MARIA)` returned from `_conn()`.
