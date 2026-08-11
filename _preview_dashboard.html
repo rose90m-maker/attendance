@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>대시보드 리디자인 미리보기 — 태인관리시스템</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   태인관리시스템 — 대시보드 리디자인
+   방향: 웹 대시보드가 아니라 '현황판(계기반)'.
+        전기·전자 제조 현장의 배전반 표시등 색을 신호로만 쓰고,
+        나머지는 철저히 침묵시킨다.
+   ═══════════════════════════════════════════════════════════ */
+
+:root{
+  /* 지반 — 사무실 조명 아래 종일 켜두는 화면이라 밝게 유지 */
+  --ground:#E9ECEF;
+  --panel:#FFFFFF;
+  --rail:#2B3136;          /* 계기 레일 — 배전반 함체 */
+  --rail-2:#373E44;
+  --line:#D7DCE1;
+  --line-soft:#EDF0F2;
+
+  /* 잉크 */
+  --ink:#14181B;
+  --ink-2:#454E55;
+  --muted:#7C868E;
+  --on-rail:#F2F5F7;
+  --on-rail-dim:#98A4AD;
+
+  /* 표시등 — 한국 산업용 파일럿램프 색. 신호로만 쓴다 */
+  --run:#00A24A;           /* 운전 */
+  --warn:#F2A100;          /* 주의 */
+  --stop:#D8262C;          /* 정지·경보 */
+  --pwr:#0B6EBF;           /* 전원 */
+
+  --sidebar-w:220px;
+  --navbar-h:48px;
+
+  --r:3px;                 /* 계측기에 둥근 모서리는 없다 */
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:'IBM Plex Sans KR',system-ui,sans-serif;
+  font-size:13px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+/* 모든 수치는 계기 글꼴 + 자릿수 고정 */
+.num{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums; letter-spacing:-.02em}
+
+/* ── 상단 바 ─────────────────────────────────────────── */
+.topbar{
+  position:fixed; inset:0 0 auto 0; height:var(--navbar-h); z-index:50;
+  background:var(--rail); color:var(--on-rail);
+  display:flex; align-items:center; gap:18px; padding:0 16px;
+  border-bottom:1px solid #1A1F23;
+}
+.brand{font-weight:700; font-size:14px; letter-spacing:-.01em}
+.brand span{color:var(--on-rail-dim); font-weight:400; margin-left:8px; font-size:12px}
+.topbar-right{margin-left:auto; display:flex; align-items:center; gap:14px; font-size:12px; color:var(--on-rail-dim)}
+.topbar-right b{color:var(--on-rail); font-weight:600}
+
+/* ── 사이드바 ────────────────────────────────────────── */
+.side{
+  position:fixed; top:var(--navbar-h); bottom:0; left:0; width:var(--sidebar-w);
+  background:#F4F6F7; border-right:1px solid var(--line);
+  overflow-y:auto; padding:10px 0; z-index:40;
+}
+.side-grp{padding:10px 16px 4px; font-size:10.5px; font-weight:700; color:var(--muted); letter-spacing:.08em}
+.side a{
+  display:block; padding:6px 16px; color:var(--ink-2); text-decoration:none; font-size:12.5px;
+  border-left:2px solid transparent;
+}
+.side a:hover{background:#EAEEF0; color:var(--ink)}
+.side a.on{background:#FFF; border-left-color:var(--pwr); color:var(--ink); font-weight:600}
+
+/* ── 무대 ────────────────────────────────────────────── */
+.stage{
+  margin:var(--navbar-h) 0 0 var(--sidebar-w);
+  height:calc(100vh - var(--navbar-h));
+  padding:10px 12px;
+  display:grid; grid-template-rows:auto 1fr; gap:10px;
+  overflow:hidden;
+}
+
+/* ═══ 시그니처: 계기 레일 ══════════════════════════════
+   지금 이 순간의 값만 여기 올라온다. 나머지는 아래 흰 판으로 내려간다.
+   표시등 색은 장식이 아니라 임계값 판정 결과다. */
+.rail{
+  background:linear-gradient(180deg,var(--rail-2),var(--rail));
+  border:1px solid #1A1F23; border-radius:var(--r);
+  display:grid; grid-template-columns:repeat(5,1fr);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+}
+.gauge{
+  padding:11px 16px 12px; position:relative;
+  border-left:1px solid rgba(255,255,255,.07);
+}
+.gauge:first-child{border-left:none}
+.gauge-top{display:flex; align-items:center; gap:7px; margin-bottom:5px}
+.lamp{
+  width:8px; height:8px; border-radius:50%; flex:none;
+  box-shadow:0 0 0 2px rgba(255,255,255,.08), 0 0 8px currentColor;
+  background:currentColor;
+}
+.lamp.run{color:var(--run)} .lamp.warn{color:var(--warn)}
+.lamp.stop{color:var(--stop)} .lamp.pwr{color:var(--pwr)}
+.gauge-label{font-size:11px; color:var(--on-rail-dim); font-weight:500; letter-spacing:.02em}
+.gauge-val{
+  display:flex; align-items:baseline; gap:5px;
+  font-size:26px; font-weight:600; color:var(--on-rail); line-height:1.05;
+}
+.gauge-unit{font-size:12px; color:var(--on-rail-dim); font-weight:400}
+.gauge-sub{margin-top:3px; font-size:11px; color:var(--on-rail-dim)}
+.gauge-sub b{color:#C8D2D9; font-weight:600}
+/* 경보일 때만 맥동한다 */
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.35}}
+.lamp.alert{animation:breathe 2.2s ease-in-out infinite}
+
+/* ── 판 구역 ─────────────────────────────────────────── */
+.board{
+  display:grid; gap:10px; min-height:0;
+  grid-template-columns:minmax(260px,1fr) minmax(340px,1.5fr) minmax(260px,1.05fr);
+  grid-template-rows:1.15fr 1fr;
+}
+.col{display:flex; flex-direction:column; gap:10px; min-height:0}
+.span2{grid-row:span 2}
+
+.card{
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  display:flex; flex-direction:column; min-height:0; overflow:hidden;
+}
+.card-h{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 12px 7px; border-bottom:1px solid var(--line-soft); flex:none;
+}
+.card-h h2{margin:0; font-size:12.5px; font-weight:600; color:var(--ink); letter-spacing:-.01em}
+.card-h .tag{margin-left:auto; font-size:10.5px; color:var(--muted)}
+/* 예정 계층: 왼쪽 색 규칙 하나로 성격을 표시 */
+.card.sched .card-h{border-left:2px solid var(--pwr); padding-left:10px}
+/* 참조 계층: 머리 장식 없음 */
+.card.ref .card-h{border-bottom:none; padding-bottom:2px}
+.card-b{padding:8px 12px; overflow-y:auto; flex:1; min-height:0}
+.card-b::-webkit-scrollbar{width:5px}
+.card-b::-webkit-scrollbar-thumb{background:#CFD6DB; border-radius:3px}
+
+/* ── 부서별 출근 ─────────────────────────────────────── */
+.dept{display:flex; align-items:center; gap:9px; padding:5px 0}
+.dept-n{width:56px; flex:none; text-align:right; font-size:12px; color:var(--ink-2)}
+.dept-t{flex:1; height:14px; background:var(--line-soft); border-radius:2px; overflow:hidden}
+.dept-f{height:100%; background:var(--pwr); border-radius:2px}
+.dept-f.low{background:var(--warn)}
+.dept-c{width:52px; flex:none; font-size:12px; color:var(--ink); text-align:right}
+.dept-c i{color:var(--muted); font-style:normal}
+
+/* ── 주간 캘린더 ─────────────────────────────────────── */
+.week{display:grid; grid-template-columns:repeat(7,1fr); gap:5px; height:100%}
+.day{border:1px solid var(--line); border-radius:2px; display:flex; flex-direction:column; min-height:0; background:#FCFDFD}
+.day-h{padding:5px 3px 4px; text-align:center; border-bottom:1px solid var(--line-soft); flex:none}
+.day-w{font-size:10px; color:var(--muted); font-weight:600}
+.day-d{font-size:15px; font-weight:600; color:var(--ink); line-height:1.15}
+.day.sun .day-d{color:var(--stop)} .day.sat .day-d{color:var(--pwr)}
+.day.now{background:#FFF; border-color:var(--rail); box-shadow:inset 0 0 0 1px var(--rail)}
+.day.now .day-h{background:var(--rail)} .day.now .day-w{color:var(--on-rail-dim)} .day.now .day-d{color:#FFF}
+.day-b{flex:1; padding:4px 3px; overflow-y:auto; min-height:0; display:flex; flex-direction:column; gap:3px}
+.ev{font-size:10px; padding:2px 4px; border-radius:2px; color:#FFF; font-weight:500;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.ev.a{background:#5B7A99} .ev.b{background:#8A6BA8} .ev.c{background:#4F8A6E} .ev.d{background:#B07B3E}
+
+/* ── 식수 ────────────────────────────────────────────── */
+.meal{display:flex; align-items:flex-end; gap:6px; height:78px; padding:4px 0 0}
+.meal-c{flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; height:100%}
+.meal-b{width:100%; background:#DDE3E8; border-radius:2px 2px 0 0; margin-top:auto; position:relative}
+.meal-b.now{background:var(--rail)}
+.meal-v{font-size:10.5px; color:var(--ink-2)}
+.meal-d{font-size:10px; color:var(--muted)}
+
+/* ── 목록 공통 ───────────────────────────────────────── */
+.row{display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--line-soft); font-size:12px}
+.row:last-child{border-bottom:none}
+.row .r-n{color:var(--ink); font-weight:500}
+.row .r-m{color:var(--muted); font-size:11px}
+.row .r-r{margin-left:auto; color:var(--ink-2)}
+.pin{display:inline-block; width:3px; height:12px; background:var(--stop); border-radius:1px; flex:none}
+
+/* ── 바로가기 ────────────────────────────────────────── */
+.links{display:grid; grid-template-columns:repeat(2,1fr); gap:6px}
+.link{
+  display:block; padding:8px 10px; border:1px solid var(--line); border-radius:2px;
+  color:var(--ink-2); text-decoration:none; font-size:12px; background:#FCFDFD;
+}
+.link:hover{border-color:var(--pwr); color:var(--pwr); background:#F5FAFE}
+
+/* ── 전력 추이 ───────────────────────────────────────── */
+.spark{width:100%; height:56px; display:block}
+
+/* ── 메모 ────────────────────────────────────────────── */
+.memo{
+  width:100%; border:1px solid var(--line); border-radius:2px; padding:7px 9px;
+  font-family:inherit; font-size:12px; color:var(--ink); resize:none; background:#FCFDFD;
+  min-height:52px;
+}
+.memo:focus{outline:2px solid var(--pwr); outline-offset:-1px; background:#FFF}
+
+/* ── 접근성 ──────────────────────────────────────────── */
+a:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--pwr); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+
+/* ── 좁은 화면 ───────────────────────────────────────── */
+@media (max-width:1360px){ .rail{grid-template-columns:repeat(3,1fr)} .gauge:nth-child(4){border-left:none} }
+@media (max-width:1100px){
+  .side{display:none} .stage{margin-left:0}
+  .board{grid-template-columns:1fr 1fr; grid-template-rows:none}
+  .span2{grid-row:auto}
+}
+@media (max-width:720px){
+  .stage{height:auto; overflow:visible}
+  .rail{grid-template-columns:repeat(2,1fr)}
+  .gauge{border-left:none; border-top:1px solid rgba(255,255,255,.07)}
+  .board{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">태인관리시스템 <span>대시보드</span></div>
+  <div class="topbar-right">
+    <span>2026-08-11 (화) <b class="num" id="clock">08:14</b></span>
+    <span>지창구 <b>총무</b></span>
+  </div>
+</div>
+
+<nav class="side">
+  <div class="side-grp">현황</div>
+  <a href="#" class="on">대시보드</a>
+  <a href="#">통합관제</a>
+  <a href="#">관제 대시보드</a>
+  <div class="side-grp">근태</div>
+  <a href="#">근태기록</a>
+  <a href="#">근무표</a>
+  <a href="#">근무보고서</a>
+  <a href="#">연차관리</a>
+  <div class="side-grp">운영</div>
+  <a href="#">식수관리</a>
+  <a href="#">배차관리</a>
+  <a href="#">경비일지</a>
+  <div class="side-grp">인사</div>
+  <a href="#">인사현황</a>
+  <a href="#">전체 재직자</a>
+  <a href="#">차량현황</a>
+  <div class="side-grp">생산·에너지</div>
+  <a href="#">생산 리포트</a>
+  <a href="#">온습도 현황</a>
+  <a href="#">전력사용현황</a>
+</nav>
+
+<main class="stage">
+
+  <!-- ═══ 계기 레일 — 지금 이 순간 ═══ -->
+  <section class="rail" aria-label="실시간 현황">
+    <div class="gauge">
+      <div class="gauge-top"><span class="lamp run"></span><span class="gauge-label">출근</span></div>
+      <div class="gauge-val"><span class="num" data-count="147">147</span><span class="gauge-unit">/ 189명</span></div>
+      <div class="gauge-sub">미출근 <b class="num">42</b> · 휴가 <b class="num">7</b></div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-top"><span class="lamp pwr"></span><span class="gauge-label">전력</span></div>
+      <div class="gauge-val"><span class="num" data-count="284">284</span><span class="gauge-unit">kW</span></div>
+      <div class="gauge-sub">오늘 <b class="num">1,847</b> kWh</div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-top"><span class="lamp warn alert"></span><span class="gauge-label">전자제조 온도</span></div>
+      <div class="gauge-val"><span class="num">28.4</span><span class="gauge-unit">℃</span></div>
+      <div class="gauge-sub">기준 26.0 초과 · <b>32분째</b></div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-top"><span class="lamp run"></span><span class="gauge-label">금일 생산</span></div>
+      <div class="gauge-val"><span class="num" data-count="1240">1,240</span><span class="gauge-unit">EA</span></div>
+      <div class="gauge-sub">목표 대비 <b class="num">82</b>%</div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-top"><span class="lamp run"></span><span class="gauge-label">근무보고서</span></div>
+      <div class="gauge-val"><span class="num" data-count="18">18</span><span class="gauge-unit">/ 21건</span></div>
+      <div class="gauge-sub">미제출 <b class="num">3</b>건</div>
+    </div>
+  </section>
+
+  <!-- ═══ 판 구역 ═══ -->
+  <div class="board">
+
+    <!-- 좌 -->
+    <div class="col span2">
+      <div class="card sched" style="flex:1.4">
+        <div class="card-h"><h2>부서별 출근</h2><span class="tag num">08:14 기준</span></div>
+        <div class="card-b">
+          <div class="dept"><span class="dept-n">관리부</span><span class="dept-t"><span class="dept-f" style="width:92%"></span></span><span class="dept-c num">23<i>/25</i></span></div>
+          <div class="dept"><span class="dept-n">전기사무</span><span class="dept-t"><span class="dept-f" style="width:88%"></span></span><span class="dept-c num">29<i>/33</i></span></div>
+          <div class="dept"><span class="dept-n">전기생산</span><span class="dept-t"><span class="dept-f" style="width:79%"></span></span><span class="dept-c num">42<i>/53</i></span></div>
+          <div class="dept"><span class="dept-n">전자사무</span><span class="dept-t"><span class="dept-f" style="width:86%"></span></span><span class="dept-c num">19<i>/22</i></span></div>
+          <div class="dept"><span class="dept-n">전자생산</span><span class="dept-t"><span class="dept-f low" style="width:61%"></span></span><span class="dept-c num">34<i>/56</i></span></div>
+        </div>
+      </div>
+
+      <div class="card sched" style="flex:1">
+        <div class="card-h"><h2>식수 신청</h2><span class="tag">최근 7일</span></div>
+        <div class="card-b">
+          <div class="meal">
+            <div class="meal-c"><span class="meal-v num">132</span><span class="meal-b" style="height:62%"></span><span class="meal-d">05</span></div>
+            <div class="meal-c"><span class="meal-v num">141</span><span class="meal-b" style="height:69%"></span><span class="meal-d">06</span></div>
+            <div class="meal-c"><span class="meal-v num">128</span><span class="meal-b" style="height:59%"></span><span class="meal-d">07</span></div>
+            <div class="meal-c"><span class="meal-v num">155</span><span class="meal-b" style="height:78%"></span><span class="meal-d">08</span></div>
+            <div class="meal-c"><span class="meal-v num">149</span><span class="meal-b" style="height:74%"></span><span class="meal-d">09</span></div>
+            <div class="meal-c"><span class="meal-v num">137</span><span class="meal-b" style="height:66%"></span><span class="meal-d">10</span></div>
+            <div class="meal-c"><span class="meal-v num">144</span><span class="meal-b now" style="height:71%"></span><span class="meal-d">11</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card ref" style="flex:.85">
+        <div class="card-h"><h2>바로가기</h2></div>
+        <div class="card-b">
+          <div class="links">
+            <a class="link" href="#">근무표 입력</a>
+            <a class="link" href="#">연차 신청</a>
+            <a class="link" href="#">식수 신청</a>
+            <a class="link" href="#">경비일지</a>
+            <a class="link" href="#">공문서 관리</a>
+            <a class="link" href="#">증명서 발급</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 중 -->
+    <div class="col span2">
+      <div class="card sched" style="flex:1.55">
+        <div class="card-h"><h2>이번 주</h2><span class="tag">8월 10일 – 16일</span></div>
+        <div class="card-b" style="padding:8px 10px">
+          <div class="week">
+            <div class="day sun"><div class="day-h"><div class="day-w">일</div><div class="day-d num">10</div></div><div class="day-b"></div></div>
+            <div class="day now"><div class="day-h"><div class="day-w">월</div><div class="day-d num">11</div></div><div class="day-b">
+              <span class="ev a">김미선 연차</span><span class="ev c">안전교육 14시</span><span class="ev d">자재 입고</span></div></div>
+            <div class="day"><div class="day-h"><div class="day-w">화</div><div class="day-d num">12</div></div><div class="day-b">
+              <span class="ev a">박상현 반차</span><span class="ev b">임원회의</span></div></div>
+            <div class="day"><div class="day-h"><div class="day-w">수</div><div class="day-d num">13</div></div><div class="day-b">
+              <span class="ev c">소방 점검</span></div></div>
+            <div class="day"><div class="day-h"><div class="day-w">목</div><div class="day-d num">14</div></div><div class="day-b">
+              <span class="ev a">이재현 연차</span><span class="ev a">정원석 연차</span></div></div>
+            <div class="day"><div class="day-h"><div class="day-w">금</div><div class="day-d num">15</div></div><div class="day-b">
+              <span class="ev d">광복절</span></div></div>
+            <div class="day sat"><div class="day-h"><div class="day-w">토</div><div class="day-d num">16</div></div><div class="day-b"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card sched" style="flex:1">
+        <div class="card-h"><h2>생산 현황</h2><span class="tag">전자제조 · 전기제조</span></div>
+        <div class="card-b">
+          <div class="row"><span class="r-n">SMT 1호기</span><span class="r-m">전자제조</span><span class="r-r num">412 EA</span></div>
+          <div class="row"><span class="r-n">SMT 2호기</span><span class="r-m">전자제조</span><span class="r-r num">388 EA</span></div>
+          <div class="row"><span class="r-n">조립 A라인</span><span class="r-m">전기제조</span><span class="r-r num">264 EA</span></div>
+          <div class="row"><span class="r-n">조립 B라인</span><span class="r-m">전기제조</span><span class="r-r num">176 EA</span></div>
+        </div>
+      </div>
+
+      <div class="card ref" style="flex:.75">
+        <div class="card-h"><h2>8월 생일</h2></div>
+        <div class="card-b">
+          <div class="row"><span class="pin"></span><span class="r-n">허명자</span><span class="r-m">전기제조팀</span><span class="r-r num">오늘</span></div>
+          <div class="row"><span class="r-n">장현우</span><span class="r-m">전기구매관리팀</span><span class="r-r num">08-14</span></div>
+          <div class="row"><span class="r-n">우영숙</span><span class="r-m">전기제조팀</span><span class="r-r num">08-22</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 우 -->
+    <div class="col span2">
+      <div class="card sched" style="flex:1.1">
+        <div class="card-h"><h2>공지</h2><span class="tag num">4</span></div>
+        <div class="card-b">
+          <div class="row"><span class="pin"></span><span class="r-n">하계휴가 신청 마감 안내</span><span class="r-r num">08-08</span></div>
+          <div class="row"><span class="r-n">전기안전 특별점검 일정</span><span class="r-r num">08-07</span></div>
+          <div class="row"><span class="r-n">통근버스 노선 일부 변경</span><span class="r-r num">08-05</span></div>
+          <div class="row"><span class="r-n">사내 주차장 재도색 공지</span><span class="r-r num">08-01</span></div>
+        </div>
+      </div>
+
+      <div class="card sched" style="flex:.95">
+        <div class="card-h"><h2>배차</h2><span class="tag">오늘 운행</span></div>
+        <div class="card-b">
+          <div class="row"><span class="r-n">1호차</span><span class="r-m">청주 시내</span><span class="r-r num">28명</span></div>
+          <div class="row"><span class="r-n">2호차</span><span class="r-m">오송 · 조치원</span><span class="r-r num">21명</span></div>
+          <div class="row"><span class="r-n">3호차</span><span class="r-m">증평 · 진천</span><span class="r-r num">17명</span></div>
+        </div>
+      </div>
+
+      <div class="card sched" style="flex:1">
+        <div class="card-h"><h2>전력 추이</h2><span class="tag">최근 12시간</span></div>
+        <div class="card-b">
+          <svg class="spark" viewBox="0 0 240 56" preserveAspectRatio="none" aria-label="전력 사용 추이">
+            <polyline fill="none" stroke="#0B6EBF" stroke-width="1.6"
+              points="0,44 20,42 40,38 60,30 80,22 100,18 120,15 140,17 160,14 180,19 200,24 220,21 240,17"/>
+            <polyline fill="#0B6EBF" fill-opacity=".07" stroke="none"
+              points="0,44 20,42 40,38 60,30 80,22 100,18 120,15 140,17 160,14 180,19 200,24 220,21 240,17 240,56 0,56"/>
+          </svg>
+          <div class="row" style="border-top:1px solid var(--line-soft);padding-top:6px">
+            <span class="r-m">최대</span><span class="r-r num">312 kW · 11:20</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card ref" style="flex:.7">
+        <div class="card-h"><h2>메모</h2></div>
+        <div class="card-b">
+          <textarea class="memo" placeholder="이 자리에 적어두면 이 브라우저에만 남습니다."></textarea>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+// 계기 값은 켜질 때 한 번만 올라간다. 그 외 움직임은 없다.
+(function(){
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelectorAll('[data-count]').forEach(function(el){
+    var end = +el.dataset.count, t0 = performance.now(), dur = 520;
+    function step(t){
+      var p = Math.min((t - t0) / dur, 1);
+      var v = Math.round(end * (1 - Math.pow(1 - p, 3)));
+      el.textContent = v.toLocaleString('ko-KR');
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  });
+})();
+// 시계
+(function(){
+  var el = document.getElementById('clock');
+  function tick(){
+    var d = new Date();
+    el.textContent = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  }
+  tick(); setInterval(tick, 10000);
+})();
+</script>
+</body>
+</html>

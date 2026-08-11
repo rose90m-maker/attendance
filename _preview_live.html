@@ -1,0 +1,1175 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>대시보드 — 태인관리시스템</title>
+<link rel="stylesheet" as="style" crossorigin
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+/* ══════════ Design Tokens ══════════ */
+:root{
+  /* 지반·표면 */
+  --bg:#F4F6F8;
+  --card:#FFFFFF;
+  --card-hover:#FBFCFD;
+  --border:#E4E8EC;
+  --border-soft:#EFF2F5;
+  --shadow:0 1px 2px rgba(16,24,40,.05);
+  --shadow-h:0 2px 8px rgba(16,24,40,.08);
+
+  /* Navy — 사이드바 (기존 계열 유지) */
+  --navy:#16233B;
+  --navy-2:#1D2E4A;
+  --navy-on:#E6ECF4;
+  --navy-dim:#8899B0;
+
+  /* Primary */
+  --pri:#1E40AF;
+  --pri-600:#2563EB;
+  --pri-50:#EFF4FF;
+  --pri-100:#DCE7FE;
+
+  /* 의미색 — 이 넷만 쓴다 */
+  --ok:#15803D;   --ok-bg:#ECFDF3;
+  --warn:#C2410C; --warn-bg:#FFF4ED;
+  --danger:#B42318; --danger-bg:#FEF3F2;
+
+  /* 잉크 */
+  --ink:#101828;
+  --ink-2:#475467;
+  --muted:#8A939F;
+
+  /* 8px 스페이싱 */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px;
+  --r-card:12px; --r-in:8px; --r-chip:6px;
+
+  --side-w:236px; --top-h:56px;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  font-size:13.5px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+.num{font-variant-numeric:tabular-nums; letter-spacing:-.015em}
+
+/* ══════════ Top navigation ══════════ */
+.top{
+  position:fixed; inset:0 0 auto 0; height:var(--top-h); z-index:50;
+  background:var(--card); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:var(--s5); padding:0 var(--s5);
+}
+.top-brand{display:flex; align-items:center; gap:var(--s2); width:calc(var(--side-w) - 20px)}
+.top-mark{width:26px; height:26px; border-radius:7px; background:var(--pri);
+  color:#fff; font-size:12px; font-weight:700; display:grid; place-items:center}
+.top-brand b{font-size:15px; font-weight:700; letter-spacing:-.02em}
+
+/* Status chips — 기존 상단 숫자 나열을 대체 */
+.chips{display:flex; align-items:center; gap:var(--s2)}
+.chip{
+  display:inline-flex; align-items:center; gap:6px;
+  height:32px; padding:0 12px; border-radius:var(--r-chip);
+  background:var(--bg); border:1px solid var(--border);
+  font-size:12.5px; color:var(--ink-2); text-decoration:none;
+  transition:background .15s, border-color .15s;
+}
+.chip:hover{background:var(--pri-50); border-color:var(--pri-100); color:var(--pri)}
+.chip b{font-size:13.5px; font-weight:700; color:var(--ink)}
+.chip .dot{width:6px; height:6px; border-radius:50%}
+.dot-ok{background:var(--ok)} .dot-pri{background:var(--pri-600)}
+.dot-warn{background:var(--warn)} .dot-danger{background:var(--danger)}
+
+.top-right{margin-left:auto; display:flex; align-items:center; gap:var(--s3)}
+.who{display:flex; flex-direction:column; line-height:1.25; text-align:right}
+.who b{font-size:13px; font-weight:600}
+.who span{font-size:11.5px; color:var(--muted)}
+.avatar{width:32px; height:32px; border-radius:50%; background:var(--pri-50);
+  color:var(--pri); font-size:12.5px; font-weight:700; display:grid; place-items:center}
+.icon-btn{width:32px; height:32px; border-radius:var(--r-chip); border:1px solid var(--border);
+  background:var(--card); color:var(--ink-2); display:grid; place-items:center; cursor:pointer;
+  transition:background .15s, border-color .15s}
+.icon-btn:hover{background:var(--pri-50); border-color:var(--pri-100); color:var(--pri)}
+
+/* ══════════ Sidebar ══════════ */
+.side{
+  position:fixed; top:0; bottom:0; left:0; width:var(--side-w); z-index:60;
+  background:var(--navy); color:var(--navy-on); overflow-y:auto;
+  padding:0 0 var(--s4);
+}
+.side::-webkit-scrollbar{width:6px}
+.side::-webkit-scrollbar-thumb{background:#2C3E5C; border-radius:3px}
+.side-head{height:var(--top-h); display:flex; align-items:center; gap:var(--s2);
+  padding:0 var(--s4); border-bottom:1px solid rgba(255,255,255,.07)}
+.side-head .top-mark{background:var(--pri-600)}
+.side-head b{font-size:14.5px; font-weight:700; color:#fff; letter-spacing:-.02em}
+.side-grp{padding:var(--s4) var(--s4) var(--s1); font-size:10.5px; font-weight:700;
+  color:var(--navy-dim); letter-spacing:.1em}
+.side a{
+  display:flex; align-items:center; gap:10px; height:44px; padding:0 var(--s4);
+  color:#C3CEDE; text-decoration:none; font-size:13px;
+  border-left:3px solid transparent; transition:background .15s, color .15s;
+}
+.side a:hover{background:rgba(255,255,255,.05); color:#fff}
+.side a.on{background:var(--navy-2); border-left-color:var(--pri-600); color:#fff; font-weight:600}
+.side a .ic{width:16px; height:16px; flex:none; opacity:.85}
+.side a.on .ic{opacity:1}
+
+/* ══════════ Stage ══════════ */
+.stage{
+  margin:var(--top-h) 0 0 var(--side-w);
+  min-height:calc(100vh - var(--top-h));
+  padding:var(--s5);
+  display:flex; flex-direction:column; gap:var(--s4);
+}
+
+/* ── KPI row ── */
+.kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:var(--s4)}
+.kpi{
+  background:var(--card); border:1px solid var(--border); border-radius:var(--r-card);
+  box-shadow:var(--shadow); padding:var(--s4) var(--s5);
+  display:flex; align-items:center; gap:var(--s4);
+  transition:box-shadow .15s, border-color .15s;
+}
+.kpi:hover{box-shadow:var(--shadow-h); border-color:#D6DCE3}
+.kpi-ic{width:40px; height:40px; border-radius:10px; flex:none; display:grid; place-items:center}
+.kpi-ic.b{background:var(--pri-50); color:var(--pri)}
+.kpi-ic.g{background:var(--ok-bg); color:var(--ok)}
+.kpi-ic.o{background:var(--warn-bg); color:var(--warn)}
+.kpi-ic.r{background:var(--danger-bg); color:var(--danger)}
+.kpi-txt{min-width:0}
+.kpi-label{font-size:12.5px; color:var(--ink-2); margin-bottom:2px}
+.kpi-val{font-size:30px; font-weight:700; line-height:1.1; letter-spacing:-.03em}
+.kpi-val small{font-size:14px; font-weight:500; color:var(--muted); margin-left:3px; letter-spacing:0}
+.kpi-sub{font-size:12px; color:var(--muted); margin-top:2px}
+
+/* ── Board ── */
+.board{display:grid; gap:var(--s4); grid-template-columns:1fr 1.55fr 1.05fr; align-items:start}
+.col{display:flex; flex-direction:column; gap:var(--s4); min-width:0}
+
+.card{
+  background:var(--card); border:1px solid var(--border); border-radius:var(--r-card);
+  box-shadow:var(--shadow); padding:var(--s5); min-width:0;
+}
+.card-h{display:flex; align-items:baseline; gap:var(--s2); margin-bottom:var(--s4)}
+.card-h h2{margin:0; font-size:15px; font-weight:700; letter-spacing:-.02em}
+.card-h .meta{margin-left:auto; font-size:12px; color:var(--muted)}
+.card-h .more{margin-left:auto; font-size:12px; color:var(--pri); text-decoration:none}
+.card-h .more:hover{text-decoration:underline}
+
+/* ── 부서별 출근 ── */
+.dept{display:flex; align-items:center; gap:var(--s3); padding:7px 0}
+.dept-n{width:60px; flex:none; font-size:13px; color:var(--ink-2)}
+.dept-t{flex:1; height:8px; background:var(--border-soft); border-radius:99px; overflow:hidden}
+.dept-f{height:100%; background:var(--pri-600); border-radius:99px}
+.dept-c{width:34px; flex:none; text-align:right; font-size:14px; font-weight:700}
+
+.tagwrap{display:flex; flex-wrap:wrap; gap:6px; margin-top:var(--s3);
+  padding-top:var(--s3); border-top:1px solid var(--border-soft)}
+.tag{display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:var(--r-chip);
+  font-size:12px; font-weight:500}
+.tag.leave{background:var(--pri-50); color:var(--pri)}
+.tag.etc{background:var(--warn-bg); color:var(--warn)}
+
+/* ── 식수 표 ── */
+table.meal{width:100%; border-collapse:collapse; font-size:13px}
+table.meal th,table.meal td{padding:7px 6px; text-align:center; border:none}
+table.meal thead th{font-size:12px; font-weight:600; color:var(--muted);
+  border-bottom:1px solid var(--border-soft)}
+table.meal tbody th{text-align:left; font-weight:500; color:var(--ink-2); font-size:12.5px}
+table.meal td{color:var(--ink); font-variant-numeric:tabular-nums}
+table.meal td.zero{color:#C6CCD4}
+table.meal .today{background:var(--pri-50)}
+table.meal thead th.today{color:var(--pri); font-weight:700; border-radius:var(--r-in) var(--r-in) 0 0}
+table.meal tbody tr:last-child td.today{border-radius:0 0 var(--r-in) var(--r-in)}
+table.meal tfoot td{font-weight:700; border-top:1px solid var(--border-soft)}
+
+/* ── 달력 ── */
+.cal-h{display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:var(--s1)}
+.cal-h span{text-align:center; font-size:11.5px; font-weight:600; color:var(--muted); padding:4px 0}
+.cal-h span.sun{color:var(--danger)} .cal-h span.sat{color:var(--pri-600)}
+.cal{display:grid; grid-template-columns:repeat(7,1fr); gap:var(--s1)}
+.cd{min-height:78px; border-radius:var(--r-in); padding:6px 7px; background:var(--card);
+  border:1px solid transparent; display:flex; flex-direction:column; gap:3px;
+  transition:background .15s, border-color .15s; cursor:pointer}
+.cd:hover{background:var(--bg); border-color:var(--border)}
+.cd.out{opacity:.35}
+.cd.today{background:var(--pri-50); border-color:var(--pri-100)}
+.cd-n{font-size:13px; font-weight:600; color:var(--ink-2); font-variant-numeric:tabular-nums}
+.cd.today .cd-n{color:var(--pri); font-weight:700}
+.cd.sun .cd-n{color:var(--danger)} .cd.sat .cd-n{color:var(--pri-600)}
+.cd.hol .cd-n{color:var(--danger)}
+.cd-hol{font-size:10.5px; color:var(--danger); font-weight:500}
+.ev{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--ink-2);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.ev i{width:5px; height:5px; border-radius:50%; flex:none}
+.ev.leave i{background:var(--pri-600)} .ev.edu i{background:var(--ok)}
+.ev.event i{background:var(--warn)} .ev.check i{background:var(--muted)}
+.ev.holiday i{background:var(--danger)}
+.cal-legend{display:flex; gap:var(--s4); margin-top:var(--s3); padding-top:var(--s3);
+  border-top:1px solid var(--border-soft); font-size:11.5px; color:var(--muted)}
+.cal-legend span{display:inline-flex; align-items:center; gap:5px}
+.cal-legend i{width:6px; height:6px; border-radius:50%}
+
+/* ── 근무보고서 segmented bar ── */
+.seg{display:flex; height:10px; border-radius:99px; overflow:hidden; background:var(--border-soft)}
+.seg i{display:block; height:100%}
+.seg .s-ok{background:var(--ok)} .seg .s-warn{background:var(--warn)} .seg .s-pri{background:var(--pri-600)}
+.seg-legend{display:flex; gap:var(--s4); margin-top:var(--s3); flex-wrap:wrap}
+.seg-item{display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-2)}
+.seg-item i{width:8px; height:8px; border-radius:2px}
+.seg-item b{font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums}
+.grp{display:flex; align-items:center; gap:var(--s2); padding:6px 0; font-size:12.5px;
+  border-top:1px solid var(--border-soft)}
+.grp:first-of-type{margin-top:var(--s3)}
+.grp-n{width:60px; flex:none; color:var(--ink-2)}
+.grp-bar{flex:1; display:flex; height:6px; border-radius:99px; overflow:hidden; background:var(--border-soft)}
+.grp-c{width:30px; text-align:right; font-weight:600; font-variant-numeric:tabular-nums}
+
+/* ── 전력 ── */
+.pw{display:grid; grid-template-columns:repeat(3,1fr); gap:var(--s3); margin-bottom:var(--s4)}
+.pw-i{min-width:0}
+.pw-l{font-size:11.5px; color:var(--muted); margin-bottom:2px}
+.pw-v{font-size:19px; font-weight:700; letter-spacing:-.03em; line-height:1.15}
+.pw-v small{font-size:11.5px; font-weight:500; color:var(--muted); margin-left:2px; letter-spacing:0}
+.spark{width:100%; height:64px; display:block}
+
+/* ── 목록 ── */
+.list{display:flex; flex-direction:column}
+.li{display:flex; align-items:center; gap:var(--s3); padding:9px 0;
+  border-top:1px solid var(--border-soft); font-size:13px}
+.li:first-child{border-top:none; padding-top:0}
+.li-t{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.li-m{font-size:11.5px; color:var(--muted); flex:none}
+.li-r{font-size:12px; color:var(--muted); flex:none; font-variant-numeric:tabular-nums}
+.badge{padding:2px 7px; border-radius:var(--r-chip); font-size:11px; font-weight:600; flex:none}
+.badge.imp{background:var(--danger-bg); color:var(--danger)}
+.badge.new{background:var(--pri-50); color:var(--pri)}
+.badge.today{background:var(--warn-bg); color:var(--warn)}
+.empty{padding:var(--s5) 0; text-align:center; color:var(--muted); font-size:12.5px}
+
+/* ── MES ── */
+.mes{display:grid; grid-template-columns:repeat(2,1fr); gap:var(--s2)}
+.mes-i{border:1px solid var(--border-soft); border-radius:var(--r-in); padding:10px 12px}
+.mes-d{font-size:11.5px; color:var(--muted); margin-bottom:3px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.mes-v{font-size:17px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.mes-v small{font-size:11.5px; font-weight:500; color:var(--muted)}
+.mes-h{font-size:11.5px; color:var(--muted); margin-top:1px}
+
+a:focus-visible,button:focus-visible,.cd:focus-visible{outline:2px solid var(--pri-600); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+
+/* 1440 이하에서 3열 유지하되 밀도 조정 */
+@media (max-width:1500px){
+  .board{grid-template-columns:1fr 1.45fr 1fr}
+  .kpi-val{font-size:26px}
+  .cd{min-height:68px}
+}
+@media (max-width:1200px){
+  .board{grid-template-columns:1fr 1fr}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+
+
+
+
+
+
+
+
+<!-- ══════════ Sidebar ══════════ -->
+<nav class="side">
+  <div class="side-head">
+    <span class="top-mark">태</span><b>태인관리시스템</b>
+  </div>
+
+  <div class="side-grp">현황</div>
+  <a href="/" class="on"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5v5H2V2zm7 0h5v3H9V2zM2 9h5v5H2V9zm7-2h5v7H9V7z"/></svg>대시보드</a>
+  <a href="/control_center"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l6 3v4c0 3.5-2.5 6.3-6 7-3.5-.7-6-3.5-6-7V4l6-3z"/></svg>통합관제</a>
+
+  <div class="side-grp">근태</div>
+  <a href="/attendance"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm.8 3.5v3.7l2.7 1.6-.8 1.3-3.4-2V4.5h1.5z"/></svg>근태기록</a>
+  <a href="/schedule"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1zm0 4v7h10V6H3z"/></svg>근무표</a>
+  <a href="/work_report"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M4 1h6l3 3v11H4V1zm5 1v3h3"/></svg>근무보고서</a>
+  <a href="/leave_dashboard"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l2 4h4l-3 3 1 5-4-2.5L4 14l1-5-3-3h4l2-4z"/></svg>연차관리</a>
+
+  <div class="side-grp">운영</div>
+  <a href="/meal_order"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1h1v6H3V1zm3 0h1v6H6V1zM2 8h6v7H2V8zm10-7h2v14h-2V8h-2V4a3 3 0 012-3z"/></svg>식수관리</a>
+  <a href="/bus_dispatch"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h10v9H3V2zm0 10h2v2H3v-2zm8 0h2v2h-2v-2z"/></svg>배차관리</a>
+  <a href="/guard_list"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l5 2v5c0 3-2 5.5-5 7-3-1.5-5-4-5-7V3l5-2z"/></svg>경비일지</a>
+
+  <div class="side-grp">인사</div>
+  <a href="/hr_status"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 8a3 3 0 100-6 3 3 0 000 6zm0 1.5c-3 0-5.5 1.5-5.5 3.5V15h11v-2c0-2-2.5-3.5-5.5-3.5z"/></svg>인사현황</a>
+  <a href="/hr_roster"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v2H2V3zm0 4h12v2H2V7zm0 4h12v2H2v-2z"/></svg>전체 재직자</a>
+  <a href="/hr_vehicle"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M3 9l1-4h8l1 4v4h-2v-2H5v2H3V9z"/></svg>차량현황</a>
+
+  <div class="side-grp">생산 · 에너지</div>
+  <a href="/mes/report"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M2 13h3V7H2v6zm4.5 0h3V3h-3v10zM11 13h3V9h-3v4z"/></svg>생산 리포트</a>
+  <a href="/mes/env"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a2 2 0 00-2 2v6a3.5 3.5 0 104 0V3a2 2 0 00-2-2z"/></svg>온습도 현황</a>
+  <a href="/power"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M9 1L3 9h4l-1 6 6-8H8l1-6z"/></svg>전력사용현황</a>
+</nav>
+
+<!-- ══════════ Top ══════════ -->
+<header class="top">
+  <div class="top-brand" style="width:calc(var(--side-w) - 20px - var(--s5))"></div>
+
+  <div class="chips">
+    <a class="chip" href="/attendance"><span class="dot dot-ok"></span>출근 <b class="num">92</b></a>
+    <a class="chip" href="/leave_dashboard"><span class="dot dot-pri"></span>휴가 <b class="num">8</b></a>
+    <a class="chip" href="/work_report"><span class="dot dot-warn"></span>보고서 <b class="num">138</b></a>
+    <a class="chip" href="/work_report"><span class="dot dot-danger"></span>결재대기 <b class="num">5</b></a>
+  </div>
+
+  <div class="top-right">
+    <button class="icon-btn" aria-label="알림">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a4 4 0 00-4 4v3L2.5 11h11L12 8V5a4 4 0 00-4-4zM6.5 12.5a1.5 1.5 0 003 0h-3z"/></svg>
+    </button>
+    <div class="who"><b>관리자</b><span>총무팀</span></div>
+    <div class="avatar">관</div>
+  </div>
+</header>
+
+<main class="stage">
+
+  <!-- ══════ 1순위 KPI ══════ -->
+  <section class="kpis" aria-label="핵심 지표">
+    <div class="kpi">
+      <div class="kpi-ic b"><svg width="19" height="19" viewBox="0 0 16 16" fill="currentColor"><path d="M8 8a3 3 0 100-6 3 3 0 000 6zm0 1.5c-3 0-5.5 1.5-5.5 3.5V15h11v-2c0-2-2.5-3.5-5.5-3.5z"/></svg></div>
+      <div class="kpi-txt">
+        <div class="kpi-label">오늘 출근</div>
+        <div class="kpi-val num">92<small>명</small></div>
+        <div class="kpi-sub">5개 부서 · 08:10 기준</div>
+      </div>
+    </div>
+
+    <div class="kpi">
+      <div class="kpi-ic o"><svg width="19" height="19" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1zm0 4v7h10V6H3zm2 2h2v2H5V8z"/></svg></div>
+      <div class="kpi-txt">
+        <div class="kpi-label">휴가 · 부재</div>
+        <div class="kpi-val num">16<small>명</small></div>
+        <div class="kpi-sub">연차 8 · 기타 8</div>
+      </div>
+    </div>
+
+    <div class="kpi">
+      <div class="kpi-ic g"><svg width="19" height="19" viewBox="0 0 16 16" fill="currentColor"><path d="M4 1h5l3 3v11H4V1zm1 6h6v1H5V7zm0 3h6v1H5v-1z"/></svg></div>
+      <div class="kpi-txt">
+        <div class="kpi-label">근무보고서</div>
+        <div class="kpi-val num">138<small>건</small></div>
+        <div class="kpi-sub">08월 · 그룹 8개</div>
+      </div>
+    </div>
+
+    <div class="kpi">
+      <div class="kpi-ic r"><svg width="19" height="19" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm-.8 3h1.6v5H7.2V4zm0 6.5h1.6v1.6H7.2v-1.6z"/></svg></div>
+      <div class="kpi-txt">
+        <div class="kpi-label">결재 대기</div>
+        <div class="kpi-val num">5<small>건</small></div>
+        <div class="kpi-sub">작성완료 2건 대기 중</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ Board ══════ -->
+  <div class="board">
+
+    <!-- ─── 좌 ─── -->
+    <div class="col">
+
+      <!-- 1순위: 부서별 출근 -->
+      <section class="card">
+        <div class="card-h"><h2>부서별 출근현황</h2><span class="meta num">92명</span></div>
+        
+        
+        <div class="dept">
+          <span class="dept-n">관리부</span>
+          <span class="dept-t"><span class="dept-f" style="width:17%"></span></span>
+          <span class="dept-c num">7</span>
+        </div>
+        
+        <div class="dept">
+          <span class="dept-n">전기사무</span>
+          <span class="dept-t"><span class="dept-f" style="width:24%"></span></span>
+          <span class="dept-c num">10</span>
+        </div>
+        
+        <div class="dept">
+          <span class="dept-n">전기생산</span>
+          <span class="dept-t"><span class="dept-f" style="width:100%"></span></span>
+          <span class="dept-c num">41</span>
+        </div>
+        
+        <div class="dept">
+          <span class="dept-n">전자사무</span>
+          <span class="dept-t"><span class="dept-f" style="width:19%"></span></span>
+          <span class="dept-c num">8</span>
+        </div>
+        
+        <div class="dept">
+          <span class="dept-n">전자생산</span>
+          <span class="dept-t"><span class="dept-f" style="width:63%"></span></span>
+          <span class="dept-c num">26</span>
+        </div>
+        
+
+        
+        <div class="tagwrap">
+          <span class="tag leave">고영자 · 연차</span><span class="tag leave">김세희 · 연차</span><span class="tag leave">변경순 · 연차</span><span class="tag leave">안유정 · 연차</span><span class="tag leave">윤경진 · 연차</span><span class="tag leave">이진순 · 연차</span><span class="tag leave">정지환 · 연차</span><span class="tag leave">최호선 · 연차</span>
+          <span class="tag etc">강태준 · 무급</span><span class="tag etc">곽순영 · 무급</span><span class="tag etc">왕해청 · 무급</span><span class="tag etc">유도현 · 무급</span><span class="tag etc">윤일성 · 무급</span><span class="tag etc">전혜경 · 무급</span><span class="tag etc">정재우 · 무급</span><span class="tag etc">지훈구 · 무급</span>
+        </div>
+        
+      </section>
+
+      <!-- 2순위: 식수 -->
+      <section class="card">
+        <div class="card-h"><h2>식수현황</h2><span class="meta">최근 7일</span></div>
+        
+        <table class="meal">
+          <thead>
+            <tr><th style="text-align:left"></th>
+              <th class="">월</th><th class="today">화</th><th class="">수</th><th class="">목</th><th class="">금</th><th class="">토</th><th class="">일</th>
+            </tr>
+          </thead>
+          <tbody>
+            
+            <tr>
+              <th>조식</th>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="today zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+            </tr>
+            
+            <tr>
+              <th>중식</th>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="today zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+            </tr>
+            
+            <tr>
+              <th>석식</th>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="today zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+            </tr>
+            
+            <tr>
+              <th>야식</th>
+              
+                
+                
+                <td class="">21</td>
+              
+                
+                
+                <td class="today zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+            </tr>
+            
+          </tbody>
+          <tfoot>
+            <tr><td style="text-align:left">계</td>
+              
+                
+                
+                <td class="">21</td>
+              
+                
+                
+                <td class="today zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+                
+                
+                <td class="zero">–</td>
+              
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+
+      <!-- 2순위: MES -->
+      <section class="card">
+        <div class="card-h"><h2>온습도 현황</h2><a class="more" href="/mes/env">전체</a></div>
+        
+        <div class="mes">
+          
+          <div class="mes-i">
+            <div class="mes-d">전산실</div>
+            <div class="mes-v num">28.0<small>℃</small></div>
+            <div class="mes-h num">습도 42% · 09:01</div>
+          </div>
+          
+        </div>
+        
+      </section>
+    </div>
+
+    <!-- ─── 중 ─── -->
+    <div class="col">
+
+      <!-- 1순위: 달력 -->
+      <section class="card">
+        <div class="card-h">
+          <h2>2026년 08월 일정</h2>
+          <span class="meta">오늘 08월 11일 (화)</span>
+        </div>
+        <div class="cal-h">
+          <span class="sun">일</span><span>월</span><span>화</span><span>수</span>
+          <span>목</span><span>금</span><span class="sat">토</span>
+        </div>
+        <div class="cal">
+          
+          <div class="cd  out  sun " tabindex="0">
+            <span class="cd-n">26</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd  out   " tabindex="0">
+            <span class="cd-n">27</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd  out   " tabindex="0">
+            <span class="cd-n">28</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd  out   " tabindex="0">
+            <span class="cd-n">29</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd  out   " tabindex="0">
+            <span class="cd-n">30</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd  out   " tabindex="0">
+            <span class="cd-n">31</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     sat" tabindex="0">
+            <span class="cd-n">1</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd    sun " tabindex="0">
+            <span class="cd-n">2</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">3</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">4</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">5</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">6</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">7</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     sat" tabindex="0">
+            <span class="cd-n">8</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd    sun " tabindex="0">
+            <span class="cd-n">9</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">10</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd today    " tabindex="0">
+            <span class="cd-n">11</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">12</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">13</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">14</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd   hol  sat" tabindex="0">
+            <span class="cd-n">15</span>
+            <span class="cd-hol">광복절</span>
+            
+            
+          </div>
+          
+          <div class="cd    sun " tabindex="0">
+            <span class="cd-n">16</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd   hol  " tabindex="0">
+            <span class="cd-n">17</span>
+            <span class="cd-hol">광복절 대체 휴일</span>
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">18</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">19</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">20</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">21</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     sat" tabindex="0">
+            <span class="cd-n">22</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd    sun " tabindex="0">
+            <span class="cd-n">23</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">24</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">25</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">26</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">27</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">28</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     sat" tabindex="0">
+            <span class="cd-n">29</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd    sun " tabindex="0">
+            <span class="cd-n">30</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd     " tabindex="0">
+            <span class="cd-n">31</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd  out   " tabindex="0">
+            <span class="cd-n">1</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd  out   " tabindex="0">
+            <span class="cd-n">2</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd  out   " tabindex="0">
+            <span class="cd-n">3</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd  out   " tabindex="0">
+            <span class="cd-n">4</span>
+            
+            
+            
+          </div>
+          
+          <div class="cd  out   sat" tabindex="0">
+            <span class="cd-n">5</span>
+            
+            
+            
+          </div>
+          
+        </div>
+        <div class="cal-legend">
+          <span><i style="background:var(--pri-600)"></i>연차·휴가</span>
+          <span><i style="background:var(--ok)"></i>교육</span>
+          <span><i style="background:var(--warn)"></i>행사·회의</span>
+          <span><i style="background:var(--danger)"></i>공휴일</span>
+        </div>
+      </section>
+
+      <!-- 3순위: 공지 -->
+      <section class="card">
+        <div class="card-h"><h2>공지사항</h2><a class="more" href="/notice">전체 3건</a></div>
+        <div class="list">
+          
+          <div class="li">
+            
+            <span class="li-t">5월 12일(화)해외연수 OT안내</span>
+            <span class="li-m">관리자</span>
+            <span class="li-r">2026-05-04</span>
+          </div>
+          
+          <div class="li">
+            
+            <span class="li-t">왁스청소 안내</span>
+            <span class="li-m">관리자</span>
+            <span class="li-r">2026-04-21</span>
+          </div>
+          
+          <div class="li">
+            
+            <span class="li-t">소방훈련 안내</span>
+            <span class="li-m">관리자</span>
+            <span class="li-r">2026-04-03</span>
+          </div>
+          
+        </div>
+      </section>
+    </div>
+
+    <!-- ─── 우 ─── -->
+    <div class="col">
+
+      <!-- 1순위: 근무보고서 -->
+      <section class="card">
+        <div class="card-h"><h2>근무보고서</h2><span class="meta num">전체 138건</span></div>
+        
+        <div class="seg" role="img" aria-label="결재 131건, 작성완료 2건, 대기 5건">
+          <i class="s-ok"    style="width:94.9%"></i>
+          <i class="s-pri"   style="width:1.4%"></i>
+          <i class="s-warn"  style="width:3.6%"></i>
+        </div>
+        <div class="seg-legend">
+          <span class="seg-item"><i style="background:var(--ok)"></i>결재 <b class="num">131</b></span>
+          <span class="seg-item"><i style="background:var(--pri-600)"></i>작성완료 <b class="num">2</b></span>
+          <span class="seg-item"><i style="background:var(--warn)"></i>대기 <b class="num">5</b></span>
+        </div>
+        
+          
+          <div class="grp">
+            <span class="grp-n">PQC</span>
+            <span class="grp-bar">
+              
+              <i style="width:80.8%;background:var(--ok)"></i>
+              
+              <i style="width:19.2%;background:var(--warn)"></i>
+              
+            </span>
+            <span class="grp-c num">26</span>
+          </div>
+        
+          
+          <div class="grp">
+            <span class="grp-n">QA</span>
+            <span class="grp-bar">
+              
+              <i style="width:100.0%;background:var(--ok)"></i>
+              
+            </span>
+            <span class="grp-c num">22</span>
+          </div>
+        
+          
+          <div class="grp">
+            <span class="grp-n">SAW</span>
+            <span class="grp-bar">
+              
+              <i style="width:100.0%;background:var(--ok)"></i>
+              
+            </span>
+            <span class="grp-c num">20</span>
+          </div>
+        
+          
+          <div class="grp">
+            <span class="grp-n">SMT</span>
+            <span class="grp-bar">
+              
+              <i style="width:100.0%;background:var(--ok)"></i>
+              
+            </span>
+            <span class="grp-c num">22</span>
+          </div>
+        
+          
+          <div class="grp">
+            <span class="grp-n">전기제조</span>
+            <span class="grp-bar">
+              
+              <i style="width:100.0%;background:var(--ok)"></i>
+              
+            </span>
+            <span class="grp-c num">4</span>
+          </div>
+        
+          
+          <div class="grp">
+            <span class="grp-n">전기품질</span>
+            <span class="grp-bar">
+              
+              <i style="width:100.0%;background:var(--ok)"></i>
+              
+            </span>
+            <span class="grp-c num">2</span>
+          </div>
+        
+          
+          <div class="grp">
+            <span class="grp-n">전자설비</span>
+            <span class="grp-bar">
+              
+              <i style="width:100.0%;background:var(--ok)"></i>
+              
+            </span>
+            <span class="grp-c num">21</span>
+          </div>
+        
+          
+          <div class="grp">
+            <span class="grp-n">전자자재</span>
+            <span class="grp-bar">
+              
+              <i style="width:90.5%;background:var(--ok)"></i>
+              
+              <i style="width:9.5%;background:var(--pri-600)"></i>
+              
+            </span>
+            <span class="grp-c num">21</span>
+          </div>
+        
+        
+      </section>
+
+      <!-- 2순위: 전력 -->
+      <section class="card">
+        <div class="card-h"><h2>전력 현황</h2><span class="meta">07/15–08/14</span></div>
+        <div class="pw">
+          <div class="pw-i">
+            <div class="pw-l">당월 누계</div>
+            <div class="pw-v num">392,883<small>kWh</small></div>
+          </div>
+          <div class="pw-i">
+            <div class="pw-l">실시간 요금</div>
+            <div class="pw-v num">8,057<small>만원</small></div>
+          </div>
+          <div class="pw-i">
+            <div class="pw-l">오늘 사용량</div>
+            <div class="pw-v num">4,365.4<small>kWh</small></div>
+          </div>
+        </div>
+        <svg class="spark" viewBox="0 0 240 64" preserveAspectRatio="none" aria-label="오늘 시간대별 전력 사용">
+          <polyline fill="var(--pri-600)" fill-opacity=".07" stroke="none" points="0.0,60.0 26.7,4.2 53.3,4.9 80.0,4.0 106.7,4.8 133.3,6.2 160.0,7.9 186.7,7.2 213.3,4.5 240.0,46.0 240,64 0,64"/>
+          <polyline fill="none" stroke="var(--pri-600)" stroke-width="1.8" stroke-linejoin="round" points="0.0,60.0 26.7,4.2 53.3,4.9 80.0,4.0 106.7,4.8 133.3,6.2 160.0,7.9 186.7,7.2 213.3,4.5 240.0,46.0"/>
+          <circle cx="240.0" cy="46.0" r="2.8"
+                  fill="var(--pri-600)" stroke="#fff" stroke-width="1.5"/>
+        </svg>
+      </section>
+
+      <!-- 3순위: 생일 -->
+      <section class="card">
+        <div class="card-h"><h2>0월 생일자</h2><span class="meta num">12명</span></div>
+        <div class="list">
+          
+          <div class="li">
+            <span class="li-t">전윤희 사원</span>
+            <span class="li-m">설비</span>
+            <span class="li-r">01일</span>
+          </div>
+          
+          <div class="li">
+            <span class="li-t">이진순 사원</span>
+            <span class="li-m">설비</span>
+            <span class="li-r">01일</span>
+          </div>
+          
+          <div class="li">
+            <span class="li-t">이은주 사원</span>
+            <span class="li-m">전기제조팀</span>
+            <span class="li-r">04일</span>
+          </div>
+          
+          <div class="li">
+            <span class="li-t">송명섭 사원</span>
+            <span class="li-m">SMT</span>
+            <span class="li-r">04일</span>
+          </div>
+          
+          <div class="li">
+            <span class="li-t">장미영 사원</span>
+            <span class="li-m">QA</span>
+            <span class="li-r">04일</span>
+          </div>
+          
+          <div class="li">
+            <span class="li-t">이은경 사원</span>
+            <span class="li-m">QA</span>
+            <span class="li-r">08일</span>
+          </div>
+          
+          <div class="li">
+            <span class="li-t">김재원 사원</span>
+            <span class="li-m">PQC</span>
+            <span class="li-r">14일</span>
+          </div>
+          
+          <div class="li">
+            <span class="li-t">권문식 경비반장</span>
+            <span class="li-m">총무팀</span>
+            <span class="li-r">15일</span>
+          </div>
+          
+        </div>
+      </section>
+    </div>
+
+  </div>
+</main>
+</body>
+</html>
