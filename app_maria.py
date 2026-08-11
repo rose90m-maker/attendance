@@ -6192,6 +6192,92 @@ def api_msg_targets():
                     "valid": sum(1 for r in out if r["valid"]), "total": len(out)})
 
 
+_MSG_FAV_READY = False
+
+
+def _ensure_msg_fav():
+    """수신자 즐겨찾기 테이블 — 첫 사용 때 한 번만 만든다"""
+    global _MSG_FAV_READY
+    if _MSG_FAV_READY:
+        return
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS `msg_favorites` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `name` VARCHAR(50) NOT NULL UNIQUE,
+            `emp_ids` TEXT NOT NULL,
+            `created_by` VARCHAR(50) DEFAULT '',
+            `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+                         ON UPDATE CURRENT_TIMESTAMP
+        ) DEFAULT CHARSET=utf8mb4""")
+    conn.commit(); conn.close()
+    _MSG_FAV_READY = True
+
+
+@app.route("/api/msg_fav", methods=["GET", "POST"])
+@_menu_required("msg_send")
+def api_msg_fav():
+    """수신자 즐겨찾기 — 자주 쓰는 수신자 묶음에 이름을 붙여 저장한다.
+
+    예) 생산회의 / 부장모임 / 관리자만. msg_send 권한자 공용이다.
+    emp_ids 는 employee_roster.id 목록(JSON) — '사람 묶음'을 저장하는 것이라
+    퇴사자는 화면에서 불러올 때 걸러진다. 저장·이름변경·삭제는 발송 권한
+    (create)이 있어야 한다. 조회는 화면 진입 권한이면 된다.
+    """
+    import json as _json
+    _ensure_msg_fav()
+    conn = _conn(); cur = conn.cursor()
+    try:
+        if request.method == "GET":
+            cur.execute("SELECT id, name, emp_ids FROM msg_favorites ORDER BY name")
+            rows = [{"id": r[0], "name": r[1],
+                     "emp_ids": _json.loads(r[2] or "[]")}
+                    for r in cur.fetchall()]
+            return jsonify({"ok": True, "rows": rows})
+
+        if not _menu_perm("msg_send", "create"):
+            return jsonify({"ok": False, "err": "저장 권한이 없습니다"})
+        d = request.get_json(force=True, silent=True) or {}
+        act = d.get("action")
+        name = (d.get("name") or "").strip()[:50]
+        fid = d.get("id")
+
+        if act == "create":                     # 같은 이름이면 덮어쓴다 (화면에서 확인받고 온다)
+            try:
+                ids = sorted({int(x) for x in (d.get("emp_ids") or [])})
+            except (TypeError, ValueError):
+                ids = []
+            if not name or not ids:
+                return jsonify({"ok": False, "err": "이름과 수신자가 필요합니다"})
+            cur.execute("SELECT id FROM msg_favorites WHERE name=%s", (name,))
+            r = cur.fetchone()
+            if r:
+                cur.execute("UPDATE msg_favorites SET emp_ids=%s WHERE id=%s",
+                            (_json.dumps(ids), r[0]))
+            else:
+                cur.execute("""INSERT INTO msg_favorites(name, emp_ids, created_by)
+                               VALUES(%s, %s, %s)""",
+                            (name, _json.dumps(ids),
+                             str(session.get("user_id") or "")))
+        elif act == "rename":
+            if not name:
+                return jsonify({"ok": False, "err": "이름이 비었습니다"})
+            cur.execute("SELECT id FROM msg_favorites WHERE name=%s AND id<>%s",
+                        (name, fid))
+            if cur.fetchone():
+                return jsonify({"ok": False, "err": "같은 이름이 이미 있습니다"})
+            cur.execute("UPDATE msg_favorites SET name=%s WHERE id=%s", (name, fid))
+        elif act == "delete":
+            cur.execute("DELETE FROM msg_favorites WHERE id=%s", (fid,))
+        else:
+            return jsonify({"ok": False, "err": "알 수 없는 요청"})
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        conn.close()
+
+
 @app.route("/api/msg_preview", methods=["POST"])
 @_menu_required("msg_send")
 def api_msg_preview():

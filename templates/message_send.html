@@ -164,6 +164,19 @@
                     <span class="more-link ms-2" onclick="clearAll()" id="btnClearSel"
                           style="display:none; color:#b91c1c;">비우기</span>
                 </div>
+
+                <!-- 수신자 즐겨찾기 — 자주 쓰는 묶음(생산회의·부장모임 등)을 이름 붙여 저장 -->
+                <div class="mt-2 pt-2" style="border-top:1px dashed #e5e7eb;">
+                    <div class="d-flex align-items-center flex-wrap" style="gap:6px;">
+                        <span style="font-size:.78rem; color:#6b7280; font-weight:600;">★ 즐겨찾기</span>
+                        <span id="favArea"><span class="text-muted" style="font-size:.75rem;">불러오는 중…</span></span>
+                        {% if can_send %}
+                        <button class="btn btn-outline-primary btn-sm" id="btnFavSave"
+                                style="font-size:.74rem; padding:1px 8px;"
+                                onclick="saveFav()">+ 현재 선택 저장</button>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
 
             <!-- 2. 내용 -->
@@ -604,9 +617,76 @@ async function detail(cid){
     document.getElementById('detailBox').scrollIntoView({behavior:'smooth'});
 }
 
+/* ── 수신자 즐겨찾기 ──
+   '사람 묶음'에 이름을 붙여 저장한다 (생산회의·부장모임·관리자만 …).
+   저장은 employee_roster.id 목록 — 퇴사자는 불러올 때 걸러 안내한다. */
+let favs = [];
+async function loadFavs(){
+    try{
+        const d = await fetch('/api/msg_fav').then(r=>r.json());
+        favs = d.rows || [];
+    }catch(e){ favs = []; }
+    drawFavs();
+}
+function drawFavs(){
+    const area = document.getElementById('favArea');
+    if (!favs.length){
+        area.innerHTML = '<span class="text-muted" style="font-size:.75rem;">저장된 묶음 없음</span>';
+        return;
+    }
+    area.innerHTML = favs.map(f=>{
+        const alive = f.emp_ids.filter(id=>empOf(id)).length;
+        return `<span class="chip-sm" title="클릭하면 이 묶음으로 수신자를 바꿉니다"
+                      onclick="applyFav(${f.id})">★ ${esc(f.name)} <b>${alive}</b>`+
+               `<span onclick="event.stopPropagation();renameFav(${f.id})" title="이름 변경"
+                      style="margin-left:6px; opacity:.55;">✎</span>`+
+               `<span onclick="event.stopPropagation();delFav(${f.id})" title="삭제"
+                      style="margin-left:2px; opacity:.55;">×</span></span>`;
+    }).join('');
+}
+function applyFav(id){
+    const f = favs.find(x=>x.id===id); if (!f) return;
+    const ok = f.emp_ids.filter(x=>empOf(x));
+    // 담아두기가 아니라 '이 묶음으로 교체' — 회의 명단을 부르는 동작이라 교체가 예측 가능하다
+    selected = new Set(ok);
+    showAllRcpt = false;
+    afterSelect();
+    const missing = f.emp_ids.length - ok.length;
+    if (missing) toast(`${missing}명은 현재 명단에 없어 제외했습니다 (퇴사 등)`, 'error');
+}
+async function saveFav(){
+    if (!selected.size){ toast('먼저 수신자를 선택하세요.', 'error'); return; }
+    const name = (prompt('즐겨찾기 이름 (예: 생산회의, 부장모임, 관리자만)') || '').trim();
+    if (!name) return;
+    if (favs.some(f=>f.name===name) &&
+        !confirm(`'${name}' 이 이미 있습니다. 현재 선택 ${selected.size}명으로 덮어쓸까요?`)) return;
+    await favApi({action:'create', name, emp_ids:[...selected]});
+}
+async function renameFav(id){
+    const f = favs.find(x=>x.id===id); if (!f) return;
+    const name = (prompt('새 이름', f.name) || '').trim();
+    if (!name || name === f.name) return;
+    await favApi({action:'rename', id, name});
+}
+async function delFav(id){
+    const f = favs.find(x=>x.id===id); if (!f) return;
+    if (!confirm(`'${f.name}' 즐겨찾기를 삭제할까요?\n(직원 정보가 지워지는 건 아닙니다)`)) return;
+    await favApi({action:'delete', id});
+}
+async function favApi(payload){
+    try{
+        const d = await fetch('/api/msg_fav', {method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(payload)}).then(r=>r.json());
+        if (!d.ok){ toast(d.err || '실패했습니다', 'error'); return; }
+        await loadFavs();
+    }catch(e){ toast('오류: ' + e, 'error'); }
+}
+
 /* 첫 진입: 부서 칩을 그려 두고, 내 번호를 테스트칸에 채운다 */
 setMode('dept');
 drawSelected();
+loadFavs();
 fetch('/api/msg_my_phone').then(r=>r.json()).then(j=>{
     if (j.phone) document.getElementById('testPhone').value =
         j.phone.replace(/(\d{3})(\d{4})(\d{4})/,'$1-$2-$3');
