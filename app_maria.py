@@ -6504,21 +6504,76 @@ def api_msg_history():
                  "status": r[3], "error": r[4]} for r in cur.fetchall()]
         conn.close()
         return jsonify({"ok": True, "rows": rows})
+    # ── 목록: 검색 + 기간 + 상태 + 쪽 나눔 ──
+    where, args = ["1=1"], []
+    q = (request.args.get("q") or "").strip()
+    if q:
+        # 나중에 문자를 찾을 때 실마리는 '무슨 내용' 아니면 '누가 보냈나' 다
+        where.append("(body LIKE %s OR title LIKE %s OR created_by LIKE %s)")
+        args += [f"%{q}%"] * 3
+    st = (request.args.get("status") or "").strip()
+    if st in ("sent", "scheduled", "canceled"):
+        where.append("IFNULL(status,'sent')=%s")
+        args.append(st)
+
+    # 기간 — 드롭다운(ym/y) 과 날짜범위(from/to) 중 들어온 쪽을 쓴다.
+    # 예약 건은 created_at(등록시각)이 아니라 나갈 시각으로 찾는 게 자연스러워
+    # 둘 중 하나라도 걸리면 통과시킨다.
+    ym = (request.args.get("ym") or "").strip()
+    yy = (request.args.get("y") or "").strip()
+    d1 = (request.args.get("from") or "").strip()
+    d2 = (request.args.get("to") or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}", ym):
+        where.append("(DATE_FORMAT(created_at,'%%Y-%%m')=%s "
+                     "OR DATE_FORMAT(scheduled_at,'%%Y-%%m')=%s)")
+        args += [ym, ym]
+    elif re.fullmatch(r"\d{4}", yy):
+        where.append("(YEAR(created_at)=%s OR YEAR(scheduled_at)=%s)")
+        args += [yy, yy]
+    elif re.fullmatch(r"\d{4}-\d{2}-\d{2}", d1) or re.fullmatch(r"\d{4}-\d{2}-\d{2}", d2):
+        lo = d1 if re.fullmatch(r"\d{4}-\d{2}-\d{2}", d1) else "1900-01-01"
+        hi = d2 if re.fullmatch(r"\d{4}-\d{2}-\d{2}", d2) else "2999-12-31"
+        where.append("(DATE(created_at) BETWEEN %s AND %s "
+                     "OR DATE(scheduled_at) BETWEEN %s AND %s)")
+        args += [lo, hi, lo, hi]
+
+    wsql = " AND ".join(where)
+    cur.execute(f"SELECT COUNT(*) FROM msg_campaigns WHERE {wsql}", args)
+    total = cur.fetchone()[0]
+
+    size = request.args.get("size", type=int) or 10
+    size = size if size in (10, 20, 50, 100) else 10
+    pages = max(1, -(-total // size))
+    page = min(max(1, request.args.get("page", type=int) or 1), pages)
+
     # 날짜 형식은 인자로 넘긴다. 인자 없이 execute 하면 pymysql 이 %% 를 풀지 않아
     # MySQL 이 '%%Y' 를 리터럴 %+Y 로 읽어 일시 칸에 '%Y-%m-%d %H:%i' 가 찍힌다.
     _FMT = "%Y-%m-%d %H:%i"
-    cur.execute("""SELECT id, title, channel, kind, body, total, sent, failed, dropped,
-                          created_by, DATE_FORMAT(created_at, %s),
-                          status, DATE_FORMAT(scheduled_at, %s)
-                   FROM msg_campaigns ORDER BY id DESC LIMIT 50""", (_FMT, _FMT))
+    # 예약 건을 맨 위로. 취소해야 할 것이 뒤쪽 쪽에 숨으면 안 된다.
+    cur.execute(f"""SELECT id, title, channel, kind, body, total, sent, failed, dropped,
+                           created_by, DATE_FORMAT(created_at, %s),
+                           status, DATE_FORMAT(scheduled_at, %s)
+                    FROM msg_campaigns WHERE {wsql}
+                    ORDER BY (IFNULL(status,'sent')='scheduled') DESC, id DESC
+                    LIMIT %s OFFSET %s""",
+                [_FMT, _FMT] + args + [size, (page - 1) * size])
     # body 전문을 함께 준다 — 화면에서 "이 내용 다시 쓰기" 로 불러올 수 있게
     rows = [{"id": r[0], "title": r[1], "channel": r[2], "kind": r[3],
              "body": r[4] or "", "total": r[5], "sent": r[6], "failed": r[7],
              "dropped": r[8], "by": r[9], "at": r[10],
              "status": r[11] or "sent", "scheduled_at": r[12] or ""}
             for r in cur.fetchall()]
+
+    # 기간 드롭다운 목록 — 실제로 기록이 있는 년·월만 준다 (빈 달을 고를 일이 없게)
+    cur.execute("""SELECT DISTINCT DATE_FORMAT(COALESCE(scheduled_at, created_at), %s)
+                   FROM msg_campaigns ORDER BY 1 DESC""", ("%Y-%m",))
+    months = [r[0] for r in cur.fetchall() if r[0]]
+    years = sorted({m[:4] for m in months}, reverse=True)
+
     conn.close()
-    return jsonify({"ok": True, "rows": rows})
+    return jsonify({"ok": True, "rows": rows, "total": total,
+                    "page": page, "pages": pages, "size": size,
+                    "months": months, "years": years})
 
 
 @app.route("/api/msg_cancel", methods=["POST"])
