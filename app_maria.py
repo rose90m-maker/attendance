@@ -6435,6 +6435,13 @@ def api_msg_send():
     # 예약 발송 — 시각은 솔라피에 넘기고 우리 서버는 개입하지 않는다.
     # 컨테이너를 재시작해도 예약이 살아 있어야 하므로 자체 스케줄러를 두지 않는다.
     sched = (d.get("scheduled") or "").strip()
+    # 화면이 '예약'으로 보냈는데 시각이 없으면 즉시 발송하지 않고 거절한다.
+    # 2026-08-11: 화면 버튼은 '예약 걸기'였는데 payload 에 scheduled 를 안 실어
+    # 그대로 즉시 발송된 사고가 있었다. 문자는 되돌릴 수 없으므로 막는다.
+    if d.get("intent") == "schedule" and not sched:
+        return jsonify({"ok": False,
+                        "error": "예약 시각이 전달되지 않았습니다. "
+                                 "즉시 발송을 막았습니다 — 화면을 새로고침한 뒤 다시 시도하세요."}), 400
     if sched:
         iso = MS._iso_kst(sched)
         if not iso:
@@ -6497,10 +6504,13 @@ def api_msg_history():
                  "status": r[3], "error": r[4]} for r in cur.fetchall()]
         conn.close()
         return jsonify({"ok": True, "rows": rows})
+    # 날짜 형식은 인자로 넘긴다. 인자 없이 execute 하면 pymysql 이 %% 를 풀지 않아
+    # MySQL 이 '%%Y' 를 리터럴 %+Y 로 읽어 일시 칸에 '%Y-%m-%d %H:%i' 가 찍힌다.
+    _FMT = "%Y-%m-%d %H:%i"
     cur.execute("""SELECT id, title, channel, kind, body, total, sent, failed, dropped,
-                          created_by, DATE_FORMAT(created_at,'%%Y-%%m-%%d %%H:%%i'),
-                          status, DATE_FORMAT(scheduled_at,'%%Y-%%m-%%d %%H:%%i')
-                   FROM msg_campaigns ORDER BY id DESC LIMIT 50""")
+                          created_by, DATE_FORMAT(created_at, %s),
+                          status, DATE_FORMAT(scheduled_at, %s)
+                   FROM msg_campaigns ORDER BY id DESC LIMIT 50""", (_FMT, _FMT))
     # body 전문을 함께 준다 — 화면에서 "이 내용 다시 쓰기" 로 불러올 수 있게
     rows = [{"id": r[0], "title": r[1], "channel": r[2], "kind": r[3],
              "body": r[4] or "", "total": r[5], "sent": r[6], "failed": r[7],
