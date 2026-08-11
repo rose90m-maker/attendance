@@ -670,13 +670,18 @@ function drawTpls(){
         area.innerHTML = '<span class="text-muted" style="font-size:.75rem;">저장된 문구 없음</span>';
         return;
     }
-    area.innerHTML = tpls.map(t=>
-        `<span class="chip-sm" title="${esc((t.body||'').slice(0,60))}"
-               onclick="applyTpl(${t.id})">📝 ${esc(t.name)}`+
+    // 공용이라 누가 만든 문구인지 보여준다 (즐겨찾기와 같은 규칙)
+    area.innerHTML = tpls.map(t=>{
+        const by = (!t.mine && t.by)
+            ? `<span style="opacity:.55; font-weight:400;"> · ${esc(t.by)}</span>` : '';
+        return `<span class="chip-sm" title="${esc((t.body||'').slice(0,60))}${
+                        t.mine ? '' : '\n(' + esc(t.by||'다른 사람') + ' 님이 만듦)'}"
+               onclick="applyTpl(${t.id})">📝 ${esc(t.name)}${by}`+
         `<span onclick="event.stopPropagation();renameTpl(${t.id})" title="이름 변경"
                style="margin-left:6px; opacity:.55;">✎</span>`+
         `<span onclick="event.stopPropagation();delTpl(${t.id})" title="삭제"
-               style="margin-left:2px; opacity:.55;">×</span></span>`).join('');
+               style="margin-left:2px; opacity:.55;">×</span></span>`;
+    }).join('');
 }
 function applyTpl(id){
     const t = tpls.find(x=>x.id===id); if (!t) return;
@@ -694,20 +699,22 @@ async function saveTpl(){
     if (!body){ toast('먼저 내용을 입력하세요.', 'error'); return; }
     const name = (prompt('문구 이름 (예: 안전교육 안내, 회식 공지)') || '').trim();
     if (!name) return;
-    if (tpls.some(t=>t.name===name) &&
-        !confirm(`'${name}' 이 이미 있습니다. 현재 내용으로 덮어쓸까요?`)) return;
+    const dupT = tpls.find(t=>t.name===name);
+    if (dupT && !confirm(`'${name}' 이 이미 있습니다. 현재 내용으로 `
+                         + `덮어쓸까요?${ownerNote(dupT)}`)) return;
     await tplApi({action:'create', name, body,
                   title:(document.getElementById('title')||{}).value || ''});
 }
 async function renameTpl(id){
     const t = tpls.find(x=>x.id===id); if (!t) return;
+    if (!t.mine && t.by && !confirm(`'${t.name}' 의 이름을 바꿀까요?${ownerNote(t)}`)) return;
     const name = (prompt('새 이름', t.name) || '').trim();
     if (!name || name === t.name) return;
     await tplApi({action:'rename', id, name});
 }
 async function delTpl(id){
     const t = tpls.find(x=>x.id===id); if (!t) return;
-    if (!confirm(`'${t.name}' 문구를 삭제할까요?`)) return;
+    if (!confirm(`'${t.name}' 문구를 삭제할까요?${ownerNote(t)}`)) return;
     await tplApi({action:'delete', id});
 }
 async function tplApi(payload){
@@ -923,10 +930,14 @@ function drawFavs(){
         area.innerHTML = '<span class="text-muted" style="font-size:.75rem;">저장된 묶음 없음</span>';
         return;
     }
+    // 공용이라 누가 만든 것인지 보여야 남의 묶음을 모르고 고치지 않는다
     area.innerHTML = favs.map(f=>{
         const alive = f.emp_ids.filter(id=>empOf(id)).length;
-        return `<span class="chip-sm" title="클릭하면 이 묶음으로 수신자를 바꿉니다"
-                      onclick="applyFav(${f.id})">★ ${esc(f.name)} <b>${alive}</b>`+
+        const by = (!f.mine && f.by)
+            ? `<span style="opacity:.55; font-weight:400;"> · ${esc(f.by)}</span>` : '';
+        return `<span class="chip-sm" title="클릭하면 이 묶음으로 수신자를 바꿉니다${
+                        f.mine ? '' : ' (' + esc(f.by||'다른 사람') + ' 님이 만듦)'}"
+                      onclick="applyFav(${f.id})">★ ${esc(f.name)} <b>${alive}</b>${by}`+
                `<span onclick="event.stopPropagation();renameFav(${f.id})" title="이름 변경"
                       style="margin-left:6px; opacity:.55;">✎</span>`+
                `<span onclick="event.stopPropagation();delFav(${f.id})" title="삭제"
@@ -943,23 +954,29 @@ function applyFav(id){
     const missing = f.emp_ids.length - ok.length;
     if (missing) toast(`${missing}명은 현재 명단에 없어 제외했습니다 (퇴사 등)`, 'error');
 }
+/* 공용이므로 남의 것을 건드릴 때는 누구 것인지 밝히고 한 번 더 묻는다 */
+function ownerNote(x){ return (!x.mine && x.by) ? `\n(${x.by} 님이 만든 것입니다)` : ''; }
+
 async function saveFav(){
     if (!selected.size){ toast('먼저 수신자를 선택하세요.', 'error'); return; }
     const name = (prompt('즐겨찾기 이름 (예: 생산회의, 부장모임, 관리자만)') || '').trim();
     if (!name) return;
-    if (favs.some(f=>f.name===name) &&
-        !confirm(`'${name}' 이 이미 있습니다. 현재 선택 ${selected.size}명으로 덮어쓸까요?`)) return;
+    const dup = favs.find(f=>f.name===name);
+    if (dup && !confirm(`'${name}' 이 이미 있습니다. 현재 선택 ${selected.size}명으로 `
+                        + `덮어쓸까요?${ownerNote(dup)}`)) return;
     await favApi({action:'create', name, emp_ids:[...selected]});
 }
 async function renameFav(id){
     const f = favs.find(x=>x.id===id); if (!f) return;
+    if (!f.mine && f.by && !confirm(`'${f.name}' 의 이름을 바꿀까요?${ownerNote(f)}`)) return;
     const name = (prompt('새 이름', f.name) || '').trim();
     if (!name || name === f.name) return;
     await favApi({action:'rename', id, name});
 }
 async function delFav(id){
     const f = favs.find(x=>x.id===id); if (!f) return;
-    if (!confirm(`'${f.name}' 즐겨찾기를 삭제할까요?\n(직원 정보가 지워지는 건 아닙니다)`)) return;
+    if (!confirm(`'${f.name}' 즐겨찾기를 삭제할까요?${ownerNote(f)}`
+                 + `\n(직원 정보가 지워지는 건 아닙니다)`)) return;
     await favApi({action:'delete', id});
 }
 async function favApi(payload){

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""_migrate_msg_scope.py — 이름 UNIQUE 를 (이름, 계정) 복합으로 이관
+"""_migrate_msg_scope.py — 이름 UNIQUE 를 공용 기준(uk_name)으로 수렴
 
 배포된 app_maria._msg_scope_index() 가 첫 API 호출 때 자동으로 하는 일을
 그대로, 다만 **관찰 가능한 상태에서 미리** 실행한다. 사용자가 처음 클릭하는
@@ -29,24 +29,23 @@ def scope_index(table):
                      AND NON_UNIQUE=0 AND INDEX_NAME<>'PRIMARY'
                    GROUP BY INDEX_NAME""", (table,))
     names = {r[0] for r in cur.fetchall()}
-    if "uk_name_owner" in names:
-        print(f"  {table}: 이미 이관됨 — 건너뜀")
+    if names == {"uk_name"}:
+        print(f"  {table}: 이미 uk_name(name) — 건너뜀")
         return
-    # 이관 전에 (이름, 계정) 중복이 있으면 UNIQUE 를 못 건다. 먼저 확인한다.
-    cur.execute(f"""SELECT name, created_by, COUNT(*) FROM `{table}`
-                    GROUP BY name, created_by HAVING COUNT(*)>1""")
+    # 공용이라 이름이 목록의 식별자다. 같은 이름이 여럿이면 UNIQUE 를 못 건다.
+    cur.execute(f"SELECT name, COUNT(*) FROM `{table}` "
+                f"GROUP BY name HAVING COUNT(*)>1")
     dup = cur.fetchall()
     if dup:
-        print(f"  {table}: ❌ 중복 {len(dup)}건 — 손으로 정리 후 다시")
+        print(f"  {table}: ❌ 이름 중복 {len(dup)}건 — 손으로 정리 후 다시")
         for d in dup:
-            print(f"      {d[0]!r} / {d[1]!r} × {d[2]}")
+            print(f"      {d[0]!r} × {d[1]}")
         return
     for nm in names:
         cur.execute(f"ALTER TABLE `{table}` DROP INDEX `{nm}`")
         print(f"  {table}: 옛 UNIQUE `{nm}` 제거")
-    cur.execute(f"ALTER TABLE `{table}` "
-                f"ADD UNIQUE KEY `uk_name_owner` (`name`, `created_by`)")
-    print(f"  {table}: ✅ uk_name_owner(name, created_by) 생성")
+    cur.execute(f"ALTER TABLE `{table}` ADD UNIQUE KEY `uk_name` (`name`)")
+    print(f"  {table}: ✅ uk_name(name) 생성")
 
 
 for t in ("msg_favorites", "msg_templates"):
