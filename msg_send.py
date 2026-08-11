@@ -155,7 +155,8 @@ def build_recipients(rows, body, title=None):
 
 
 # ── 발송 ────────────────────────────────────────────────────
-def send(rows, body, title=None, channel="auto", kakao=None, dry_run=False):
+def send(rows, body, title=None, channel="auto", kakao=None, dry_run=False,
+         scheduled=None):
     """단체 발송.
 
     rows    : [{"name","dept","phone",...}] — phone 외 키는 본문 치환에 쓰인다
@@ -165,8 +166,12 @@ def send(rows, body, title=None, channel="auto", kakao=None, dry_run=False):
     kakao   : 알림톡/친구톡용 {"pf_id","template_id","disable_sms"}
               disable_sms=False 면 카톡 미수신자에게 문자로 대체발송된다(추가 과금)
     dry_run : True 면 실제로 보내지 않고 집계만 돌려준다
+    scheduled : 예약 발송 시각. "2026-08-12T09:00" 또는 "2026-08-12 09:00".
+              솔라피에 예약을 걸어 두므로 우리 서버가 꺼져 있어도 그 시각에 나간다.
+              취소는 cancel_scheduled(group_id).
 
     반환: {"ok","total","sent","failed","dropped","group_id","results":[...],"error"}
+          예약이면 sent 는 '예약 접수된 건수'다 (아직 발송된 게 아니다).
     """
     key, sec, sender = _cfg()
     valid, dropped = build_recipients(rows, body, title)
@@ -191,6 +196,10 @@ def send(rows, body, title=None, channel="auto", kakao=None, dry_run=False):
                guess_type(valid[0]["text"], bool(title)) if channel == "auto" else channel.upper()
         return {**base, "ok": True, "dry_run": True, "kind": kind,
                 "sample": valid[0]["text"], "bytes": text_bytes(valid[0]["text"])}
+
+    sched = _iso_kst(scheduled) if scheduled else ""
+    if scheduled and not sched:
+        return {**base, "ok": False, "error": "예약 시각 형식을 알 수 없습니다."}
 
     results, sent, failed, gid = [], 0, 0, ""
     for i in range(0, len(valid), CHUNK):
@@ -217,8 +226,10 @@ def send(rows, body, title=None, channel="auto", kakao=None, dry_run=False):
             messages.append(m)
 
         try:
-            res = _call("POST", "/messages/v4/send-many/detail",
-                        {"messages": messages, "allowDuplicates": True})
+            payload = {"messages": messages, "allowDuplicates": True}
+            if sched:
+                payload["scheduledDate"] = sched
+            res = _call("POST", "/messages/v4/send-many/detail", payload)
         except Exception as e:                       # 배치 전체 실패 — 건별로 실패 기록
             for v in batch:
                 results.append({"name": v["name"], "dept": v["dept"], "phone": v["phone"],
@@ -243,6 +254,31 @@ def send(rows, body, title=None, channel="auto", kakao=None, dry_run=False):
 
     return {**base, "ok": failed == 0, "sent": sent, "failed": failed,
             "group_id": gid, "results": results}
+
+
+# ── 예약 발송 ────────────────────────────────────────────────
+def _iso_kst(v):
+    """예약 시각 → 솔라피가 받는 ISO8601(KST).
+
+    화면의 datetime-local 은 "2026-08-12T09:00" 으로 온다. 표준시를 명시하지
+    않으면 제공사 기준으로 해석되므로 +09:00 을 붙여 못박는다.
+    """
+    t = str(v or "").strip().replace(" ", "T")
+    m = re.match(r"^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(:\d{2})?", t)
+    if not m:
+        return ""
+    return f"{m.group(1)}T{m.group(2)}{m.group(3) or ':00'}+09:00"
+
+
+def cancel_scheduled(group_id):
+    """예약 취소. 이미 나갔거나 없는 예약이면 오류 메시지를 돌려준다."""
+    if not group_id:
+        return {"ok": False, "error": "예약 번호(group_id)가 없습니다."}
+    try:
+        _call("DELETE", f"/messages/v4/groups/{group_id}/schedule")
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
 
 
 # ── 잔액·채널 조회 (화면 표시용) ───────────────────────────────

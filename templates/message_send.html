@@ -278,6 +278,21 @@
                         <tr><td>현재 잔액</td><td>{% if balance.ok %}{{ '{:,.0f}'.format(balance.balance) }}원{% else %}—{% endif %}</td></tr>
                     </table>
 
+                    <!-- 예약 발송 — 시각은 솔라피에 걸어 두므로 서버가 꺼져 있어도 나간다 -->
+                    <div class="mt-2 pt-2" style="border-top:1px solid #f1f5f9;">
+                        <div class="form-check form-switch" style="font-size:.82rem;">
+                            <input class="form-check-input" type="checkbox" id="schedOn" onchange="onSchedToggle()">
+                            <label class="form-check-label" for="schedOn">예약 발송</label>
+                        </div>
+                        <div id="schedWrap" style="display:none; margin-top:6px;">
+                            <input type="datetime-local" class="form-control form-control-sm" id="schedAt"
+                                   onchange="draw()">
+                            <div style="font-size:.73rem; color:#9ca3af; margin-top:3px;">
+                                예약 후에도 보낸 내역에서 취소할 수 있습니다.
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="mt-3">
                         <div class="confirm-line" id="confirmLine">받는 사람과 내용을 입력하세요.</div>
                         {% if can_send %}
@@ -547,12 +562,38 @@ function draw(){
     const tw = document.getElementById('titleWrap');
     if (tw) tw.style.display = (kind==='LMS') ? '' : 'none';
 
-    const ready = lastValid > 0 && pv.trim();
+    const sc = schedAt();
+    const ready = lastValid > 0 && pv.trim() && !(schedOn() && !sc);
     const bs = document.getElementById('btnSend');
-    if (bs) bs.disabled = !ready;
+    if (bs){
+        bs.disabled = !ready;
+        bs.textContent = sc ? '예약 걸기' : '문자 발송하기';
+    }
     document.getElementById('confirmLine').textContent = ready
-        ? `${lastValid}명에게 ${kind} ${lastValid}건을 발송합니다.`
-        : (!lastValid ? '받는 사람을 선택하세요.' : '내용을 입력하세요.');
+        ? (sc ? `${sc.replace('T',' ')} 에 ${lastValid}명에게 ${kind} ${lastValid}건을 발송합니다.`
+              : `${lastValid}명에게 ${kind} ${lastValid}건을 발송합니다.`)
+        : (!lastValid ? '받는 사람을 선택하세요.'
+           : (schedOn() && !sc) ? '예약 시각을 선택하세요.' : '내용을 입력하세요.');
+}
+
+/* ── 예약 발송 ── */
+function schedOn(){ const c = document.getElementById('schedOn'); return !!(c && c.checked); }
+function schedAt(){
+    const el = document.getElementById('schedAt');
+    return (schedOn() && el && el.value) ? el.value : '';
+}
+function onSchedToggle(){
+    const on = schedOn();
+    document.getElementById('schedWrap').style.display = on ? '' : 'none';
+    const el = document.getElementById('schedAt');
+    if (on && el && !el.value){
+        // 기본값은 1시간 뒤 정각 — 지금 시각을 그대로 두면 '과거 예약'으로 막힌다
+        const d = new Date(Date.now() + 3600e3);
+        d.setMinutes(0, 0, 0);
+        const p = n => String(n).padStart(2,'0');
+        el.value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+    draw();
 }
 
 async function refresh(){
@@ -648,7 +689,10 @@ function askSend(){
     document.getElementById('cKind').textContent = kind;
     document.getElementById('cCost').textContent = (unitOf(kind)*lastValid).toLocaleString() + '원';
     document.getElementById('cPreview').innerHTML = document.getElementById('bubble').innerHTML;
-    document.getElementById('cGo').textContent = `${lastValid}명에게 발송`;
+    const sc = schedAt();
+    document.getElementById('cGo').textContent = sc ? '예약 걸기' : `${lastValid}명에게 발송`;
+    const ct = document.querySelector('#mdConfirm .modal-title');
+    if (ct) ct.textContent = sc ? `${sc.replace('T',' ')} 에 예약할까요?` : '문자를 발송하시겠습니까?';
     new bootstrap.Modal(document.getElementById('mdConfirm')).show();
 }
 
@@ -657,7 +701,8 @@ async function doSend(){
     if (!c.body.trim()){ toast('내용을 입력하세요.', 'warn'); return; }
     const md = bootstrap.Modal.getInstance(document.getElementById('mdConfirm'));
     const go = document.getElementById('cGo');
-    go.disabled = true; go.textContent = '발송 중…';
+    const isSched = !!schedAt();
+    go.disabled = true; go.textContent = isSched ? '예약 중…' : '발송 중…';
     const ch = document.getElementById('channel');
     if (ch.selectedOptions && ch.selectedOptions[0] && ch.selectedOptions[0].dataset.pf)
         c.pf_id = ch.selectedOptions[0].dataset.pf;
@@ -671,6 +716,11 @@ async function doSend(){
             if ((r.dropped||[]).length) m += ` · ${r.dropped.length}건 제외`;
             toast(m, 'warn');
             document.getElementById('body').value = ''; clearAll();
+        } else if (isSched){
+            toast(`${r.sent}명에게 ${r.scheduled.replace('T',' ')} 발송으로 예약했습니다.`);
+            document.getElementById('body').value = '';
+            document.getElementById('schedOn').checked = false; onSchedToggle();
+            clearAll();
         } else {
             toast(`${r.sent}명에게 문자를 발송했습니다.`);
             document.getElementById('body').value = '';
@@ -690,15 +740,31 @@ async function loadHistory(){
         `<table class="table table-sm tbl"><thead><tr><th>일시</th><th>종류</th><th>내용</th><th>대상</th>
          <th>성공</th><th>실패</th><th>보낸이</th><th></th></tr></thead><tbody>` +
         r.rows.map(x=>{ window._hist[x.id]=x.body;
-            return `<tr><td>${x.at}</td><td>${x.kind||x.channel}</td>
+            const sc = x.status === 'scheduled', cx = x.status === 'canceled';
+            const when = sc ? `<span style="color:#c2410c;">예약 ${x.scheduled_at}</span>`
+                        : cx ? `<span class="text-muted">취소됨</span>` : x.at;
+            return `<tr><td>${when}</td><td>${x.kind||x.channel}</td>
             <td style="max-width:280px;">${esc((x.body||'').slice(0,50))}${(x.body||'').length>50?'…':''}</td>
-            <td>${x.total}</td><td class="st-ok">${x.sent}</td>
+            <td>${x.total}</td><td class="${sc||cx?'text-muted':'st-ok'}">${sc?'—':x.sent}</td>
             <td class="${x.failed?'st-fail':''}">${x.failed}</td><td>${x.by||''}</td>
             <td class="text-nowrap">
+              ${sc ? `<button class="btn btn-outline-danger btn-sm py-0" onclick="cancelSched(${x.id})">예약 취소</button>` : ''}
               <button class="btn btn-outline-primary btn-sm py-0" onclick="reuse(${x.id})">다시 쓰기</button>
               <button class="btn btn-outline-secondary btn-sm py-0" onclick="detail(${x.id})">상세</button>
             </td></tr>`; }).join('') +
         `</tbody></table><div id="detailBox"></div>`;
+}
+async function cancelSched(id){
+    if (!confirm('이 예약을 취소할까요?')) return;
+    try{
+        const r = await fetch('/api/msg_cancel',{method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({id})}).then(r=>r.json());
+        if (!r.ok){ toast('취소 실패: ' + (r.error||''), 'error'); return; }
+        toast('예약을 취소했습니다.');
+        bootstrap.Modal.getInstance(document.getElementById('mdHistory')).hide();
+        loadHistory();
+    }catch(e){ toast('오류: ' + e, 'error'); }
 }
 function reuse(id){
     document.getElementById('body').value = window._hist[id] || '';

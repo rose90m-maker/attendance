@@ -1963,6 +1963,17 @@ def _init_msg_db():
             INDEX idx_created (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
+    # 예약 발송 — 기존 DB 에는 없던 컬럼이라 있는지 보고 붙인다.
+    # status: sent(발송완료) / scheduled(예약) / canceled(취소)
+    for col, ddl in (("status", "VARCHAR(12) NOT NULL DEFAULT 'sent'"),
+                     ("scheduled_at", "DATETIME NULL")):
+        try:
+            cur.execute(f"SELECT {col} FROM msg_campaigns LIMIT 1")
+        except Exception:
+            try:
+                cur.execute(f"ALTER TABLE msg_campaigns ADD COLUMN {col} {ddl}")
+            except Exception:
+                pass
     cur.execute("""
         CREATE TABLE IF NOT EXISTS msg_logs (
             id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -6410,7 +6421,7 @@ def api_msg_preview():
 @app.route("/api/msg_send", methods=["POST"])
 @_menu_required("msg_send", "create")
 def api_msg_send():
-    """실제 발송 + 이력 기록"""
+    """실제 발송(또는 예약) + 이력 기록"""
     import msg_send as MS
     d = request.get_json(force=True, silent=True) or {}
     body = (d.get("body") or "").strip()
@@ -6421,6 +6432,18 @@ def api_msg_send():
     if not rows:
         return jsonify({"ok": False, "error": "대상자가 없습니다."}), 400
 
+    # 예약 발송 — 시각은 솔라피에 넘기고 우리 서버는 개입하지 않는다.
+    # 컨테이너를 재시작해도 예약이 살아 있어야 하므로 자체 스케줄러를 두지 않는다.
+    sched = (d.get("scheduled") or "").strip()
+    if sched:
+        iso = MS._iso_kst(sched)
+        if not iso:
+            return jsonify({"ok": False, "error": "예약 시각을 확인하세요."}), 400
+        when = datetime.strptime(iso[:16], "%Y-%m-%dT%H:%M")
+        if when <= datetime.now() + timedelta(minutes=1):
+            return jsonify({"ok": False,
+                            "error": "예약은 현재보다 최소 1분 뒤여야 합니다."}), 400
+
     channel = d.get("channel", "auto")
     kakao = None
     if channel in ("ata", "cta"):
@@ -6428,20 +6451,24 @@ def api_msg_send():
                  "disable_sms": bool(d.get("disable_sms"))}
 
     pre = MS.send(rows, body, d.get("title") or None, channel=channel, dry_run=True)
-    res = MS.send(rows, body, d.get("title") or None, channel=channel, kakao=kakao)
+    res = MS.send(rows, body, d.get("title") or None, channel=channel, kakao=kakao,
+                  scheduled=sched or None)
 
     conn = _conn(); cur = conn.cursor()
     cur.execute("""INSERT INTO msg_campaigns
                    (title, channel, kind, body, total, sent, failed, dropped,
-                    group_id, error, created_by)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    group_id, error, created_by, status, scheduled_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (d.get("title") or "", channel, pre.get("kind", ""), body,
                  res.get("total", 0), res.get("sent", 0), res.get("failed", 0),
                  len(res.get("dropped") or []), res.get("group_id", ""),
-                 (res.get("error") or "")[:500], session.get("user_name", "")))
+                 (res.get("error") or "")[:500], session.get("user_name", ""),
+                 "scheduled" if (sched and res.get("ok")) else "sent",
+                 sched.replace("T", " ")[:16] if sched else None))
     cid = cur.lastrowid
+    ok_status = "sched" if sched else "ok"
     logs = [(cid, r.get("name", ""), r.get("dept", ""), r.get("phone", ""),
-             "ok" if r.get("ok") else "fail", (r.get("error") or "")[:300])
+             ok_status if r.get("ok") else "fail", (r.get("error") or "")[:300])
             for r in (res.get("results") or [])]
     logs += [(cid, x.get("name", ""), "", str(x.get("phone", ""))[:20], "drop",
               (x.get("reason") or "")[:300]) for x in (res.get("dropped") or [])]
@@ -6452,6 +6479,7 @@ def api_msg_send():
     conn.commit(); conn.close()
 
     res["campaign_id"] = cid
+    res["scheduled"] = sched
     return jsonify(res)
 
 
@@ -6470,14 +6498,43 @@ def api_msg_history():
         conn.close()
         return jsonify({"ok": True, "rows": rows})
     cur.execute("""SELECT id, title, channel, kind, body, total, sent, failed, dropped,
-                          created_by, DATE_FORMAT(created_at,'%%Y-%%m-%%d %%H:%%i')
+                          created_by, DATE_FORMAT(created_at,'%%Y-%%m-%%d %%H:%%i'),
+                          status, DATE_FORMAT(scheduled_at,'%%Y-%%m-%%d %%H:%%i')
                    FROM msg_campaigns ORDER BY id DESC LIMIT 50""")
     # body 전문을 함께 준다 — 화면에서 "이 내용 다시 쓰기" 로 불러올 수 있게
     rows = [{"id": r[0], "title": r[1], "channel": r[2], "kind": r[3],
              "body": r[4] or "", "total": r[5], "sent": r[6], "failed": r[7],
-             "dropped": r[8], "by": r[9], "at": r[10]} for r in cur.fetchall()]
+             "dropped": r[8], "by": r[9], "at": r[10],
+             "status": r[11] or "sent", "scheduled_at": r[12] or ""}
+            for r in cur.fetchall()]
     conn.close()
     return jsonify({"ok": True, "rows": rows})
+
+
+@app.route("/api/msg_cancel", methods=["POST"])
+@_menu_required("msg_send", "create")
+def api_msg_cancel():
+    """예약 발송 취소. 솔라피에 걸어 둔 예약을 지우고 이력을 '취소'로 바꾼다."""
+    import msg_send as MS
+    cid = (request.get_json(force=True, silent=True) or {}).get("id")
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT group_id, status FROM msg_campaigns WHERE id=%s", (cid,))
+    r = cur.fetchone()
+    if not r:
+        conn.close()
+        return jsonify({"ok": False, "error": "이력을 찾을 수 없습니다."}), 404
+    if (r[1] or "") != "scheduled":
+        conn.close()
+        return jsonify({"ok": False, "error": "예약 상태가 아닙니다."}), 400
+
+    res = MS.cancel_scheduled(r[0])
+    if not res.get("ok"):
+        conn.close()
+        # 제공사에서 이미 나갔거나 취소 불가한 상태일 수 있다 — 우리 이력은 건드리지 않는다
+        return jsonify({"ok": False, "error": res.get("error") or "취소하지 못했습니다."}), 400
+    cur.execute("UPDATE msg_campaigns SET status='canceled' WHERE id=%s", (cid,))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True})
 
 
 @app.route("/hr_status")
