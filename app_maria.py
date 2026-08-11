@@ -6183,13 +6183,44 @@ def api_msg_targets():
     import msg_send as MS
     d = request.get_json(force=True, silent=True) or {}
     rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"),
-                       send_all=bool(d.get("send_all")))
+                       send_all=bool(d.get("send_all"))) + _msg_manual(d)
     out = []
     for r in rows:
         ph = MS.norm_phone(r["phone"])
         out.append({**r, "phone": ph or "", "valid": bool(ph)})
     return jsonify({"ok": True, "rows": out,
                     "valid": sum(1 for r in out if r["valid"]), "total": len(out)})
+
+
+def _msg_manual(d):
+    """직접 입력한 번호 → 발송 행 목록.
+
+    명단에 없는 사람(협력사·외부 강사·지원자 등)에게 보내려고 쓴다.
+    한 줄에 하나씩. '번호' 또는 '이름 번호' / '이름,번호' 를 받는다.
+
+    번호 형식 검증은 msg_send.norm_phone 이 하고, 명단과 겹치는 번호는
+    build_recipients 가 '중복' 으로 걸러 준다 — 여기서 또 거르지 않는다.
+    """
+    import msg_send as MS
+    raw = d.get("manual")
+    if isinstance(raw, list):
+        lines = [str(x) for x in raw]
+    else:
+        lines = re.split(r"[\r\n;]+", str(raw or ""))
+    out = []
+    for ln in lines:
+        ln = ln.strip()
+        if not ln:
+            continue
+        # 뒤쪽의 번호를 떼어내고 남은 앞부분을 이름으로 본다
+        m = re.search(r"([0-9][0-9\-\s\.\(\)]{7,})$", ln)
+        phone = m.group(1) if m else ln
+        name = ln[:m.start()].strip(" ,\t") if m else ""
+        # 형식이 틀린 것도 그대로 넘긴다 — build_recipients 가 '번호 형식 오류'
+        # 로 잡아 화면에 보여 준다. 여기서 조용히 버리면 왜 빠졌는지 알 수 없다.
+        out.append({"id": None, "name": name or "직접입력", "dept": "",
+                    "position": "", "phone": phone, "emp_no": "", "job_title": ""})
+    return out
 
 
 _MSG_FAV_READY = False
@@ -6285,7 +6316,7 @@ def api_msg_preview():
     import msg_send as MS
     d = request.get_json(force=True, silent=True) or {}
     rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"),
-                       send_all=bool(d.get("send_all")))
+                       send_all=bool(d.get("send_all"))) + _msg_manual(d)
     res = MS.send(rows, d.get("body", ""), d.get("title") or None,
                   channel=d.get("channel", "auto"), dry_run=True)
     # 건당 단가는 계약에 따라 다르다. 화면에는 대략치로만 보여 준다.
@@ -6305,7 +6336,7 @@ def api_msg_send():
     if not body:
         return jsonify({"ok": False, "error": "본문을 입력하세요."}), 400
     rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"),
-                       send_all=bool(d.get("send_all")))
+                       send_all=bool(d.get("send_all"))) + _msg_manual(d)
     if not rows:
         return jsonify({"ok": False, "error": "대상자가 없습니다."}), 400
 

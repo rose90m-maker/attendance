@@ -168,6 +168,23 @@
                           style="display:none; color:#b91c1c;">비우기</span>
                 </div>
 
+                <!-- 직접 입력 — 명단에 없는 번호 (협력사·외부 강사 등) -->
+                <div class="mt-2 pt-2" style="border-top:1px dashed #e5e7eb;">
+                    <div class="d-flex align-items-center justify-content-between mb-1">
+                        <span style="font-size:.78rem; color:#6b7280; font-weight:600;">
+                            ✎ 번호 직접 입력
+                            <span style="font-weight:400; color:#9ca3af;">— 명단에 없는 번호로도 보낼 수 있습니다</span>
+                        </span>
+                        <span style="font-size:.75rem; color:#1d4ed8; font-weight:600;" id="manualCnt"></span>
+                    </div>
+                    <textarea class="form-control form-control-sm" id="manual" rows="2"
+                              placeholder="한 줄에 하나씩 — 010-1234-5678 또는 홍길동 010-1234-5678"
+                              oninput="onManual()" style="font-size:.8rem;"></textarea>
+                    <div style="font-size:.73rem; color:#9ca3af; margin-top:3px;">
+                        이름을 같이 적으면 본문의 {이름}에 쓰입니다. 위에서 고른 사람과 번호가 겹치면 한 번만 갑니다.
+                    </div>
+                </div>
+
                 <!-- 수신자 즐겨찾기 — 자주 쓰는 묶음(생산회의·부장모임 등)을 이름 붙여 저장 -->
                 <div class="mt-2 pt-2" style="border-top:1px dashed #e5e7eb;">
                     <div class="d-flex align-items-center flex-wrap" style="gap:6px;">
@@ -418,7 +435,14 @@ function selGroup(v){
     afterSelect();
 }
 function dropOne(id){ selected.delete(id); afterSelect(); }
-function clearAll(){ selected.clear(); showAllRcpt = false; afterSelect(); }
+function clearAll(){
+    selected.clear(); showAllRcpt = false;
+    // 직접 입력한 번호도 같이 비운다 — 발송 뒤 중복 발송을 막는 게 이 함수의 목적이라
+    // 여기만 남으면 다음 발송에 조용히 딸려 간다
+    const mt = document.getElementById('manual');
+    if (mt){ mt.value = ''; document.getElementById('manualCnt').textContent = ''; }
+    afterSelect();
+}
 function afterSelect(){ drawGroups(); drawEmp(); drawSelected(); refresh(); }
 
 function drawSelected(){
@@ -448,7 +472,26 @@ function cond(){
                 title: (document.getElementById('title')||{}).value || '',
                 channel: document.getElementById('channel').value };
     if (selected.size) c.emp_ids = [...selected];
+    const man = manualText();
+    if (man) c.manual = man;
     return c;
+}
+
+/* ── 번호 직접 입력 ──
+   명단에 없는 번호(협력사·외부 강사 등). 파싱과 형식 검증은 서버가 한다 —
+   화면은 몇 줄 적혔는지만 세어 준다. 명단과 겹치는 번호는 서버가 한 번만 보낸다. */
+function manualText(){
+    const el = document.getElementById('manual');
+    return el ? el.value.trim() : '';
+}
+function manualCount(){
+    const t = manualText();
+    return t ? t.split(/[\r\n;]+/).filter(x=>x.trim()).length : 0;
+}
+function onManual(){
+    const n = manualCount();
+    document.getElementById('manualCnt').textContent = n ? `직접 입력 ${n}건` : '';
+    refresh();
 }
 
 /* ── 미리보기·집계 (한글 2바이트, 서버와 같은 기준) ── */
