@@ -6309,6 +6309,87 @@ def api_msg_fav():
         conn.close()
 
 
+_MSG_TPL_READY = False
+
+
+def _ensure_msg_tpl():
+    """문구 템플릿 테이블 — 첫 사용 때 한 번만 만든다"""
+    global _MSG_TPL_READY
+    if _MSG_TPL_READY:
+        return
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS `msg_templates` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `name` VARCHAR(50) NOT NULL UNIQUE,
+            `title` VARCHAR(120) DEFAULT '',
+            `body` TEXT NOT NULL,
+            `created_by` VARCHAR(50) DEFAULT '',
+            `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+                         ON UPDATE CURRENT_TIMESTAMP
+        ) DEFAULT CHARSET=utf8mb4""")
+    conn.commit(); conn.close()
+    _MSG_TPL_READY = True
+
+
+@app.route("/api/msg_tpl", methods=["GET", "POST"])
+@_menu_required("msg_send")
+def api_msg_tpl():
+    """문구 템플릿 — 자주 쓰는 문안에 이름을 붙여 저장한다.
+
+    예) 안전교육 안내 / 회식 공지 / 정기점검 알림.
+    수신자 즐겨찾기(msg_favorites)와 같은 방식이고, 저장하는 것이 사람 대신
+    본문·제목이라는 점만 다르다. msg_send 권한자 공용.
+    """
+    _ensure_msg_tpl()
+    conn = _conn(); cur = conn.cursor()
+    try:
+        if request.method == "GET":
+            cur.execute("SELECT id, name, title, body FROM msg_templates ORDER BY name")
+            return jsonify({"ok": True,
+                            "rows": [{"id": r[0], "name": r[1], "title": r[2] or "",
+                                      "body": r[3] or ""} for r in cur.fetchall()]})
+
+        if not _menu_perm("msg_send", "create"):
+            return jsonify({"ok": False, "err": "저장 권한이 없습니다"})
+        d = request.get_json(force=True, silent=True) or {}
+        act = d.get("action")
+        name = (d.get("name") or "").strip()[:50]
+        tid = d.get("id")
+
+        if act == "create":                     # 같은 이름이면 덮어쓴다 (화면에서 확인받고 온다)
+            body = (d.get("body") or "").strip()
+            title = (d.get("title") or "").strip()[:120]
+            if not name or not body:
+                return jsonify({"ok": False, "err": "이름과 내용이 필요합니다"})
+            cur.execute("SELECT id FROM msg_templates WHERE name=%s", (name,))
+            r = cur.fetchone()
+            if r:
+                cur.execute("UPDATE msg_templates SET title=%s, body=%s WHERE id=%s",
+                            (title, body, r[0]))
+            else:
+                cur.execute("""INSERT INTO msg_templates(name, title, body, created_by)
+                               VALUES(%s,%s,%s,%s)""",
+                            (name, title, body, str(session.get("user_id") or "")))
+        elif act == "rename":
+            if not name:
+                return jsonify({"ok": False, "err": "이름이 비었습니다"})
+            cur.execute("SELECT id FROM msg_templates WHERE name=%s AND id<>%s",
+                        (name, tid))
+            if cur.fetchone():
+                return jsonify({"ok": False, "err": "같은 이름이 이미 있습니다"})
+            cur.execute("UPDATE msg_templates SET name=%s WHERE id=%s", (name, tid))
+        elif act == "delete":
+            cur.execute("DELETE FROM msg_templates WHERE id=%s", (tid,))
+        else:
+            return jsonify({"ok": False, "err": "알 수 없는 요청"})
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        conn.close()
+
+
 @app.route("/api/msg_preview", methods=["POST"])
 @_menu_required("msg_send")
 def api_msg_preview():
@@ -6372,41 +6453,6 @@ def api_msg_send():
 
     res["campaign_id"] = cid
     return jsonify(res)
-
-
-@app.route("/api/msg_test", methods=["POST"])
-@_menu_required("msg_send", "create")
-def api_msg_test():
-    """내 번호로 한 통만 보내 본다. 단체 발송 전에 눈으로 확인하는 용도."""
-    import msg_send as MS
-    d = request.get_json(force=True, silent=True) or {}
-    phone = MS.norm_phone(d.get("phone"))
-    if not phone:
-        return jsonify({"ok": False, "error": "휴대폰 번호를 올바르게 입력하세요."}), 400
-    body = (d.get("body") or "").strip()
-    if not body:
-        return jsonify({"ok": False, "error": "본문을 입력하세요."}), 400
-
-    # 치환자가 그대로 나가지 않도록 첫 대상자 값으로 채워 실제 발송본과 같게 만든다
-    rows = _msg_roster(d.get("depts"), d.get("positions"), d.get("emp_ids"),
-                       send_all=bool(d.get("send_all")))
-    sample = dict(rows[0]) if rows else {"name": session.get("user_name", ""), "dept": "", "position": ""}
-    sample["phone"] = phone
-    res = MS.send([sample], body, d.get("title") or None, channel=d.get("channel", "auto"))
-    return jsonify(res)
-
-
-@app.route("/api/msg_my_phone")
-@_menu_required("msg_send")
-def api_msg_my_phone():
-    """테스트 발송칸에 기본으로 채워 줄 본인 번호 (명부에서 이름으로 찾는다)"""
-    import msg_send as MS
-    conn = _conn(); cur = conn.cursor()
-    cur.execute("SELECT phone FROM employee_roster WHERE name=%s LIMIT 1",
-                (session.get("user_name", ""),))
-    r = cur.fetchone()
-    conn.close()
-    return jsonify({"ok": True, "phone": MS.norm_phone(r[0]) if r else ""})
 
 
 @app.route("/api/msg_history")
