@@ -1,0 +1,603 @@
+{#
+  _preview_dashboard.html — 대시보드 리디자인 (실데이터 미리보기)
+
+  브리프 준수 사항
+    · 기능·데이터·백엔드 무변경. 운영 dashboard() 컨텍스트를 그대로 쓴다.
+    · 카드 radius 12 / 1px 경계 + 극미세 그림자 / 8px 스페이싱 / gap 16 / padding 20
+    · Navy·Blue 유지, 의미색은 Success·Warning·Danger 만
+    · 정보 우선순위: 1순위(출근·부재·보고서·일정) → 2순위(식수·MES·전력) → 3순위(공지·배차·생일)
+    · 새 UI 라이브러리 없음. 기존 Jinja + 순수 CSS.
+
+  검증되면 dashboard.html 로 승격한다. 그때 배차·MES 실시간 갱신 JS 는
+  기존 dashboard.html 것을 그대로 옮겨 붙이면 된다.
+#}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>대시보드 — 태인관리시스템</title>
+<link rel="stylesheet" as="style" crossorigin
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+/* ══════════ Design Tokens ══════════ */
+:root{
+  /* 지반·표면 */
+  --bg:#F4F6F8;
+  --card:#FFFFFF;
+  --card-hover:#FBFCFD;
+  --border:#E4E8EC;
+  --border-soft:#EFF2F5;
+  --shadow:0 1px 2px rgba(16,24,40,.05);
+  --shadow-h:0 2px 8px rgba(16,24,40,.08);
+
+  /* Navy — 사이드바 (기존 계열 유지) */
+  --navy:#16233B;
+  --navy-2:#1D2E4A;
+  --navy-on:#E6ECF4;
+  --navy-dim:#8899B0;
+
+  /* Primary */
+  --pri:#1E40AF;
+  --pri-600:#2563EB;
+  --pri-50:#EFF4FF;
+  --pri-100:#DCE7FE;
+
+  /* 의미색 — 이 넷만 쓴다 */
+  --ok:#15803D;   --ok-bg:#ECFDF3;
+  --warn:#C2410C; --warn-bg:#FFF4ED;
+  --danger:#B42318; --danger-bg:#FEF3F2;
+
+  /* 잉크 */
+  --ink:#101828;
+  --ink-2:#475467;
+  --muted:#8A939F;
+
+  /* 8px 스페이싱 */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px;
+  --r-card:12px; --r-in:8px; --r-chip:6px;
+
+  --side-w:236px; --top-h:56px;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  font-size:13.5px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+.num{font-variant-numeric:tabular-nums; letter-spacing:-.015em}
+
+/* ══════════ Top navigation ══════════ */
+.top{
+  position:fixed; inset:0 0 auto 0; height:var(--top-h); z-index:50;
+  background:var(--card); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:var(--s5); padding:0 var(--s5);
+}
+.top-brand{display:flex; align-items:center; gap:var(--s2); width:calc(var(--side-w) - 20px)}
+.top-mark{width:26px; height:26px; border-radius:7px; background:var(--pri);
+  color:#fff; font-size:12px; font-weight:700; display:grid; place-items:center}
+.top-brand b{font-size:15px; font-weight:700; letter-spacing:-.02em}
+
+/* Status chips — 기존 상단 숫자 나열을 대체 */
+.chips{display:flex; align-items:center; gap:var(--s2)}
+.chip{
+  display:inline-flex; align-items:center; gap:6px;
+  height:32px; padding:0 12px; border-radius:var(--r-chip);
+  background:var(--bg); border:1px solid var(--border);
+  font-size:12.5px; color:var(--ink-2); text-decoration:none;
+  transition:background .15s, border-color .15s;
+}
+.chip:hover{background:var(--pri-50); border-color:var(--pri-100); color:var(--pri)}
+.chip b{font-size:13.5px; font-weight:700; color:var(--ink)}
+.chip .dot{width:6px; height:6px; border-radius:50%}
+.dot-ok{background:var(--ok)} .dot-pri{background:var(--pri-600)}
+.dot-warn{background:var(--warn)} .dot-danger{background:var(--danger)}
+
+.top-right{margin-left:auto; display:flex; align-items:center; gap:var(--s3)}
+.who{display:flex; flex-direction:column; line-height:1.25; text-align:right}
+.who b{font-size:13px; font-weight:600}
+.who span{font-size:11.5px; color:var(--muted)}
+.avatar{width:32px; height:32px; border-radius:50%; background:var(--pri-50);
+  color:var(--pri); font-size:12.5px; font-weight:700; display:grid; place-items:center}
+.icon-btn{width:32px; height:32px; border-radius:var(--r-chip); border:1px solid var(--border);
+  background:var(--card); color:var(--ink-2); display:grid; place-items:center; cursor:pointer;
+  transition:background .15s, border-color .15s}
+.icon-btn:hover{background:var(--pri-50); border-color:var(--pri-100); color:var(--pri)}
+
+/* ══════════ Sidebar ══════════ */
+.side{
+  position:fixed; top:0; bottom:0; left:0; width:var(--side-w); z-index:60;
+  background:var(--navy); color:var(--navy-on); overflow-y:auto;
+  padding:0 0 var(--s4);
+}
+.side::-webkit-scrollbar{width:6px}
+.side::-webkit-scrollbar-thumb{background:#2C3E5C; border-radius:3px}
+.side-head{height:var(--top-h); display:flex; align-items:center; gap:var(--s2);
+  padding:0 var(--s4); border-bottom:1px solid rgba(255,255,255,.07)}
+.side-head .top-mark{background:var(--pri-600)}
+.side-head b{font-size:14.5px; font-weight:700; color:#fff; letter-spacing:-.02em}
+.side-grp{padding:var(--s4) var(--s4) var(--s1); font-size:10.5px; font-weight:700;
+  color:var(--navy-dim); letter-spacing:.1em}
+.side a{
+  display:flex; align-items:center; gap:10px; height:44px; padding:0 var(--s4);
+  color:#C3CEDE; text-decoration:none; font-size:13px;
+  border-left:3px solid transparent; transition:background .15s, color .15s;
+}
+.side a:hover{background:rgba(255,255,255,.05); color:#fff}
+.side a.on{background:var(--navy-2); border-left-color:var(--pri-600); color:#fff; font-weight:600}
+.side a .ic{width:16px; height:16px; flex:none; opacity:.85}
+.side a.on .ic{opacity:1}
+
+/* ══════════ Stage ══════════ */
+.stage{
+  margin:var(--top-h) 0 0 var(--side-w);
+  min-height:calc(100vh - var(--top-h));
+  padding:var(--s5);
+  display:flex; flex-direction:column; gap:var(--s4);
+}
+
+/* ── KPI row ── */
+.kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:var(--s4)}
+.kpi{
+  background:var(--card); border:1px solid var(--border); border-radius:var(--r-card);
+  box-shadow:var(--shadow); padding:var(--s4) var(--s5);
+  display:flex; align-items:center; gap:var(--s4);
+  transition:box-shadow .15s, border-color .15s;
+}
+.kpi:hover{box-shadow:var(--shadow-h); border-color:#D6DCE3}
+.kpi-ic{width:40px; height:40px; border-radius:10px; flex:none; display:grid; place-items:center}
+.kpi-ic.b{background:var(--pri-50); color:var(--pri)}
+.kpi-ic.g{background:var(--ok-bg); color:var(--ok)}
+.kpi-ic.o{background:var(--warn-bg); color:var(--warn)}
+.kpi-ic.r{background:var(--danger-bg); color:var(--danger)}
+.kpi-txt{min-width:0}
+.kpi-label{font-size:12.5px; color:var(--ink-2); margin-bottom:2px}
+.kpi-val{font-size:30px; font-weight:700; line-height:1.1; letter-spacing:-.03em}
+.kpi-val small{font-size:14px; font-weight:500; color:var(--muted); margin-left:3px; letter-spacing:0}
+.kpi-sub{font-size:12px; color:var(--muted); margin-top:2px}
+
+/* ── Board ── */
+.board{display:grid; gap:var(--s4); grid-template-columns:1fr 1.55fr 1.05fr; align-items:start}
+.col{display:flex; flex-direction:column; gap:var(--s4); min-width:0}
+
+.card{
+  background:var(--card); border:1px solid var(--border); border-radius:var(--r-card);
+  box-shadow:var(--shadow); padding:var(--s5); min-width:0;
+}
+.card-h{display:flex; align-items:baseline; gap:var(--s2); margin-bottom:var(--s4)}
+.card-h h2{margin:0; font-size:15px; font-weight:700; letter-spacing:-.02em}
+.card-h .meta{margin-left:auto; font-size:12px; color:var(--muted)}
+.card-h .more{margin-left:auto; font-size:12px; color:var(--pri); text-decoration:none}
+.card-h .more:hover{text-decoration:underline}
+
+/* ── 부서별 출근 ── */
+.dept{display:flex; align-items:center; gap:var(--s3); padding:7px 0}
+.dept-n{width:60px; flex:none; font-size:13px; color:var(--ink-2)}
+.dept-t{flex:1; height:8px; background:var(--border-soft); border-radius:99px; overflow:hidden}
+.dept-f{height:100%; background:var(--pri-600); border-radius:99px}
+.dept-c{width:34px; flex:none; text-align:right; font-size:14px; font-weight:700}
+
+.tagwrap{display:flex; flex-wrap:wrap; gap:6px; margin-top:var(--s3);
+  padding-top:var(--s3); border-top:1px solid var(--border-soft)}
+.tag{display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:var(--r-chip);
+  font-size:12px; font-weight:500}
+.tag.leave{background:var(--pri-50); color:var(--pri)}
+.tag.etc{background:var(--warn-bg); color:var(--warn)}
+
+/* ── 식수 표 ── */
+table.meal{width:100%; border-collapse:collapse; font-size:13px}
+table.meal th,table.meal td{padding:7px 6px; text-align:center; border:none}
+table.meal thead th{font-size:12px; font-weight:600; color:var(--muted);
+  border-bottom:1px solid var(--border-soft)}
+table.meal tbody th{text-align:left; font-weight:500; color:var(--ink-2); font-size:12.5px}
+table.meal td{color:var(--ink); font-variant-numeric:tabular-nums}
+table.meal td.zero{color:#C6CCD4}
+table.meal .today{background:var(--pri-50)}
+table.meal thead th.today{color:var(--pri); font-weight:700; border-radius:var(--r-in) var(--r-in) 0 0}
+table.meal tbody tr:last-child td.today{border-radius:0 0 var(--r-in) var(--r-in)}
+table.meal tfoot td{font-weight:700; border-top:1px solid var(--border-soft)}
+
+/* ── 달력 ── */
+.cal-h{display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:var(--s1)}
+.cal-h span{text-align:center; font-size:11.5px; font-weight:600; color:var(--muted); padding:4px 0}
+.cal-h span.sun{color:var(--danger)} .cal-h span.sat{color:var(--pri-600)}
+.cal{display:grid; grid-template-columns:repeat(7,1fr); gap:var(--s1)}
+.cd{min-height:78px; border-radius:var(--r-in); padding:6px 7px; background:var(--card);
+  border:1px solid transparent; display:flex; flex-direction:column; gap:3px;
+  transition:background .15s, border-color .15s; cursor:pointer}
+.cd:hover{background:var(--bg); border-color:var(--border)}
+.cd.out{opacity:.35}
+.cd.today{background:var(--pri-50); border-color:var(--pri-100)}
+.cd-n{font-size:13px; font-weight:600; color:var(--ink-2); font-variant-numeric:tabular-nums}
+.cd.today .cd-n{color:var(--pri); font-weight:700}
+.cd.sun .cd-n{color:var(--danger)} .cd.sat .cd-n{color:var(--pri-600)}
+.cd.hol .cd-n{color:var(--danger)}
+.cd-hol{font-size:10.5px; color:var(--danger); font-weight:500}
+.ev{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--ink-2);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.ev i{width:5px; height:5px; border-radius:50%; flex:none}
+.ev.leave i{background:var(--pri-600)} .ev.edu i{background:var(--ok)}
+.ev.event i{background:var(--warn)} .ev.check i{background:var(--muted)}
+.ev.holiday i{background:var(--danger)}
+.cal-legend{display:flex; gap:var(--s4); margin-top:var(--s3); padding-top:var(--s3);
+  border-top:1px solid var(--border-soft); font-size:11.5px; color:var(--muted)}
+.cal-legend span{display:inline-flex; align-items:center; gap:5px}
+.cal-legend i{width:6px; height:6px; border-radius:50%}
+
+/* ── 근무보고서 segmented bar ── */
+.seg{display:flex; height:10px; border-radius:99px; overflow:hidden; background:var(--border-soft)}
+.seg i{display:block; height:100%}
+.seg .s-ok{background:var(--ok)} .seg .s-warn{background:var(--warn)} .seg .s-pri{background:var(--pri-600)}
+.seg-legend{display:flex; gap:var(--s4); margin-top:var(--s3); flex-wrap:wrap}
+.seg-item{display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-2)}
+.seg-item i{width:8px; height:8px; border-radius:2px}
+.seg-item b{font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums}
+.grp{display:flex; align-items:center; gap:var(--s2); padding:6px 0; font-size:12.5px;
+  border-top:1px solid var(--border-soft)}
+.grp:first-of-type{margin-top:var(--s3)}
+.grp-n{width:60px; flex:none; color:var(--ink-2)}
+.grp-bar{flex:1; display:flex; height:6px; border-radius:99px; overflow:hidden; background:var(--border-soft)}
+.grp-c{width:30px; text-align:right; font-weight:600; font-variant-numeric:tabular-nums}
+
+/* ── 전력 ── */
+.pw{display:grid; grid-template-columns:repeat(3,1fr); gap:var(--s3); margin-bottom:var(--s4)}
+.pw-i{min-width:0}
+.pw-l{font-size:11.5px; color:var(--muted); margin-bottom:2px}
+.pw-v{font-size:19px; font-weight:700; letter-spacing:-.03em; line-height:1.15}
+.pw-v small{font-size:11.5px; font-weight:500; color:var(--muted); margin-left:2px; letter-spacing:0}
+.spark{width:100%; height:64px; display:block}
+
+/* ── 목록 ── */
+.list{display:flex; flex-direction:column}
+.li{display:flex; align-items:center; gap:var(--s3); padding:9px 0;
+  border-top:1px solid var(--border-soft); font-size:13px}
+.li:first-child{border-top:none; padding-top:0}
+.li-t{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.li-m{font-size:11.5px; color:var(--muted); flex:none}
+.li-r{font-size:12px; color:var(--muted); flex:none; font-variant-numeric:tabular-nums}
+.badge{padding:2px 7px; border-radius:var(--r-chip); font-size:11px; font-weight:600; flex:none}
+.badge.imp{background:var(--danger-bg); color:var(--danger)}
+.badge.new{background:var(--pri-50); color:var(--pri)}
+.badge.today{background:var(--warn-bg); color:var(--warn)}
+.empty{padding:var(--s5) 0; text-align:center; color:var(--muted); font-size:12.5px}
+
+/* ── MES ── */
+.mes{display:grid; grid-template-columns:repeat(2,1fr); gap:var(--s2)}
+.mes-i{border:1px solid var(--border-soft); border-radius:var(--r-in); padding:10px 12px}
+.mes-d{font-size:11.5px; color:var(--muted); margin-bottom:3px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.mes-v{font-size:17px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.mes-v small{font-size:11.5px; font-weight:500; color:var(--muted)}
+.mes-h{font-size:11.5px; color:var(--muted); margin-top:1px}
+
+a:focus-visible,button:focus-visible,.cd:focus-visible{outline:2px solid var(--pri-600); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+
+/* 1440 이하에서 3열 유지하되 밀도 조정 */
+@media (max-width:1500px){
+  .board{grid-template-columns:1fr 1.45fr 1fr}
+  .kpi-val{font-size:26px}
+  .cd{min-height:68px}
+}
+@media (max-width:1200px){
+  .board{grid-template-columns:1fr 1fr}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+{% set off_count = leave_today|length + etc_today|length %}
+{% set st = wr_summary.status if wr_summary else {} %}
+{% set wr_wait = st.get('대기',0) %}
+{% set wr_done = st.get('작성완료',0) %}
+{% set wr_appr = st.get('결재',0) %}
+{% set wr_total = wr_summary.total if wr_summary else 0 %}
+{% set dow_ko = ['일','월','화','수','목','금','토'] %}
+
+<!-- ══════════ Sidebar ══════════ -->
+<nav class="side">
+  <div class="side-head">
+    <span class="top-mark">태</span><b>태인관리시스템</b>
+  </div>
+
+  <div class="side-grp">현황</div>
+  <a href="/" class="on"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5v5H2V2zm7 0h5v3H9V2zM2 9h5v5H2V9zm7-2h5v7H9V7z"/></svg>대시보드</a>
+  <a href="/control_center"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l6 3v4c0 3.5-2.5 6.3-6 7-3.5-.7-6-3.5-6-7V4l6-3z"/></svg>통합관제</a>
+
+  <div class="side-grp">근태</div>
+  <a href="/attendance"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm.8 3.5v3.7l2.7 1.6-.8 1.3-3.4-2V4.5h1.5z"/></svg>근태기록</a>
+  <a href="/schedule"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1zm0 4v7h10V6H3z"/></svg>근무표</a>
+  <a href="/work_report"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M4 1h6l3 3v11H4V1zm5 1v3h3"/></svg>근무보고서</a>
+  <a href="/leave_dashboard"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l2 4h4l-3 3 1 5-4-2.5L4 14l1-5-3-3h4l2-4z"/></svg>연차관리</a>
+
+  <div class="side-grp">운영</div>
+  <a href="/meal_order"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1h1v6H3V1zm3 0h1v6H6V1zM2 8h6v7H2V8zm10-7h2v14h-2V8h-2V4a3 3 0 012-3z"/></svg>식수관리</a>
+  <a href="/bus_dispatch"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h10v9H3V2zm0 10h2v2H3v-2zm8 0h2v2h-2v-2z"/></svg>배차관리</a>
+  <a href="/guard_list"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l5 2v5c0 3-2 5.5-5 7-3-1.5-5-4-5-7V3l5-2z"/></svg>경비일지</a>
+
+  <div class="side-grp">인사</div>
+  <a href="/hr_status"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 8a3 3 0 100-6 3 3 0 000 6zm0 1.5c-3 0-5.5 1.5-5.5 3.5V15h11v-2c0-2-2.5-3.5-5.5-3.5z"/></svg>인사현황</a>
+  <a href="/hr_roster"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v2H2V3zm0 4h12v2H2V7zm0 4h12v2H2v-2z"/></svg>전체 재직자</a>
+  <a href="/hr_vehicle"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M3 9l1-4h8l1 4v4h-2v-2H5v2H3V9z"/></svg>차량현황</a>
+
+  <div class="side-grp">생산 · 에너지</div>
+  <a href="/mes/report"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M2 13h3V7H2v6zm4.5 0h3V3h-3v10zM11 13h3V9h-3v4z"/></svg>생산 리포트</a>
+  <a href="/mes/env"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a2 2 0 00-2 2v6a3.5 3.5 0 104 0V3a2 2 0 00-2-2z"/></svg>온습도 현황</a>
+  <a href="/power"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M9 1L3 9h4l-1 6 6-8H8l1-6z"/></svg>전력사용현황</a>
+</nav>
+
+<!-- ══════════ Top ══════════ -->
+<header class="top">
+  <div class="top-brand" style="width:calc(var(--side-w) - 20px - var(--s5))"></div>
+
+  <div class="chips">
+    <a class="chip" href="/attendance"><span class="dot dot-ok"></span>출근 <b class="num">{{ att_summary.checked_in }}</b></a>
+    <a class="chip" href="/leave_dashboard"><span class="dot dot-pri"></span>휴가 <b class="num">{{ leave_today|length }}</b></a>
+    <a class="chip" href="/work_report"><span class="dot dot-warn"></span>보고서 <b class="num">{{ wr_total }}</b></a>
+    <a class="chip" href="/work_report"><span class="dot dot-danger"></span>결재대기 <b class="num">{{ wr_wait }}</b></a>
+  </div>
+
+  <div class="top-right">
+    <button class="icon-btn" aria-label="알림">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a4 4 0 00-4 4v3L2.5 11h11L12 8V5a4 4 0 00-4-4zM6.5 12.5a1.5 1.5 0 003 0h-3z"/></svg>
+    </button>
+    <div class="who"><b>관리자</b><span>총무팀</span></div>
+    <div class="avatar">관</div>
+  </div>
+</header>
+
+<main class="stage">
+
+  <!-- ══════ 1순위 KPI ══════ -->
+  <section class="kpis" aria-label="핵심 지표">
+    <div class="kpi">
+      <div class="kpi-ic b"><svg width="19" height="19" viewBox="0 0 16 16" fill="currentColor"><path d="M8 8a3 3 0 100-6 3 3 0 000 6zm0 1.5c-3 0-5.5 1.5-5.5 3.5V15h11v-2c0-2-2.5-3.5-5.5-3.5z"/></svg></div>
+      <div class="kpi-txt">
+        <div class="kpi-label">오늘 출근</div>
+        <div class="kpi-val num">{{ att_summary.checked_in }}<small>명</small></div>
+        <div class="kpi-sub">{{ att_summary.depts|length }}개 부서 · {{ power_info.updated_at }} 기준</div>
+      </div>
+    </div>
+
+    <div class="kpi">
+      <div class="kpi-ic o"><svg width="19" height="19" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1zm0 4v7h10V6H3zm2 2h2v2H5V8z"/></svg></div>
+      <div class="kpi-txt">
+        <div class="kpi-label">휴가 · 부재</div>
+        <div class="kpi-val num">{{ off_count }}<small>명</small></div>
+        <div class="kpi-sub">연차 {{ leave_today|length }} · 기타 {{ etc_today|length }}</div>
+      </div>
+    </div>
+
+    <div class="kpi">
+      <div class="kpi-ic g"><svg width="19" height="19" viewBox="0 0 16 16" fill="currentColor"><path d="M4 1h5l3 3v11H4V1zm1 6h6v1H5V7zm0 3h6v1H5v-1z"/></svg></div>
+      <div class="kpi-txt">
+        <div class="kpi-label">근무보고서</div>
+        <div class="kpi-val num">{{ wr_total }}<small>건</small></div>
+        <div class="kpi-sub">{{ today.strftime('%m월') }} · 그룹 {{ wr_summary.groups|length if wr_summary else 0 }}개</div>
+      </div>
+    </div>
+
+    <div class="kpi">
+      <div class="kpi-ic r"><svg width="19" height="19" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm-.8 3h1.6v5H7.2V4zm0 6.5h1.6v1.6H7.2v-1.6z"/></svg></div>
+      <div class="kpi-txt">
+        <div class="kpi-label">결재 대기</div>
+        <div class="kpi-val num">{{ wr_wait }}<small>건</small></div>
+        <div class="kpi-sub">작성완료 {{ wr_done }}건 대기 중</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ Board ══════ -->
+  <div class="board">
+
+    <!-- ─── 좌 ─── -->
+    <div class="col">
+
+      <!-- 1순위: 부서별 출근 -->
+      <section class="card">
+        <div class="card-h"><h2>부서별 출근현황</h2><span class="meta num">{{ att_summary.checked_in }}명</span></div>
+        {% set dmax = (att_summary.depts.values()|map(attribute='in')|max) if att_summary.depts else 1 %}
+        {% for name, d in att_summary.depts.items() %}
+        <div class="dept">
+          <span class="dept-n">{{ name }}</span>
+          <span class="dept-t"><span class="dept-f" style="width:{{ (d['in'] / dmax * 100)|round(0,'floor')|int }}%"></span></span>
+          <span class="dept-c num">{{ d['in'] }}</span>
+        </div>
+        {% endfor %}
+
+        {% if off_count %}
+        <div class="tagwrap">
+          {% for p in leave_today %}<span class="tag leave">{{ p.name }} · {{ p.type }}</span>{% endfor %}
+          {% for p in etc_today %}<span class="tag etc">{{ p.name }} · {{ p.type }}</span>{% endfor %}
+        </div>
+        {% endif %}
+      </section>
+
+      <!-- 2순위: 식수 -->
+      <section class="card">
+        <div class="card-h"><h2>식수현황</h2><span class="meta">최근 7일</span></div>
+        {% set kinds = ['조식','중식','석식','야식'] %}
+        <table class="meal">
+          <thead>
+            <tr><th style="text-align:left"></th>
+              {% for d in meal_week %}<th class="{{ 'today' if d.is_today }}">{{ d.dow }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for k in kinds %}
+            <tr>
+              <th>{{ k }}</th>
+              {% for d in meal_week %}
+                {% set t = namespace(v=0) %}
+                {% for site, n in (d.meals.get(k) or {}).items() %}{% set t.v = t.v + (n|int) %}{% endfor %}
+                <td class="{{ 'today ' if d.is_today }}{{ 'zero' if not t.v }}">{{ t.v if t.v else '–' }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr><td style="text-align:left">계</td>
+              {% for d in meal_week %}
+                {% set g = namespace(v=0) %}
+                {% for kk, sites in d.meals.items() %}{% for site, n in sites.items() %}{% set g.v = g.v + (n|int) %}{% endfor %}{% endfor %}
+                <td class="{{ 'today ' if d.is_today }}{{ 'zero' if not g.v }}">{{ g.v if g.v else '–' }}</td>
+              {% endfor %}
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+
+      <!-- 2순위: MES -->
+      <section class="card">
+        <div class="card-h"><h2>온습도 현황</h2><a class="more" href="/mes/env">전체</a></div>
+        {% if mes_rows %}
+        <div class="mes">
+          {% for m in mes_rows %}
+          <div class="mes-i">
+            <div class="mes-d">{{ m.device }}</div>
+            <div class="mes-v num">{{ '%.1f'|format(m.temp) }}<small>℃</small></div>
+            <div class="mes-h num">습도 {{ '%.0f'|format(m.humi) }}% · {{ m.at }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty">수집된 온습도 데이터가 없습니다.</div>
+        {% endif %}
+      </section>
+    </div>
+
+    <!-- ─── 중 ─── -->
+    <div class="col">
+
+      <!-- 1순위: 달력 -->
+      <section class="card">
+        <div class="card-h">
+          <h2>{{ today.strftime('%Y년 %m월') }} 일정</h2>
+          <span class="meta">오늘 {{ today.strftime('%m월 %d일') }} ({{ dow_ko[(today.weekday()+1) % 7] }})</span>
+        </div>
+        <div class="cal-h">
+          <span class="sun">일</span><span>월</span><span>화</span><span>수</span>
+          <span>목</span><span>금</span><span class="sat">토</span>
+        </div>
+        <div class="cal">
+          {% for week in cal_weeks %}{% for d in week %}
+          <div class="cd {{ 'today' if d.is_today }} {{ 'out' if not d.in_month }} {{ 'hol' if d.holiday }} {{ 'sun' if d.dow==6 }} {{ 'sat' if d.dow==5 }}" tabindex="0">
+            <span class="cd-n">{{ d.day }}</span>
+            {% if d.holiday %}<span class="cd-hol">{{ d.holiday }}</span>{% endif %}
+            {% for e in d.events[:3] %}
+            <span class="ev {{ e.kind }}"><i></i>{{ e.title }}</span>
+            {% endfor %}
+            {% if d.events|length > 3 %}<span class="ev"><i style="background:var(--muted)"></i>외 {{ d.events|length - 3 }}건</span>{% endif %}
+          </div>
+          {% endfor %}{% endfor %}
+        </div>
+        <div class="cal-legend">
+          <span><i style="background:var(--pri-600)"></i>연차·휴가</span>
+          <span><i style="background:var(--ok)"></i>교육</span>
+          <span><i style="background:var(--warn)"></i>행사·회의</span>
+          <span><i style="background:var(--danger)"></i>공휴일</span>
+        </div>
+      </section>
+
+      <!-- 3순위: 공지 -->
+      <section class="card">
+        <div class="card-h"><h2>공지사항</h2><a class="more" href="/notice">전체 {{ notices|length }}건</a></div>
+        <div class="list">
+          {% for n in notices %}
+          <div class="li">
+            {% if n.is_pinned %}<span class="badge imp">중요</span>{% endif %}
+            <span class="li-t">{{ n.title }}</span>
+            <span class="li-m">{{ n.created_by }}</span>
+            <span class="li-r">{{ n.created_at.strftime('%Y-%m-%d') }}</span>
+          </div>
+          {% else %}
+          <div class="empty">등록된 공지가 없습니다.</div>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
+
+    <!-- ─── 우 ─── -->
+    <div class="col">
+
+      <!-- 1순위: 근무보고서 -->
+      <section class="card">
+        <div class="card-h"><h2>근무보고서</h2><span class="meta num">전체 {{ wr_total }}건</span></div>
+        {% if wr_total %}
+        <div class="seg" role="img" aria-label="결재 {{ wr_appr }}건, 작성완료 {{ wr_done }}건, 대기 {{ wr_wait }}건">
+          <i class="s-ok"    style="width:{{ (wr_appr / wr_total * 100)|round(1) }}%"></i>
+          <i class="s-pri"   style="width:{{ (wr_done / wr_total * 100)|round(1) }}%"></i>
+          <i class="s-warn"  style="width:{{ (wr_wait / wr_total * 100)|round(1) }}%"></i>
+        </div>
+        <div class="seg-legend">
+          <span class="seg-item"><i style="background:var(--ok)"></i>결재 <b class="num">{{ wr_appr }}</b></span>
+          <span class="seg-item"><i style="background:var(--pri-600)"></i>작성완료 <b class="num">{{ wr_done }}</b></span>
+          <span class="seg-item"><i style="background:var(--warn)"></i>대기 <b class="num">{{ wr_wait }}</b></span>
+        </div>
+        {% for g, sts in wr_summary.groups.items() %}
+          {% set gt = sts.values()|sum %}
+          <div class="grp">
+            <span class="grp-n">{{ g }}</span>
+            <span class="grp-bar">
+              {% for stn, n in sts.items() %}
+              <i style="width:{{ (n / gt * 100)|round(1) }}%;background:{{ 'var(--ok)' if stn=='결재' else ('var(--pri-600)' if stn=='작성완료' else 'var(--warn)') }}"></i>
+              {% endfor %}
+            </span>
+            <span class="grp-c num">{{ gt }}</span>
+          </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty">이번 달 보고서가 없습니다.</div>
+        {% endif %}
+      </section>
+
+      <!-- 2순위: 전력 -->
+      <section class="card">
+        <div class="card-h"><h2>전력 현황</h2><span class="meta">{{ power_info.bill_start }}–{{ power_info.bill_end }}</span></div>
+        <div class="pw">
+          <div class="pw-i">
+            <div class="pw-l">당월 누계</div>
+            <div class="pw-v num">{{ '{:,.0f}'.format(power_info.rt_kwh) }}<small>kWh</small></div>
+          </div>
+          <div class="pw-i">
+            <div class="pw-l">실시간 요금</div>
+            <div class="pw-v num">{{ '{:,.0f}'.format(power_info.rt_bill / 10000) }}<small>만원</small></div>
+          </div>
+          <div class="pw-i">
+            <div class="pw-l">오늘 사용량</div>
+            <div class="pw-v num">{{ '{:,.1f}'.format(power_info.today_kwh) }}<small>kWh</small></div>
+          </div>
+        </div>
+        <svg class="spark" viewBox="0 0 240 64" preserveAspectRatio="none" aria-label="오늘 시간대별 전력 사용">
+          <polyline fill="var(--pri-600)" fill-opacity=".07" stroke="none" points="{{ spark_area }}"/>
+          <polyline fill="none" stroke="var(--pri-600)" stroke-width="1.8" stroke-linejoin="round" points="{{ spark_line }}"/>
+          <circle cx="{{ spark_end.split(',')[0] }}" cy="{{ spark_end.split(',')[1] }}" r="2.8"
+                  fill="var(--pri-600)" stroke="#fff" stroke-width="1.5"/>
+        </svg>
+      </section>
+
+      <!-- 3순위: 생일 -->
+      <section class="card">
+        <div class="card-h"><h2>{{ today.strftime('%m월')|int }}월 생일자</h2><span class="meta num">{{ birthdays|length }}명</span></div>
+        <div class="list">
+          {% for b in birthdays[:8] %}
+          <div class="li">
+            <span class="li-t">{{ b.name }}</span>
+            {% if b.dept %}<span class="li-m">{{ b.dept }}</span>{% endif %}
+            {% if b.is_today %}<span class="badge today">오늘</span>
+            {% else %}<span class="li-r">{{ '%02d'|format(b.day) }}일</span>{% endif %}
+          </div>
+          {% else %}
+          <div class="empty">이번 달 생일자가 없습니다.</div>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
+
+  </div>
+</main>
+</body>
+</html>
