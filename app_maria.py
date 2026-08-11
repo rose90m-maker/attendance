@@ -6234,6 +6234,31 @@ def _msg_manual(d):
     return out
 
 
+def _msg_owner():
+    """수신자 즐겨찾기·문구 템플릿의 소유자 키 — 계정별로 나눈다"""
+    return str(session.get("user_id") or "")
+
+
+def _msg_scope_index(cur, table):
+    """이름 UNIQUE 를 (이름, 계정) 복합으로 바꾼다.
+
+    처음에는 이름이 전체에서 UNIQUE 라, 남이 '생산회의'를 쓰고 있으면 내가 같은
+    이름을 못 만들었다. 계정별로 나누면서 제약도 계정 단위로 옮긴다.
+    이미 바뀐 뒤에는 아무것도 하지 않는다.
+    """
+    cur.execute("""SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+                   WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s
+                     AND NON_UNIQUE=0 AND INDEX_NAME<>'PRIMARY'
+                   GROUP BY INDEX_NAME""", (table,))
+    names = {r[0] for r in cur.fetchall()}
+    if "uk_name_owner" in names:
+        return
+    for nm in names:
+        cur.execute(f"ALTER TABLE `{table}` DROP INDEX `{nm}`")
+    cur.execute(f"ALTER TABLE `{table}` "
+                f"ADD UNIQUE KEY `uk_name_owner` (`name`, `created_by`)")
+
+
 _MSG_FAV_READY = False
 
 
@@ -6253,6 +6278,7 @@ def _ensure_msg_fav():
             `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
                          ON UPDATE CURRENT_TIMESTAMP
         ) DEFAULT CHARSET=utf8mb4""")
+    _msg_scope_index(cur, "msg_favorites")
     conn.commit(); conn.close()
     _MSG_FAV_READY = True
 
@@ -6262,17 +6288,22 @@ def _ensure_msg_fav():
 def api_msg_fav():
     """수신자 즐겨찾기 — 자주 쓰는 수신자 묶음에 이름을 붙여 저장한다.
 
-    예) 생산회의 / 부장모임 / 관리자만. msg_send 권한자 공용이다.
+    예) 생산회의 / 부장모임 / 관리자만.
+
+    **계정별로 나뉜다** — 내가 만든 것만 보이고 고칠 수 있다. 그래서 이름도
+    계정 안에서만 유일하면 되고, 남이 쓰는 이름을 나도 쓸 수 있다.
     emp_ids 는 employee_roster.id 목록(JSON) — '사람 묶음'을 저장하는 것이라
     퇴사자는 화면에서 불러올 때 걸러진다. 저장·이름변경·삭제는 발송 권한
     (create)이 있어야 한다. 조회는 화면 진입 권한이면 된다.
     """
     import json as _json
     _ensure_msg_fav()
+    me = _msg_owner()
     conn = _conn(); cur = conn.cursor()
     try:
         if request.method == "GET":
-            cur.execute("SELECT id, name, emp_ids FROM msg_favorites ORDER BY name")
+            cur.execute("""SELECT id, name, emp_ids FROM msg_favorites
+                           WHERE created_by=%s ORDER BY name""", (me,))
             rows = [{"id": r[0], "name": r[1],
                      "emp_ids": _json.loads(r[2] or "[]")}
                     for r in cur.fetchall()]
@@ -6292,7 +6323,8 @@ def api_msg_fav():
                 ids = []
             if not name or not ids:
                 return jsonify({"ok": False, "err": "이름과 수신자가 필요합니다"})
-            cur.execute("SELECT id FROM msg_favorites WHERE name=%s", (name,))
+            cur.execute("SELECT id FROM msg_favorites WHERE name=%s AND created_by=%s",
+                        (name, me))
             r = cur.fetchone()
             if r:
                 cur.execute("UPDATE msg_favorites SET emp_ids=%s WHERE id=%s",
@@ -6300,18 +6332,21 @@ def api_msg_fav():
             else:
                 cur.execute("""INSERT INTO msg_favorites(name, emp_ids, created_by)
                                VALUES(%s, %s, %s)""",
-                            (name, _json.dumps(ids),
-                             str(session.get("user_id") or "")))
+                            (name, _json.dumps(ids), me))
         elif act == "rename":
             if not name:
                 return jsonify({"ok": False, "err": "이름이 비었습니다"})
-            cur.execute("SELECT id FROM msg_favorites WHERE name=%s AND id<>%s",
-                        (name, fid))
+            cur.execute("""SELECT id FROM msg_favorites
+                           WHERE name=%s AND created_by=%s AND id<>%s""",
+                        (name, me, fid))
             if cur.fetchone():
                 return jsonify({"ok": False, "err": "같은 이름이 이미 있습니다"})
-            cur.execute("UPDATE msg_favorites SET name=%s WHERE id=%s", (name, fid))
+            # created_by 조건이 있어야 남의 묶음을 id 로 건드릴 수 없다
+            cur.execute("UPDATE msg_favorites SET name=%s WHERE id=%s AND created_by=%s",
+                        (name, fid, me))
         elif act == "delete":
-            cur.execute("DELETE FROM msg_favorites WHERE id=%s", (fid,))
+            cur.execute("DELETE FROM msg_favorites WHERE id=%s AND created_by=%s",
+                        (fid, me))
         else:
             return jsonify({"ok": False, "err": "알 수 없는 요청"})
         conn.commit()
@@ -6340,6 +6375,7 @@ def _ensure_msg_tpl():
             `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP
                          ON UPDATE CURRENT_TIMESTAMP
         ) DEFAULT CHARSET=utf8mb4""")
+    _msg_scope_index(cur, "msg_templates")
     conn.commit(); conn.close()
     _MSG_TPL_READY = True
 
@@ -6351,13 +6387,15 @@ def api_msg_tpl():
 
     예) 안전교육 안내 / 회식 공지 / 정기점검 알림.
     수신자 즐겨찾기(msg_favorites)와 같은 방식이고, 저장하는 것이 사람 대신
-    본문·제목이라는 점만 다르다. msg_send 권한자 공용.
+    본문·제목이라는 점만 다르다. **계정별로 나뉜다** — 내가 만든 것만 보인다.
     """
     _ensure_msg_tpl()
+    me = _msg_owner()
     conn = _conn(); cur = conn.cursor()
     try:
         if request.method == "GET":
-            cur.execute("SELECT id, name, title, body FROM msg_templates ORDER BY name")
+            cur.execute("""SELECT id, name, title, body FROM msg_templates
+                           WHERE created_by=%s ORDER BY name""", (me,))
             return jsonify({"ok": True,
                             "rows": [{"id": r[0], "name": r[1], "title": r[2] or "",
                                       "body": r[3] or ""} for r in cur.fetchall()]})
@@ -6374,7 +6412,8 @@ def api_msg_tpl():
             title = (d.get("title") or "").strip()[:120]
             if not name or not body:
                 return jsonify({"ok": False, "err": "이름과 내용이 필요합니다"})
-            cur.execute("SELECT id FROM msg_templates WHERE name=%s", (name,))
+            cur.execute("SELECT id FROM msg_templates WHERE name=%s AND created_by=%s",
+                        (name, me))
             r = cur.fetchone()
             if r:
                 cur.execute("UPDATE msg_templates SET title=%s, body=%s WHERE id=%s",
@@ -6382,17 +6421,21 @@ def api_msg_tpl():
             else:
                 cur.execute("""INSERT INTO msg_templates(name, title, body, created_by)
                                VALUES(%s,%s,%s,%s)""",
-                            (name, title, body, str(session.get("user_id") or "")))
+                            (name, title, body, me))
         elif act == "rename":
             if not name:
                 return jsonify({"ok": False, "err": "이름이 비었습니다"})
-            cur.execute("SELECT id FROM msg_templates WHERE name=%s AND id<>%s",
-                        (name, tid))
+            cur.execute("""SELECT id FROM msg_templates
+                           WHERE name=%s AND created_by=%s AND id<>%s""",
+                        (name, me, tid))
             if cur.fetchone():
                 return jsonify({"ok": False, "err": "같은 이름이 이미 있습니다"})
-            cur.execute("UPDATE msg_templates SET name=%s WHERE id=%s", (name, tid))
+            # created_by 조건이 있어야 남의 문구를 id 로 건드릴 수 없다
+            cur.execute("UPDATE msg_templates SET name=%s WHERE id=%s AND created_by=%s",
+                        (name, tid, me))
         elif act == "delete":
-            cur.execute("DELETE FROM msg_templates WHERE id=%s", (tid,))
+            cur.execute("DELETE FROM msg_templates WHERE id=%s AND created_by=%s",
+                        (tid, me))
         else:
             return jsonify({"ok": False, "err": "알 수 없는 요청"})
         conn.commit()
