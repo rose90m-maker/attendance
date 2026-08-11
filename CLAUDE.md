@@ -22,6 +22,7 @@ Korean workplace attendance management system (㈜태인 근태관리). Flask we
 - **`caps_sync.py`** — runs on a **Windows PC** at the access-control server. Reads `C:\Caps\ACServer\access.mdb` (`tenter` table) → pushes to NAS MariaDB. Has `--setup` mode that installs itself as a startup task with watchdog.
 - **`kepco_*.py`** — Scrapers for KEPCO (Korea Electric Power) electricity bill data.
 - **`backup.py`** — full-system backup to Mac local + NAS sidecar. See `MEMORY.md` for procedure.
+- **AI 서버 (192.168.100.6)** — Ollama API `:11434` (safety_ai_bp 가 사용, 비전모델 `qwen2.5vl:32b`), 채팅 웹 UI `:3000` (Open WebUI 로 추정).
 
 ### Storage
 - **MariaDB** at `127.0.0.1:3307` on NAS (Synology MariaDB10 package — *not* a container). DB name: `attendance`.
