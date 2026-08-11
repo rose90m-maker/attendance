@@ -494,6 +494,10 @@ function cond(){
     if (selected.size) c.emp_ids = [...selected];
     const man = manualText();
     if (man) c.manual = man;
+    // 예약 시각. 이 줄이 빠져 있어서 화면은 '예약 걸기'인데 서버로는 안 넘어가
+    // 즉시 발송된 사고가 있었다 (2026-08-11).
+    const sc = schedAt();
+    if (sc) c.scheduled = sc;
     return c;
 }
 
@@ -701,7 +705,10 @@ async function doSend(){
     if (!c.body.trim()){ toast('내용을 입력하세요.', 'warn'); return; }
     const md = bootstrap.Modal.getInstance(document.getElementById('mdConfirm'));
     const go = document.getElementById('cGo');
-    const isSched = !!schedAt();
+    const isSched = schedOn();
+    // 화면의 의도를 서버에도 알린다. 예약인데 시각이 안 넘어가면 서버가 즉시
+    // 발송하지 않고 거절한다 — 문자는 되돌릴 수 없다 (2026-08-11 사고)
+    c.intent = isSched ? 'schedule' : 'now';
     go.disabled = true; go.textContent = isSched ? '예약 중…' : '발송 중…';
     const ch = document.getElementById('channel');
     if (ch.selectedOptions && ch.selectedOptions[0] && ch.selectedOptions[0].dataset.pf)
