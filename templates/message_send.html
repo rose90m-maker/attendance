@@ -332,7 +332,41 @@
     <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
         <div class="modal-header py-2"><h6 class="modal-title">보낸 내역</h6>
             <button class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body"><div id="histBody">불러오는 중…</div></div>
+        <div class="modal-body">
+            <!-- 검색줄 — 드롭다운(흔한 조회 2클릭)과 날짜범위(정확한 구간)를 함께 둔다.
+                 한쪽을 쓰면 다른 쪽은 비워진다. -->
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2 pb-2"
+                 style="border-bottom:1px solid #f1f5f9;">
+                <select class="form-select form-select-sm" id="hPeriod" style="max-width:150px;"
+                        onchange="clearRange();histGo(1)">
+                    <option value="">전체 기간</option>
+                </select>
+                <span style="font-size:.78rem; color:#9ca3af;">또는</span>
+                <input type="date" class="form-control form-control-sm" id="hFrom"
+                       style="max-width:150px;" onchange="clearPeriod();histGo(1)">
+                <span style="font-size:.78rem; color:#9ca3af;">~</span>
+                <input type="date" class="form-control form-control-sm" id="hTo"
+                       style="max-width:150px;" onchange="clearPeriod();histGo(1)">
+                <select class="form-select form-select-sm" id="hStatus" style="max-width:110px;"
+                        onchange="histGo(1)">
+                    <option value="">상태 전체</option>
+                    <option value="sent">발송</option>
+                    <option value="scheduled">예약</option>
+                    <option value="canceled">취소</option>
+                </select>
+                <input type="text" class="form-control form-control-sm" id="hQ" style="max-width:220px;"
+                       placeholder="🔍 내용 · 보낸이 검색" oninput="histSearch()">
+                <select class="form-select form-select-sm" id="hSize" style="max-width:92px;"
+                        onchange="histGo(1)">
+                    <option value="10">10개씩</option>
+                    <option value="20">20개씩</option>
+                    <option value="50">50개씩</option>
+                </select>
+                <button class="btn btn-outline-secondary btn-sm" onclick="histReset()">초기화</button>
+            </div>
+            <div id="histBody">불러오는 중…</div>
+            <div class="d-flex justify-content-between align-items-center mt-2" id="histPager"></div>
+        </div>
     </div></div>
 </div>
 
@@ -738,11 +772,66 @@ async function doSend(){
 }
 
 /* ── 보낸 내역 ── */
-async function loadHistory(){
-    new bootstrap.Modal(document.getElementById('mdHistory')).show();
-    const r = await fetch('/api/msg_history').then(r=>r.json());
-    if (!r.rows.length){ document.getElementById('histBody').innerHTML='<p class="text-muted">보낸 내역이 없습니다.</p>'; return; }
-    window._hist = {};
+/* 조건을 한곳에서 만든다 — 쪽 이동·검색·필터가 모두 이걸 쓴다 */
+let histPage = 1, histTimer = null, histPeriodReady = false;
+function histParams(page){
+    const p = new URLSearchParams();
+    p.set('page', page || histPage);
+    p.set('size', document.getElementById('hSize').value);
+    const q = document.getElementById('hQ').value.trim();
+    if (q) p.set('q', q);
+    const st = document.getElementById('hStatus').value;
+    if (st) p.set('status', st);
+    const per = document.getElementById('hPeriod').value;   // '2026' 또는 '2026-08'
+    if (per) p.set(per.length === 4 ? 'y' : 'ym', per);
+    const f = document.getElementById('hFrom').value, t = document.getElementById('hTo').value;
+    if (f) p.set('from', f);
+    if (t) p.set('to', t);
+    return p;
+}
+function clearPeriod(){ document.getElementById('hPeriod').value = ''; }
+function clearRange(){
+    document.getElementById('hFrom').value = '';
+    document.getElementById('hTo').value = '';
+}
+function histSearch(){                       // 타이핑이 멎으면 조회 (디바운스)
+    clearTimeout(histTimer);
+    histTimer = setTimeout(()=>histGo(1), 300);
+}
+function histReset(){
+    ['hQ','hFrom','hTo'].forEach(i=>document.getElementById(i).value='');
+    document.getElementById('hPeriod').value = '';
+    document.getElementById('hStatus').value = '';
+    document.getElementById('hSize').value = '10';
+    histGo(1);
+}
+function histGo(page){ histPage = page || 1; loadHistory(true); }
+
+async function loadHistory(keepOpen){
+    if (!keepOpen){
+        histPage = 1;
+        new bootstrap.Modal(document.getElementById('mdHistory')).show();
+    }
+    const r = await fetch('/api/msg_history?' + histParams().toString()).then(r=>r.json());
+
+    // 기간 드롭다운은 기록이 있는 년·월만 채운다 (빈 달을 고를 일이 없게). 한 번만.
+    if (!histPeriodReady && r.months){
+        const sel = document.getElementById('hPeriod');
+        (r.years||[]).forEach(y=>{
+            sel.insertAdjacentHTML('beforeend', `<option value="${y}">${y}년</option>`);
+            r.months.filter(m=>m.startsWith(y)).forEach(m=>
+                sel.insertAdjacentHTML('beforeend',
+                    `<option value="${m}">&nbsp;&nbsp;${m.slice(5)}월 (${y})</option>`));
+        });
+        histPeriodReady = true;
+    }
+    drawPager(r);
+    if (!r.rows.length){
+        document.getElementById('histBody').innerHTML =
+            '<p class="text-muted mb-0">조건에 맞는 내역이 없습니다.</p>';
+        return;
+    }
+    window._hist = window._hist || {};
     document.getElementById('histBody').innerHTML =
         `<table class="table table-sm tbl"><thead><tr><th>일시</th><th>종류</th><th>내용</th><th>대상</th>
          <th>성공</th><th>실패</th><th>보낸이</th><th></th></tr></thead><tbody>` +
@@ -761,6 +850,30 @@ async function loadHistory(){
             </td></tr>`; }).join('') +
         `</tbody></table><div id="detailBox"></div>`;
 }
+
+/* 쪽 이동 — 앞뒤 2쪽씩만 보이고 나머지는 … 로 접는다 */
+function drawPager(r){
+    const box = document.getElementById('histPager');
+    if (!r.total){ box.innerHTML = ''; return; }
+    const cur = r.page, last = r.pages;
+    const nums = [];
+    for (let i = 1; i <= last; i++){
+        if (i === 1 || i === last || Math.abs(i - cur) <= 2) nums.push(i);
+        else if (nums[nums.length-1] !== '…') nums.push('…');
+    }
+    box.innerHTML =
+        `<span style="font-size:.79rem; color:#6b7280;">전체 <b>${r.total}</b>건 · ${cur}/${last}쪽</span>` +
+        `<span class="btn-group btn-group-sm">` +
+        `<button class="btn btn-outline-secondary" ${cur<=1?'disabled':''}
+                 onclick="histGo(${cur-1})">‹ 이전</button>` +
+        nums.map(n => n === '…'
+            ? `<button class="btn btn-outline-secondary" disabled>…</button>`
+            : `<button class="btn ${n===cur?'btn-primary':'btn-outline-secondary'}"
+                       onclick="histGo(${n})">${n}</button>`).join('') +
+        `<button class="btn btn-outline-secondary" ${cur>=last?'disabled':''}
+                 onclick="histGo(${cur+1})">다음 ›</button></span>`;
+}
+
 async function cancelSched(id){
     if (!confirm('이 예약을 취소할까요?')) return;
     try{
@@ -769,8 +882,7 @@ async function cancelSched(id){
             body:JSON.stringify({id})}).then(r=>r.json());
         if (!r.ok){ toast('취소 실패: ' + (r.error||''), 'error'); return; }
         toast('예약을 취소했습니다.');
-        bootstrap.Modal.getInstance(document.getElementById('mdHistory')).hide();
-        loadHistory();
+        loadHistory(true);      // 보던 쪽·조건 그대로 새로고침 (창을 닫았다 열지 않는다)
     }catch(e){ toast('오류: ' + e, 'error'); }
 }
 function reuse(id){
